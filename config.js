@@ -31,6 +31,11 @@ window.FILA_CONFIG = {
   // Alternância preferencial/normal: chama 1 preferencial, depois 1 normal...
   alternancia: "1:1",
 
+  // --- Aviso via WhatsApp (grátis, com 1 toque) ---
+  paisDDI: "55",          // código do país (Brasil = 55)
+  whatsAuto: true,        // true = ao confirmar a chamada, abre o WhatsApp já com a mensagem
+  msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Pode comparecer, por favor.",
+
   // --- Preencher para ativar o modo nuvem (Supabase) ---
   supabaseUrl: "https://xmnrzjuvgegfdalbgpwb.supabase.co",
   supabaseAnonKey: "sb_publishable_egn2eVf5KSLsPRfHiKgkiQ_jJTvnNZY",

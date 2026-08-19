@@ -91,7 +91,7 @@
           <h2 class="card-title">Fila de espera</h2>
           <div class="queue-stats">
             <span class="stat"><b id="statTotal">0</b> na fila</span>
-            <span class="stat stat-avg">⏱ espera média <b id="statAvg">—</b></span>
+            <span class="stat stat-avg">⏱ espera média <b id="statAvg">—</b><button class="avg-reset staff-only" id="resetAvgBtn" title="Resetar média" aria-label="Resetar média">↺</button></span>
           </div>
         </div>
 
@@ -161,6 +161,19 @@
       <div class="modal-actions">
         <button class="btn btn-ghost" id="callCancel">Cancelar</button>
         <button class="btn btn-accent" id="callConfirm">🔔 Confirmar chamada</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: RESETAR MÉDIA ============ -->
+  <div class="modal" id="resetModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>Resetar tempo médio?</h3>
+      <p>Isso zera o cálculo do tempo médio de espera. As pessoas na fila <b>não</b> são afetadas.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-close>Cancelar</button>
+        <button class="btn btn-primary" id="resetAvgOk">Resetar média</button>
       </div>
     </div>
   </div>

@@ -133,14 +133,22 @@
       .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em));
   }
 
-  // Tempo médio de espera (entrada → chamada) dos últimos atendidos
+  // Momento do último "reset" da média (guardado neste aparelho)
+  function getMediaReset() {
+    return localStorage.getItem("fila_media_reset") || "1970-01-01T00:00:00.000Z";
+  }
+  // Tempo médio de espera (entrada → chamada) de todos os chamados desde o último reset
   function avgWaitMs() {
-    const done = rows.filter((r) => r.chamado_em)
-      .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em))
-      .slice(0, 10);
+    const rp = new Date(getMediaReset()).getTime();
+    const done = rows.filter((r) => r.chamado_em && new Date(r.chamado_em).getTime() >= rp);
     if (!done.length) return null;
     const sum = done.reduce((a, r) => a + Math.max(0, new Date(r.chamado_em) - new Date(r.criado_em)), 0);
     return sum / done.length;
+  }
+  // Zera a média (a fila e as pessoas não são afetadas)
+  function resetMedia() {
+    localStorage.setItem("fila_media_reset", new Date().toISOString());
+    render();
   }
 
   // Decide se o próximo a chamar deve ser PREFERENCIAL (true) ou NORMAL (false)
@@ -246,6 +254,23 @@
     return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   }
   function firstName(n) { return (n || "").split(/\s+/)[0] || n || "Cliente"; }
+  // Número no formato do WhatsApp (só dígitos, com DDI)
+  function waNumber(tel) {
+    let d = String(tel || "").replace(/\D/g, "");
+    if (!d) return "";
+    const ddi = String(CFG.paisDDI || "55");
+    if (!d.startsWith(ddi) && d.length <= 11) d = ddi + d;
+    return d;
+  }
+  // Link "click to chat" do WhatsApp com a mensagem já preenchida
+  function waLink(r) {
+    const num = waNumber(r.telefone);
+    if (!num) return "";
+    const msg = (CFG.msgWhats || "Olá {nome}! Sua mesa está pronta. Pode comparecer, por favor.")
+      .replace(/\{nome\}/g, firstName(r.nome))
+      .replace(/\{restaurante\}/g, CFG.restaurante || "");
+    return "https://wa.me/" + num + "?text=" + encodeURIComponent(msg);
+  }
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -300,6 +325,7 @@
         <span class="ci-name">${esc(firstName(r.nome))}</span>
         <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)</span>
         ${staff ? `<div class="ci-actions staff-only">
+          ${r.telefone ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
           <button class="btn btn-sm ci-ok" data-seat="${r.id}">✓ Sentou</button>
           <button class="btn btn-sm ci-back" data-back="${r.id}">↩ Voltar à fila</button>
         </div>` : ""}
@@ -456,7 +482,13 @@
     });
     $("#callCancel").addEventListener("click", () => { $("#callModal").hidden = true; pendingCall = null; });
     $("#callConfirm").addEventListener("click", async () => {
-      if (pendingCall) await callPerson(pendingCall.id);
+      const p = pendingCall;
+      // abre o WhatsApp já com a mensagem (precisa ser dentro do clique p/ não ser bloqueado)
+      if (p && CFG.whatsAuto && p.telefone) {
+        const link = waLink(p);
+        if (link) window.open(link, "_blank");
+      }
+      if (p) await callPerson(p.id);
       $("#callModal").hidden = true;
       pendingCall = null;
     });
@@ -487,6 +519,10 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") $$(".modal").forEach((m) => { if (!m.hidden) closeModal(m); });
     });
+
+    // resetar média
+    $("#resetAvgBtn").addEventListener("click", () => { $("#resetModal").hidden = false; });
+    $("#resetAvgOk").addEventListener("click", () => { resetMedia(); $("#resetModal").hidden = true; });
 
     // ajuda iOS
     $("#iosHelpBtn").addEventListener("click", () => { $("#iosModal").hidden = false; });

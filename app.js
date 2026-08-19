@@ -220,8 +220,43 @@
 
   // Manda a pessoa para o FIM da fila (não compareceu no prazo — perdeu a vez)
   async function toEndOfQueue(id) {
-    await backend.update(id, { status: STATUS.AGUARDANDO, chamado_em: null, criado_em: new Date().toISOString() });
+    const p = rows.find((r) => r.id === id);
+    const perdidas = ((p && p.chamadas_perdidas) || 0) + 1;
+    const patch = { status: STATUS.AGUARDANDO, chamado_em: null, criado_em: new Date().toISOString(), chamadas_perdidas: perdidas };
+    try {
+      await backend.update(id, patch);
+    } catch (e) {
+      // caso a coluna 'chamadas_perdidas' ainda não exista no banco, faz sem ela
+      delete patch.chamadas_perdidas;
+      await backend.update(id, patch);
+      console.warn("Coluna 'chamadas_perdidas' ausente — rode o ALTER no Supabase para o marcador funcionar.", e);
+    }
     await refresh();
+  }
+
+  // Verifica e move automaticamente quem passou do prazo (se ativado no config)
+  let _autoMovendo = new Set();
+  async function checkExpired() {
+    if (CFG.autoFimDaFila === false) return;
+    const prazoMs = (CFG.prazoComparecer || 10) * 60000;
+    const now = Date.now();
+    const vencidos = rows.filter((r) =>
+      r.status === STATUS.CHAMADO && r.chamado_em &&
+      now - new Date(r.chamado_em).getTime() >= prazoMs &&
+      !_autoMovendo.has(r.id)
+    );
+    for (const r of vencidos) {
+      _autoMovendo.add(r.id);
+      try {
+        await toEndOfQueue(r.id);
+        const smsg = $("#staffMsg");
+        if (smsg) {
+          smsg.textContent = `${firstName(r.nome)} não compareceu no prazo — foi para o fim da fila.`;
+          smsg.className = "form-msg err";
+        }
+      } catch (e) { console.warn(e); }
+      finally { _autoMovendo.delete(r.id); }
+    }
   }
 
   // Abre o pop-up de confirmação de chamada para uma pessoa escolhida
@@ -291,10 +326,10 @@
         <button class="btn btn-sm btn-danger" data-drop="${r.id}">Saiu</button>
       </div>` : "";
     return `
-      <li class="q-item ${r.preferencial ? "is-pref" : ""}">
+      <li class="q-item ${r.preferencial ? "is-pref" : ""} ${staff && r.chamadas_perdidas ? "is-perdeu" : ""}">
         <div class="q-pos">${i + 1}</div>
         <div class="q-main">
-          <div class="q-name">${esc(staff ? r.nome : firstName(r.nome))}</div>
+          <div class="q-name">${esc(staff ? r.nome : firstName(r.nome))}${staff && r.chamadas_perdidas ? `<span class="q-tag perdeu">⚠️ perdeu a vez${r.chamadas_perdidas > 1 ? " (" + r.chamadas_perdidas + "×)" : ""}</span>` : ""}</div>
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
             <span>🕐 entrou ${fmtClock(r.criado_em)}</span>
@@ -617,6 +652,7 @@
     await refresh();
 
     setInterval(tickTimes, 1000);     // tempos ao vivo
+    setInterval(checkExpired, 3000);  // move sozinho quem estourou o prazo
     setInterval(refresh, 15000);      // rede de segurança (recarrega periodicamente)
   }
 

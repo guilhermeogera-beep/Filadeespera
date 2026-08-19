@@ -212,6 +212,8 @@ button{font-family:inherit}
 .q-tag{font-size:.7rem;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
 .q-tag.pref{background:var(--pref);color:#fff}
 .q-tag.called{background:var(--accent);color:#3a2c00}
+.q-tag.perdeu{background:#e74c3c;color:#fff}
+.q-item.is-perdeu{border-color:#e74c3c;background:#fdeceb}
 .q-sub{color:var(--muted);font-size:.86rem;margin-top:2px;display:flex;gap:12px;flex-wrap:wrap}
 .q-time{font-variant-numeric:tabular-nums;font-weight:700;color:var(--brand-dark)}
 .q-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}

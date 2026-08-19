@@ -52,7 +52,8 @@ create table if not exists public.fila_espera (
   preferencial boolean not null default false,
   status text not null default 'aguardando',   -- aguardando | chamado | sentado | desistiu
   criado_em timestamptz not null default now(),
-  chamado_em timestamptz
+  chamado_em timestamptz,
+  chamadas_perdidas int not null default 0     -- quantas vezes foi chamado e não compareceu
 );
 
 alter table public.fila_espera enable row level security;

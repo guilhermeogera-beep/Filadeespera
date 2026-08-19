@@ -35,6 +35,7 @@ window.FILA_CONFIG = {
   paisDDI: "55",          // código do país (Brasil = 55)
   whatsAuto: true,        // true = ao confirmar a chamada, abre o WhatsApp já com a mensagem
   prazoComparecer: 5,     // minutos para o cliente comparecer antes de perder a vez
+  autoFimDaFila: true,    // true = ao estourar o prazo, manda sozinho para o fim da fila
   msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Por favor, compareça à recepção em até {prazo} minutos para não perder a vez. Obrigado!",
 
   // --- Preencher para ativar o modo nuvem (Supabase) ---

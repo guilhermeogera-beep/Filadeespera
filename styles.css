@@ -1,0 +1,222 @@
+/* ============================================================
+   Fila de Espera — Quinta do Aveiro
+   ============================================================ */
+:root{
+  --brand:#2A7AC0;        /* azul da marca Fila Fácil */
+  --brand-dark:#1E5C94;
+  --brand-soft:#e4f0fb;
+  --teal:#14B8A6;         /* teal do anel do ícone */
+  --accent:#F2A73B;       /* âmbar (chamando — alta visibilidade) */
+  --accent-dark:#cf8a1e;
+  --pref:#8A5CF6;         /* roxo preferencial */
+  --pref-soft:#efe9fe;
+  --bg:#EDF3F9;
+  --card:#ffffff;
+  --ink:#1e2733;
+  --muted:#6a7480;
+  --line:#dbe6ef;
+  --danger:#c0392b;
+  --ok:#0f9d6c;
+  --radius:16px;
+  --shadow:0 6px 22px rgba(30,92,148,.10);
+  --shadow-lg:0 18px 50px rgba(30,92,148,.22);
+  font-size:16px;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  -webkit-text-size-adjust:100%;
+}
+button{font-family:inherit}
+
+#app{
+  min-height:100vh;
+  min-height:100svh;
+  display:flex;
+  flex-direction:column;
+  max-width:1200px;
+  margin:0 auto;
+}
+
+/* ---------------- TOPO ---------------- */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 16px;
+  background:var(--brand);
+  color:#fff;
+  position:sticky;top:0;z-index:20;
+  padding-top:calc(12px + env(safe-area-inset-top));
+}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand-logo{width:44px;height:44px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.brand-txt{display:flex;flex-direction:column;line-height:1.1;min-width:0}
+.brand-txt strong{font-size:1.15rem}
+.brand-sub{font-size:.78rem;opacity:.8}
+
+.topbar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+
+.badge{font-size:.72rem;padding:4px 9px;border-radius:999px;font-weight:600;white-space:nowrap}
+.badge-local{background:rgba(255,255,255,.18);color:#fff}
+.badge-online{background:#d6f5e3;color:#166b3f}
+.badge-off{background:#ffd9d4;color:#8a2418}
+
+.viewswitch{display:flex;background:rgba(255,255,255,.16);border-radius:999px;padding:3px}
+.vs-btn{
+  border:0;background:transparent;color:#fff;opacity:.85;
+  padding:7px 16px;border-radius:999px;font-weight:600;font-size:.9rem;cursor:pointer;
+}
+.vs-btn.is-active{background:#fff;color:var(--brand);opacity:1}
+
+/* ---------------- BOTÕES ---------------- */
+.btn{
+  border:0;border-radius:12px;padding:11px 16px;font-size:1rem;font-weight:600;
+  cursor:pointer;transition:transform .05s ease, filter .15s ease, background .15s;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--brand);color:#fff}
+.btn-primary:hover{filter:brightness(1.06)}
+.btn-accent{background:var(--accent);color:#3a2c00}
+.btn-accent:hover{filter:brightness(1.05)}
+.btn-ghost{background:rgba(255,255,255,.16);color:#fff}
+.btn-ghost:hover{background:rgba(255,255,255,.26)}
+.btn-big{padding:15px 20px;font-size:1.1rem;width:100%}
+.btn-link{background:none;color:var(--brand);text-decoration:underline;padding:6px}
+.btn-danger{background:#fdecea;color:var(--danger)}
+.btn-sm{padding:8px 12px;font-size:.85rem;border-radius:10px}
+
+/* ---------------- CONTEÚDO ---------------- */
+.content{padding:16px;display:flex;flex-direction:column;gap:16px;flex:1}
+
+.card{
+  background:var(--card);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:18px;border:1px solid var(--line);
+}
+.card-title{margin:0 0 14px;font-size:1.15rem;color:var(--brand-dark)}
+
+/* ---------------- PAINEL CHAMANDO ---------------- */
+.call-panel{
+  background:linear-gradient(135deg,var(--brand),var(--teal));
+  border-radius:var(--radius);padding:18px;color:#fff;box-shadow:var(--shadow);
+  min-height:96px;display:flex;align-items:center;
+}
+.call-empty{width:100%;text-align:center;opacity:.75;font-size:1.05rem;padding:14px 0}
+.call-list{display:flex;flex-wrap:wrap;gap:14px;width:100%}
+.call-item{
+  background:var(--accent);color:#3a2c00;border-radius:14px;
+  padding:14px 20px;flex:1 1 220px;box-shadow:0 6px 18px rgba(0,0,0,.18);
+  display:flex;flex-direction:column;gap:2px;animation:pop .35s ease;position:relative;
+}
+.call-item .ci-label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;opacity:.75}
+.call-item .ci-name{font-size:clamp(1.6rem,5vw,2.4rem);font-weight:800;line-height:1.05}
+.call-item .ci-meta{font-size:.95rem;font-weight:600}
+.call-item.pref{background:var(--pref);color:#fff}
+.call-item .ci-seat{
+  position:absolute;top:10px;right:10px;background:rgba(0,0,0,.14);border:0;color:inherit;
+  border-radius:9px;padding:6px 9px;font-weight:700;cursor:pointer;font-size:.8rem;
+}
+@keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes blink{0%,100%{box-shadow:0 6px 18px rgba(0,0,0,.18)}50%{box-shadow:0 0 0 4px rgba(255,255,255,.6),0 6px 18px rgba(0,0,0,.18)}}
+.call-item.fresh{animation:pop .35s ease, blink 1s ease 2}
+
+/* ---------------- GRID ---------------- */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media (max-width:820px){ .grid{grid-template-columns:1fr} }
+
+/* ---------------- FORMULÁRIO ---------------- */
+.join-form{display:flex;flex-direction:column;gap:16px}
+.field{display:flex;flex-direction:column;gap:7px}
+.field>span{font-weight:600;font-size:.95rem;color:var(--ink)}
+.field input[type=text],.field input[type=tel]{
+  border:1.5px solid var(--line);border-radius:12px;padding:14px;font-size:1.05rem;background:#fbfaf6;
+}
+.field input:focus{outline:none;border-color:var(--brand);background:#fff}
+.hint{color:var(--muted);font-size:.82rem}
+
+.stepper{display:flex;align-items:center;gap:14px}
+.step-btn{
+  width:52px;height:52px;border-radius:14px;border:1.5px solid var(--line);
+  background:#fbfaf6;font-size:1.6rem;font-weight:700;color:var(--brand);cursor:pointer;line-height:1;
+}
+.step-btn:active{background:var(--brand-soft)}
+.step-val{font-size:1.8rem;font-weight:800;min-width:48px;text-align:center}
+
+.segmented{display:flex;gap:10px}
+.seg{flex:1;position:relative;cursor:pointer}
+.seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.seg>span{
+  display:block;text-align:center;padding:14px;border-radius:12px;border:1.5px solid var(--line);
+  background:#fbfaf6;font-weight:700;color:var(--muted);transition:.15s;
+}
+.seg input:checked+span{border-color:var(--brand);background:var(--brand);color:#fff}
+.seg-pref input:checked+span{border-color:var(--pref);background:var(--pref);color:#fff}
+
+.form-msg{margin:4px 0 0;font-size:.95rem;font-weight:600;min-height:1.2em}
+.form-msg.ok{color:var(--ok)}
+.form-msg.err{color:var(--danger)}
+
+/* ---------------- FILA ---------------- */
+.queue-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.queue-head .card-title{margin:0}
+.queue-stats{display:flex;gap:8px}
+.stat{background:var(--brand-soft);color:var(--brand-dark);border-radius:999px;padding:5px 12px;font-size:.85rem;font-weight:600}
+.stat-pref{background:var(--pref-soft);color:#5b34c9}
+
+.queue-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;counter-reset:pos}
+.q-item{
+  display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);
+  border-radius:14px;background:#fbfaf6;
+}
+.q-item.is-pref{border-color:var(--pref);background:var(--pref-soft)}
+.q-item.is-called{border-color:var(--accent);background:#fff7e6}
+.q-pos{
+  width:38px;height:38px;flex:0 0 auto;border-radius:10px;background:var(--brand);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.05rem;
+}
+.q-item.is-pref .q-pos{background:var(--pref)}
+.q-main{flex:1;min-width:0}
+.q-name{font-weight:700;font-size:1.05rem;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.q-tag{font-size:.7rem;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+.q-tag.pref{background:var(--pref);color:#fff}
+.q-tag.called{background:var(--accent);color:#3a2c00}
+.q-sub{color:var(--muted);font-size:.86rem;margin-top:2px;display:flex;gap:12px;flex-wrap:wrap}
+.q-time{font-variant-numeric:tabular-nums;font-weight:700;color:var(--brand-dark)}
+.q-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+
+.queue-empty{text-align:center;color:var(--muted);padding:26px 0;font-size:1.05rem}
+
+/* ---------------- BARRA ATENDENTE ---------------- */
+.staff-bar{border:2px dashed var(--accent);background:#fffdf6}
+.free-row{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap}
+.free-field{flex:0 0 auto}
+.free-row .btn-big{flex:1;min-width:220px;width:auto}
+
+/* ---------------- RODAPÉ ---------------- */
+.foot{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  padding:14px 16px;color:var(--muted);font-size:.85rem;
+  padding-bottom:calc(14px + env(safe-area-inset-bottom));
+}
+
+/* ---------------- MODAIS ---------------- */
+.modal{position:fixed;inset:0;background:rgba(20,30,25,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+.modal[hidden]{display:none}
+.modal-box{background:#fff;border-radius:18px;padding:22px;max-width:420px;width:100%;box-shadow:var(--shadow-lg);animation:pop .2s ease}
+.modal-box h3{margin:0 0 8px;color:var(--brand-dark)}
+.modal-box p{margin:0 0 14px;color:var(--muted)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+.pin-input{width:100%;font-size:1.6rem;text-align:center;letter-spacing:.4em;padding:14px;border:1.5px solid var(--line);border-radius:12px}
+.ios-steps{color:var(--ink);padding-left:20px;line-height:1.6}
+.ios-steps li{margin-bottom:8px}
+.call-confirm{font-size:1.05rem}
+.call-confirm .cc-name{font-size:1.6rem;font-weight:800;color:var(--brand-dark)}
+.call-confirm .cc-meta{color:var(--muted);margin-top:4px}
+.call-confirm .cc-none{color:var(--danger);font-weight:700}
+
+/* ---------------- VISIBILIDADE POR MODO ---------------- */
+#app[data-view="totem"] .staff-only{display:none !important}
+#app[data-view="staff"] .totem-only{display:none !important}

@@ -1,0 +1,171 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#2A7AC0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Fila Fácil" />
+<title>Fila Fácil — Quinta do Aveiro</title>
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="icon" href="./icons/icon-192.png" />
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
+<link rel="stylesheet" href="./styles.css" />
+
+<div id="app" data-view="totem">
+
+  <!-- ================= TOPO ================= -->
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="./icons/icon-192.png" alt="" />
+      <div class="brand-txt">
+        <strong id="brandName">Fila Fácil</strong>
+        <span class="brand-sub" id="brandSub">Quinta do Aveiro</span>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <span id="connBadge" class="badge badge-local" title="Estado da ligação">● Local</span>
+      <button id="installBtn" class="btn btn-ghost" hidden>⬇ Instalar app</button>
+      <div class="viewswitch" role="tablist" aria-label="Modo de visualização">
+        <button id="tabTotem" class="vs-btn is-active" role="tab">Totem</button>
+        <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="content">
+
+    <!-- ============ PAINEL "CHAMANDO AGORA" ============ -->
+    <section id="callPanel" class="call-panel" aria-live="polite">
+      <div class="call-empty" id="callEmpty">Nenhuma mesa sendo chamada no momento</div>
+      <div class="call-list" id="callList"></div>
+    </section>
+
+    <div class="grid">
+
+      <!-- ============ COLUNA ESQUERDA: FORMULÁRIO ============ -->
+      <section class="card form-card">
+        <h2 class="card-title" id="formTitle">Entrar na fila</h2>
+        <form id="joinForm" class="join-form" autocomplete="off">
+          <label class="field">
+            <span>Nome</span>
+            <input id="fNome" name="nome" type="text" required maxlength="40" placeholder="Seu nome" />
+          </label>
+
+          <label class="field">
+            <span>Telefone</span>
+            <input id="fTel" name="telefone" type="tel" inputmode="tel" maxlength="20" placeholder="(opcional) para avisos" />
+          </label>
+
+          <div class="field">
+            <span>Quantas pessoas?</span>
+            <div class="stepper">
+              <button type="button" class="step-btn" data-step="-1" aria-label="Menos">−</button>
+              <output id="fPessoas" class="step-val">2</output>
+              <button type="button" class="step-btn" data-step="1" aria-label="Mais">+</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Tipo de atendimento</span>
+            <div class="segmented">
+              <label class="seg">
+                <input type="radio" name="tipo" value="normal" checked />
+                <span>Normal</span>
+              </label>
+              <label class="seg seg-pref">
+                <input type="radio" name="tipo" value="preferencial" />
+                <span>★ Preferencial</span>
+              </label>
+            </div>
+            <small class="hint">Preferencial: idosos, gestantes, PCD, crianças de colo.</small>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-big" id="joinBtn">Entrar na fila</button>
+          <p class="form-msg" id="formMsg" role="status"></p>
+        </form>
+      </section>
+
+      <!-- ============ COLUNA DIREITA: A FILA ============ -->
+      <section class="card queue-card">
+        <div class="queue-head">
+          <h2 class="card-title">Fila de espera</h2>
+          <div class="queue-stats">
+            <span class="stat"><b id="statTotal">0</b> na fila</span>
+            <span class="stat stat-pref"><b id="statPref">0</b> pref.</span>
+          </div>
+        </div>
+        <ol class="queue-list" id="queueList"></ol>
+        <div class="queue-empty" id="queueEmpty">A fila está vazia 🍽️</div>
+      </section>
+    </div>
+
+    <!-- ============ BARRA DE CONTROLE (SÓ ATENDENTE) ============ -->
+    <section class="card staff-bar" id="staffBar" hidden>
+      <h2 class="card-title">Liberar mesa</h2>
+      <div class="free-row">
+        <div class="field free-field">
+          <span>Mesa para quantas pessoas?</span>
+          <div class="stepper">
+            <button type="button" class="step-btn" data-freestep="-1" aria-label="Menos">−</button>
+            <output id="fMesa" class="step-val">2</output>
+            <button type="button" class="step-btn" data-freestep="1" aria-label="Mais">+</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-accent btn-big" id="freeTableBtn">🔔 Chamar próximo</button>
+      </div>
+      <p class="form-msg" id="staffMsg" role="status"></p>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <span id="footInfo">Fila de Espera • Quinta do Aveiro</span>
+    <button class="btn btn-link" id="iosHelpBtn" hidden>Como instalar no iPhone?</button>
+  </footer>
+
+  <!-- ============ MODAL: PIN DA ATENDENTE ============ -->
+  <div class="modal" id="pinModal" hidden>
+    <div class="modal-box">
+      <h3>Área da atendente</h3>
+      <p>Digite o PIN para liberar os controles.</p>
+      <input id="pinInput" type="password" inputmode="numeric" maxlength="8" class="pin-input" placeholder="PIN" />
+      <p class="form-msg" id="pinMsg"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="pinCancel">Cancelar</button>
+        <button class="btn btn-primary" id="pinOk">Entrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: CONFIRMAR CHAMADA ============ -->
+  <div class="modal" id="callModal" hidden>
+    <div class="modal-box">
+      <h3>Chamar cliente</h3>
+      <div id="callModalBody" class="call-confirm"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="callCancel">Cancelar</button>
+        <button class="btn btn-accent" id="callConfirm">🔔 Confirmar chamada</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: AJUDA iOS ============ -->
+  <div class="modal" id="iosModal" hidden>
+    <div class="modal-box">
+      <h3>Instalar no iPhone/iPad</h3>
+      <ol class="ios-steps">
+        <li>Toque no botão <b>Compartilhar</b> (quadrado com seta ↑) na barra do Safari.</li>
+        <li>Escolha <b>“Adicionar à Tela de Início”</b>.</li>
+        <li>Toque em <b>Adicionar</b>. Pronto! O app fica como um ícone.</li>
+      </ol>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="iosClose">Entendi</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="./config.js"></script>
+<script src="./app.js"></script>

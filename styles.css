@@ -115,10 +115,17 @@ button{font-family:inherit}
 .call-item .ci-name{font-size:clamp(1.6rem,5vw,2.4rem);font-weight:800;line-height:1.05}
 .call-item .ci-meta{font-size:.95rem;font-weight:600}
 .call-item.pref{background:var(--pref);color:#fff}
-.call-item .ci-seat{
-  position:absolute;top:10px;right:10px;background:rgba(0,0,0,.14);border:0;color:inherit;
-  border-radius:9px;padding:6px 9px;font-weight:700;cursor:pointer;font-size:.8rem;
+.call-item .ci-x{
+  position:absolute;top:8px;right:8px;width:30px;height:30px;border:0;color:inherit;cursor:pointer;
+  background:rgba(0,0,0,.16);border-radius:50%;font-size:.95rem;line-height:1;
+  display:flex;align-items:center;justify-content:center;
 }
+.call-item .ci-x:hover{background:rgba(0,0,0,.30)}
+.ci-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.ci-actions .btn{flex:1 1 auto;padding:9px 10px}
+.ci-actions .ci-ok{background:#fff;color:#12603f}
+.ci-actions .ci-back{background:rgba(0,0,0,.18);color:inherit}
+.ci-actions .ci-back:hover{background:rgba(0,0,0,.30)}
 @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes blink{0%,100%{box-shadow:0 6px 18px rgba(0,0,0,.18)}50%{box-shadow:0 0 0 4px rgba(255,255,255,.6),0 6px 18px rgba(0,0,0,.18)}}
 .call-item.fresh{animation:pop .35s ease, blink 1s ease 2}
@@ -160,9 +167,11 @@ button{font-family:inherit}
 .form-msg.err{color:var(--danger)}
 
 /* ---------------- FILA ---------------- */
-.queue-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.queue-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap}
 .queue-head .card-title{margin:0}
+.queue-stats{display:flex;gap:8px;flex-wrap:wrap}
 .stat{background:var(--brand-soft);color:var(--brand-dark);border-radius:999px;padding:5px 12px;font-size:.85rem;font-weight:600}
+.stat-avg{background:#eef7f4;color:#0f7a5a}
 
 /* grupos: fila preferencial e fila normal */
 .queue-group{margin-top:18px}

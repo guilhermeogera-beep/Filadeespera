@@ -133,6 +133,16 @@
       .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em));
   }
 
+  // Tempo médio de espera (entrada → chamada) dos últimos atendidos
+  function avgWaitMs() {
+    const done = rows.filter((r) => r.chamado_em)
+      .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em))
+      .slice(0, 10);
+    if (!done.length) return null;
+    const sum = done.reduce((a, r) => a + Math.max(0, new Date(r.chamado_em) - new Date(r.criado_em)), 0);
+    return sum / done.length;
+  }
+
   // Decide se o próximo a chamar deve ser PREFERENCIAL (true) ou NORMAL (false)
   function wantPreferential() {
     const alt = String(CFG.alternancia || "1:1");
@@ -150,10 +160,12 @@
   }
 
   // Escolhe o próximo cliente para uma mesa de X lugares
-  function pickNext(x) {
+  // (excludeId: ignora essa pessoa — usado ao "voltar à fila e chamar o próximo")
+  function pickNext(x, excludeId) {
     const regra = CFG.regraTamanho || "exato";
     let pool = waiting().filter((r) =>
-      regra === "exato" ? Number(r.pessoas) === x : Number(r.pessoas) <= x
+      (excludeId ? r.id !== excludeId : true) &&
+      (regra === "exato" ? Number(r.pessoas) === x : Number(r.pessoas) <= x)
     );
     if (!pool.length) return null;
     const prefPool = pool.filter((r) => r.preferencial);
@@ -198,6 +210,33 @@
     await refresh();
   }
 
+  // Abre o pop-up de confirmação de chamada para uma pessoa escolhida
+  function openCallConfirm(chosen) {
+    pendingCall = chosen;
+    $("#callModalBody").innerHTML = `
+      <div class="cc-name">${esc(chosen.nome)} ${chosen.preferencial ? "★" : ""}</div>
+      <div class="cc-meta">${chosen.pessoas} ${chosen.pessoas === 1 ? "pessoa" : "pessoas"}${chosen.preferencial ? " • Preferencial" : ""} • entrou ${fmtClock(chosen.criado_em)} • esperando há ${fmtElapsed(Date.now() - new Date(chosen.criado_em).getTime())}</div>`;
+    $("#callModal").hidden = false;
+  }
+
+  // Devolve a pessoa chamada para a fila e já sugere o próximo da mesma mesa
+  async function recallNext(id) {
+    const p = rows.find((r) => r.id === id);
+    if (!p) return;
+    await backend.update(id, { status: STATUS.AGUARDANDO, chamado_em: null });
+    await refresh();
+    const smsg = $("#staffMsg");
+    const next = pickNext(Number(p.pessoas), id);
+    if (!next) {
+      smsg.textContent = `${firstName(p.nome)} voltou à fila. Não há outro grupo de ${p.pessoas} ${p.pessoas === 1 ? "pessoa" : "pessoas"} para chamar.`;
+      smsg.className = "form-msg err";
+      return;
+    }
+    smsg.textContent = `${firstName(p.nome)} voltou à fila. Chamando o próximo…`;
+    smsg.className = "form-msg ok";
+    openCallConfirm(next);
+  }
+
   async function refresh() {
     try {
       rows = await backend.list();
@@ -217,6 +256,12 @@
     const h = Math.floor(m / 60);
     if (h > 0) return `${h}h${String(m % 60).padStart(2, "0")}`;
     return `${m}min${m < 1 ? " " + String(s).padStart(2, "0") + "s" : ""}`;
+  }
+  // Hora "de relógio" (ex.: 19:05) a partir de um ISO
+  function fmtClock(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return "--:--";
+    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   }
   function firstName(n) { return (n || "").split(/\s+/)[0] || n || "Cliente"; }
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -238,6 +283,7 @@
           <div class="q-name">${esc(staff ? r.nome : firstName(r.nome))}</div>
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
+            <span>🕐 entrou ${fmtClock(r.criado_em)}</span>
             <span>⏱ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>
             ${tel}
           </div>
@@ -257,18 +303,24 @@
     $("#statTotal").textContent = w.length;
     $("#statPref").textContent = pref.length;
     $("#statNorm").textContent = norm.length;
+    const avg = avgWaitMs();
+    $("#statAvg").textContent = avg == null ? "—" : "~" + fmtElapsed(avg);
 
     // -------- painel "chamando" --------
     const callList = $("#callList");
     const callEmpty = $("#callEmpty");
-    const show = c.slice(0, 4);
+    const show = c.slice(0, 3);
     callEmpty.hidden = show.length > 0;
     callList.innerHTML = show.map((r, i) => `
       <div class="call-item ${r.preferencial ? "pref" : ""} ${i === 0 ? "fresh" : ""}">
-        ${staff ? `<button class="ci-seat staff-only" data-seat="${r.id}">Sentou ✓</button>` : ""}
+        ${staff ? `<button class="ci-x staff-only" data-discard="${r.id}" aria-label="Remover">✕</button>` : ""}
         <span class="ci-label">${r.preferencial ? "★ Preferencial" : "Chamando"}</span>
         <span class="ci-name">${esc(firstName(r.nome))}</span>
-        <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado há <b data-since="${r.chamado_em}">agora</b></span>
+        <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)</span>
+        ${staff ? `<div class="ci-actions staff-only">
+          <button class="btn btn-sm ci-ok" data-seat="${r.id}">✓ Sentou</button>
+          <button class="btn btn-sm ci-back" data-recall="${r.id}">↩ Voltar e chamar próximo</button>
+        </div>` : ""}
       </div>`).join("");
 
     // -------- listas separadas (cada uma na ordem de chegada) --------
@@ -418,13 +470,7 @@
         return;
       }
       smsg.textContent = "";
-      pendingCall = chosen;
-      $("#callModalBody").innerHTML = `
-        <div class="cc-name">${esc(chosen.nome)} ${chosen.preferencial ? "★" : ""}</div>
-        <div class="cc-meta">${chosen.pessoas} ${chosen.pessoas === 1 ? "pessoa" : "pessoas"}
-          ${chosen.preferencial ? "• Preferencial" : ""}
-          • esperando há ${fmtElapsed(Date.now() - new Date(chosen.criado_em).getTime())}</div>`;
-      $("#callModal").hidden = false;
+      openCallConfirm(chosen);
     });
     $("#callCancel").addEventListener("click", () => { $("#callModal").hidden = true; pendingCall = null; });
     $("#callConfirm").addEventListener("click", async () => {
@@ -435,12 +481,14 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-recall]");
       if (!t) return;
       if (t.dataset.call) await callPerson(t.dataset.call);
       else if (t.dataset.seat) await seatPerson(t.dataset.seat);
       else if (t.dataset.drop) { if (confirm("Remover este cliente da fila?")) await dropPerson(t.dataset.drop); }
       else if (t.dataset.back) await backToQueue(t.dataset.back);
+      else if (t.dataset.discard) { if (confirm("Remover esta chamada?")) await dropPerson(t.dataset.discard); }
+      else if (t.dataset.recall) await recallNext(t.dataset.recall);
     });
 
     // fechar pop-ups: botão "X", clique fora e tecla Esc

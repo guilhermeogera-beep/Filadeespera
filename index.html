@@ -21,9 +21,13 @@
         <span class="brand-sub" id="brandSub">Quinta do Aveiro</span>
       </div>
     </div>
-    <div class="viewswitch" role="tablist" aria-label="Modo de visualização">
-      <button id="tabTotem" class="vs-btn is-active" role="tab">Totem</button>
-      <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
+    <div class="topbar-right">
+      <div class="viewswitch" role="tablist" aria-label="Modo de visualização">
+        <button id="tabTotem" class="vs-btn is-active" role="tab">Totem</button>
+        <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
+      </div>
+      <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
+      <button id="cfgBtn" class="icon-btn-h staff-only" title="Configurações" aria-label="Configurações">⚙</button>
     </div>
   </header>
 
@@ -44,7 +48,6 @@
         <h2 class="card-title">Liberar mesa</h2>
         <div class="staff-head-actions">
           <button id="installBtn" class="btn btn-ghost btn-sm" hidden>⬇ Instalar</button>
-          <button id="cfgBtn" class="icon-btn" title="Configurações" aria-label="Configurações">⚙</button>
         </div>
       </div>
       <div class="free-row">
@@ -275,10 +278,10 @@
         </label>
 
         <label class="field">
-          <span>Entrada de novos clientes (totem)</span>
-          <select id="cfgFechada">
-            <option value="aberta">Aberta</option>
-            <option value="fechada">Fechada (pausar entradas)</option>
+          <span>Botão de abrir/fechar fila (no cabeçalho)</span>
+          <select id="cfgMostrarFila">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar</option>
           </select>
         </label>
 

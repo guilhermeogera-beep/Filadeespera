@@ -42,6 +42,7 @@ window.FILA_CONFIG = {
   autoFimDaFila: true,    // true = ao estourar o prazo, manda sozinho para o fim da fila
   somAtivo: true,         // som/beep quando alguém é chamado
   filaFechada: false,     // true = pausa novas entradas no totem (fila fechada)
+  mostrarBtnFila: true,   // mostra o botão de abrir/fechar fila no cabeçalho da atendente
   maxPessoas: 20,         // máximo de pessoas por grupo
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
   msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Por favor, compareça à recepção em até {prazo} minutos para não perder a vez. Obrigado!",

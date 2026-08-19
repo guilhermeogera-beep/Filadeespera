@@ -397,6 +397,13 @@
     const wb = $("#welcomeBanner");
     if (wb) { const txt = (CFG.boasVindas || "").trim(); wb.textContent = txt; wb.hidden = !txt; }
     updateAddBtn();
+    const fb = $("#toggleFilaBtn");
+    if (fb) {
+      const fechada = CFG.filaFechada === true;
+      fb.textContent = fechada ? "🔓 Abrir fila" : "🔒 Fechar fila";
+      fb.classList.toggle("is-closed", fechada);
+      fb.hidden = CFG.mostrarBtnFila === false;
+    }
 
     tickTimes();
     maybeBeep(c);
@@ -631,6 +638,11 @@
     });
     $("#cfgPinInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#cfgPinOk").click(); });
     $("#cfgSave").addEventListener("click", saveCfgFromForm);
+
+    // abrir/fechar fila (botão do cabeçalho)
+    $("#toggleFilaBtn").addEventListener("click", () => {
+      saveSettings({ filaFechada: !(CFG.filaFechada === true) });
+    });
   }
 
   // ==========================================================
@@ -673,7 +685,7 @@
   // ==========================================================
   //  CONFIGURAÇÕES (compartilhadas na nuvem, com fallback local)
   // ==========================================================
-  const SETTINGS_KEYS = ["prazoComparecer", "msgWhats", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto", "autoFimDaFila", "somAtivo", "filaFechada", "maxPessoas", "boasVindas", "pinAtendente", "restaurante", "paisDDI"];
+  const SETTINGS_KEYS = ["prazoComparecer", "msgWhats", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto", "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "boasVindas", "pinAtendente", "restaurante", "paisDDI"];
 
   function settingsSnapshot() {
     const o = {};
@@ -746,7 +758,7 @@
     $("#cfgBoas").value = CFG.boasVindas || "";
     $("#cfgMaxP").value = CFG.maxPessoas || 20;
     $("#cfgSom").value = CFG.somAtivo === false ? "nao" : "sim";
-    $("#cfgFechada").value = CFG.filaFechada === true ? "fechada" : "aberta";
+    $("#cfgMostrarFila").value = CFG.mostrarBtnFila === false ? "nao" : "sim";
     $("#cfgPinAtend").value = CFG.pinAtendente || "";
     $("#cfgMsgStatus").textContent = "";
     $("#cfgModal").hidden = false;
@@ -766,7 +778,7 @@
       boasVindas: $("#cfgBoas").value.trim(),
       maxPessoas: Math.max(1, Math.min(99, parseInt($("#cfgMaxP").value, 10) || 20)),
       somAtivo: $("#cfgSom").value === "sim",
-      filaFechada: $("#cfgFechada").value === "fechada",
+      mostrarBtnFila: $("#cfgMostrarFila").value === "sim",
       pinAtendente: $("#cfgPinAtend").value.trim() || CFG.pinAtendente,
     };
     const btn = $("#cfgSave");

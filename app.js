@@ -218,6 +218,12 @@
     await refresh();
   }
 
+  // Manda a pessoa para o FIM da fila (não compareceu no prazo — perdeu a vez)
+  async function toEndOfQueue(id) {
+    await backend.update(id, { status: STATUS.AGUARDANDO, chamado_em: null, criado_em: new Date().toISOString() });
+    await refresh();
+  }
+
   // Abre o pop-up de confirmação de chamada para uma pessoa escolhida
   function openCallConfirm(chosen) {
     pendingCall = chosen;
@@ -268,7 +274,8 @@
     if (!num) return "";
     const msg = (CFG.msgWhats || "Olá {nome}! Sua mesa está pronta. Pode comparecer, por favor.")
       .replace(/\{nome\}/g, firstName(r.nome))
-      .replace(/\{restaurante\}/g, CFG.restaurante || "");
+      .replace(/\{restaurante\}/g, CFG.restaurante || "")
+      .replace(/\{prazo\}/g, String(CFG.prazoComparecer || 10));
     return "https://wa.me/" + num + "?text=" + encodeURIComponent(msg);
   }
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -328,6 +335,7 @@
           ${r.telefone ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
           <button class="btn btn-sm ci-ok" data-seat="${r.id}">✓ Sentou</button>
           <button class="btn btn-sm ci-back" data-back="${r.id}">↩ Voltar à fila</button>
+          <button class="btn btn-sm ci-end" data-toend="${r.id}">⬇ Fim da fila</button>
         </div>` : ""}
       </div>`).join("");
 
@@ -350,6 +358,18 @@
       const d = new Date(t).getTime();
       if (isNaN(d)) return;
       el.textContent = fmtElapsed(now - d);
+    });
+    // escala de cor verde → vermelho (0 até o prazo) + destaque de prazo esgotado
+    const prazoMs = (CFG.prazoComparecer || 10) * 60000;
+    $$(".call-item").forEach((card) => {
+      const b = card.querySelector("[data-since]");
+      if (!b) return;
+      const d = new Date(b.getAttribute("data-since")).getTime();
+      if (isNaN(d)) return;
+      const frac = Math.max(0, Math.min(1, (now - d) / prazoMs)); // 0 = recém, 1 = prazo
+      const hue = 120 * (1 - frac); // 120 = verde → 0 = vermelho
+      card.style.background = `hsl(${Math.round(hue)}, 75%, 44%)`;
+      card.classList.toggle("expirado", frac >= 1);
     });
   }
 
@@ -495,13 +515,14 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend]");
       if (!t) return;
       if (t.dataset.call) await callPerson(t.dataset.call);
       else if (t.dataset.seat) await seatPerson(t.dataset.seat);
       else if (t.dataset.drop) { if (confirm("Remover este cliente da fila?")) await dropPerson(t.dataset.drop); }
       else if (t.dataset.back) await backToQueue(t.dataset.back);
       else if (t.dataset.discard) { if (confirm("Remover esta chamada?")) await dropPerson(t.dataset.discard); }
+      else if (t.dataset.toend) await toEndOfQueue(t.dataset.toend);
     });
 
     // fechar pop-ups: botão "X", clique fora e tecla Esc

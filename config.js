@@ -34,7 +34,8 @@ window.FILA_CONFIG = {
   // --- Aviso via WhatsApp (grátis, com 1 toque) ---
   paisDDI: "55",          // código do país (Brasil = 55)
   whatsAuto: true,        // true = ao confirmar a chamada, abre o WhatsApp já com a mensagem
-  msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Pode comparecer, por favor.",
+  prazoComparecer: 5,     // minutos para o cliente comparecer antes de perder a vez
+  msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Por favor, compareça à recepção em até {prazo} minutos para não perder a vez. Obrigado!",
 
   // --- Preencher para ativar o modo nuvem (Supabase) ---
   supabaseUrl: "https://xmnrzjuvgegfdalbgpwb.supabase.co",

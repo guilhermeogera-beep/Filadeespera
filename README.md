@@ -66,6 +66,18 @@ create policy "fila_apagar"   on public.fila_espera for delete using (true);
 
 -- Ativa o tempo real
 alter publication supabase_realtime add table public.fila_espera;
+
+-- Tabela de CONFIGURAÇÕES (compartilhadas entre totem e celular)
+create table if not exists public.fila_config (
+  id int primary key default 1,
+  dados jsonb not null default '{}'::jsonb
+);
+insert into public.fila_config (id, dados) values (1, '{}'::jsonb) on conflict (id) do nothing;
+alter table public.fila_config enable row level security;
+create policy "cfg_ler"     on public.fila_config for select using (true);
+create policy "cfg_inserir" on public.fila_config for insert with check (true);
+create policy "cfg_gravar"  on public.fila_config for update using (true) with check (true);
+alter publication supabase_realtime add table public.fila_config;
 ```
 
 ### 2. Preencher o `config.js`

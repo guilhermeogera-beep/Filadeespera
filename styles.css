@@ -98,6 +98,9 @@ button{font-family:inherit}
 }
 .card-title{margin:0 0 14px;font-size:1.15rem;color:var(--brand-dark)}
 
+/* ---------------- BOAS-VINDAS (totem) ---------------- */
+.welcome{background:var(--brand-soft);color:var(--brand-dark);border-radius:var(--radius);padding:14px 18px;font-size:1.2rem;font-weight:700;text-align:center}
+
 /* ---------------- PAINEL CHAMANDO ---------------- */
 .call-panel{
   background:linear-gradient(135deg,var(--brand),var(--teal));
@@ -222,8 +225,12 @@ button{font-family:inherit}
 
 /* ---------------- BARRA ATENDENTE ---------------- */
 .staff-bar{border:2px dashed var(--accent);background:#fffdf6}
-.staff-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-.staff-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.staff-install{margin-bottom:12px}
+.staff-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.staff-head .card-title{margin:0}
+.staff-head-actions{display:flex;align-items:center;gap:8px}
+.icon-btn{width:42px;height:42px;border:1.5px solid var(--line);background:#fff;border-radius:12px;font-size:1.3rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
+.icon-btn:hover{background:var(--brand-soft)}
 .free-row{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap}
 .free-field{flex:0 0 auto}
 .free-row .btn-big{flex:1;min-width:220px;width:auto}
@@ -242,6 +249,11 @@ button{font-family:inherit}
 .modal{position:fixed;inset:0;background:rgba(20,30,25,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
 .modal[hidden]{display:none}
 .modal-box{position:relative;background:#fff;border-radius:18px;padding:22px;max-width:420px;width:100%;box-shadow:var(--shadow-lg);animation:pop .2s ease}
+.modal-box-lg{max-width:520px;max-height:88vh;overflow-y:auto}
+.cfg-form{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+.cfg-form select,.cfg-form textarea,.cfg-form input[type=number],.cfg-form input[type=text]{border:1.5px solid var(--line);border-radius:12px;padding:12px;font-size:1rem;background:#fbfaf6;font-family:inherit;width:100%}
+.cfg-form select:focus,.cfg-form textarea:focus,.cfg-form input:focus{outline:none;border-color:var(--brand);background:#fff}
+.cfg-form textarea{resize:vertical}
 .modal-box h3{margin:0 8px 8px 0;color:var(--brand-dark)}
 .modal-x{
   position:absolute;top:10px;right:10px;width:40px;height:40px;border:0;cursor:pointer;

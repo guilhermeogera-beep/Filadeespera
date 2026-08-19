@@ -29,6 +29,9 @@
 
   <main class="content">
 
+    <!-- ============ BOAS-VINDAS (só no totem) ============ -->
+    <div class="welcome totem-only" id="welcomeBanner" hidden></div>
+
     <!-- ============ PAINEL "CHAMANDO AGORA" (topo nas duas abas) ============ -->
     <section id="callPanel" class="call-panel" aria-live="polite">
       <div class="call-empty" id="callEmpty">Nenhuma mesa sendo chamada no momento</div>
@@ -37,14 +40,13 @@
 
     <!-- ============ CONTROLES DA ATENDENTE (antes da fila; só na aba atendente) ============ -->
     <section class="card staff-bar" id="staffBar" hidden>
-      <div class="staff-top">
-        <span id="connBadge" class="badge badge-local" title="Estado da ligação">● Local</span>
-        <span class="staff-tools">
-          <button id="installBtn" class="btn btn-ghost btn-sm" hidden>⬇ Instalar app</button>
-          <button class="btn btn-link" id="iosHelpBtn" hidden>Instalar no iPhone?</button>
-        </span>
+      <div class="staff-head">
+        <h2 class="card-title">Liberar mesa</h2>
+        <div class="staff-head-actions">
+          <button id="installBtn" class="btn btn-ghost btn-sm" hidden>⬇ Instalar</button>
+          <button id="cfgBtn" class="icon-btn" title="Configurações" aria-label="Configurações">⚙</button>
+        </div>
       </div>
-      <h2 class="card-title">Liberar mesa</h2>
       <div class="free-row">
         <div class="field free-field">
           <span>Mesa para quantas pessoas?</span>
@@ -180,18 +182,116 @@
     </div>
   </div>
 
-  <!-- ============ MODAL: AJUDA iOS ============ -->
-  <div class="modal" id="iosModal" hidden>
+  <!-- ============ MODAL: SENHA DAS CONFIGURAÇÕES ============ -->
+  <div class="modal" id="cfgPinModal" hidden>
     <div class="modal-box">
       <button class="modal-x" data-close aria-label="Fechar">×</button>
-      <h3>Instalar no iPhone/iPad</h3>
-      <ol class="ios-steps">
-        <li>Toque no botão <b>Compartilhar</b> (quadrado com seta ↑) na barra do Safari.</li>
-        <li>Escolha <b>“Adicionar à Tela de Início”</b>.</li>
-        <li>Toque em <b>Adicionar</b>. Pronto! O app fica como um ícone.</li>
-      </ol>
+      <h3>Configurações</h3>
+      <p>Digite a senha para abrir as configurações.</p>
+      <input id="cfgPinInput" type="password" inputmode="numeric" maxlength="16" class="pin-input" placeholder="Senha" />
+      <p class="form-msg" id="cfgPinMsg"></p>
       <div class="modal-actions">
-        <button class="btn btn-primary" id="iosClose">Entendi</button>
+        <button class="btn btn-ghost" data-close>Cancelar</button>
+        <button class="btn btn-primary" id="cfgPinOk">Entrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: CONFIGURAÇÕES ============ -->
+  <div class="modal" id="cfgModal" hidden>
+    <div class="modal-box modal-box-lg">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>⚙ Configurações</h3>
+      <div class="cfg-form">
+
+        <label class="field">
+          <span>Tempo máximo após chamar (minutos)</span>
+          <input id="cfgPrazo" type="number" min="1" max="60" />
+          <small class="hint">Depois desse tempo, a pessoa vai para o fim da fila.</small>
+        </label>
+
+        <label class="field">
+          <span>Mover para o fim da fila automaticamente</span>
+          <select id="cfgAutoFim">
+            <option value="sim">Sim, ao acabar o prazo</option>
+            <option value="nao">Não (só manual)</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Prioridade do atendimento</span>
+          <select id="cfgAlt">
+            <option value="1:1">1 preferencial : 1 normal</option>
+            <option value="2:1">2 preferenciais : 1 normal</option>
+            <option value="3:1">3 preferenciais : 1 normal</option>
+            <option value="pref">Preferencial sempre primeiro</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Tipo de chamado (tamanho da mesa)</span>
+          <select id="cfgRegra">
+            <option value="exato">Somente número exato</option>
+            <option value="ate">Exato ou, se não houver, um grupo menor</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Mensagem padrão do WhatsApp</span>
+          <textarea id="cfgMsg" rows="3"></textarea>
+          <small class="hint">Use {nome}, {restaurante} e {prazo}.</small>
+        </label>
+
+        <label class="field">
+          <span>Avisar por WhatsApp</span>
+          <select id="cfgWhatsMode">
+            <option value="auto">Sim — abre automático ao chamar</option>
+            <option value="toque">Sim — só pelo botão 📲</option>
+            <option value="off">Não usar WhatsApp</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Nome do estabelecimento</span>
+          <input id="cfgRest" type="text" maxlength="40" />
+        </label>
+
+        <label class="field">
+          <span>Mensagem de boas-vindas no totem</span>
+          <input id="cfgBoas" type="text" maxlength="80" placeholder="(opcional) ex.: Bem-vindo à Quinta do Aveiro!" />
+        </label>
+
+        <label class="field">
+          <span>Máximo de pessoas por grupo</span>
+          <input id="cfgMaxP" type="number" min="1" max="99" />
+        </label>
+
+        <label class="field">
+          <span>Som ao chamar</span>
+          <select id="cfgSom">
+            <option value="sim">Ligado</option>
+            <option value="nao">Desligado</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Entrada de novos clientes (totem)</span>
+          <select id="cfgFechada">
+            <option value="aberta">Aberta</option>
+            <option value="fechada">Fechada (pausar entradas)</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>PIN da atendente</span>
+          <input id="cfgPinAtend" type="text" inputmode="numeric" maxlength="8" />
+        </label>
+
+        <p class="form-msg" id="cfgMsgStatus"></p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-close>Cancelar</button>
+        <button class="btn btn-primary" id="cfgSave">Salvar</button>
       </div>
     </div>
   </div>

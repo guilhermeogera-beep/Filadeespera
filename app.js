@@ -171,18 +171,18 @@
   // (excludeId: ignora essa pessoa — usado ao "voltar à fila e chamar o próximo")
   function pickNext(x, excludeId) {
     const regra = CFG.regraTamanho || "exato";
-    let pool = waiting().filter((r) =>
-      (excludeId ? r.id !== excludeId : true) &&
-      (regra === "exato" ? Number(r.pessoas) === x : Number(r.pessoas) <= x)
-    );
-    if (!pool.length) return null;
-    const prefPool = pool.filter((r) => r.preferencial);
-    const normPool = pool.filter((r) => !r.preferencial);
-    const wantP = wantPreferential();
-    let chosen;
-    if (wantP) chosen = prefPool[0] || normPool[0];
-    else chosen = normPool[0] || prefPool[0];
-    return chosen || null;
+    const wait = waiting().filter((r) => (excludeId ? r.id !== excludeId : true));
+    function pickFrom(pool) {
+      if (!pool.length) return null;
+      const prefPool = pool.filter((r) => r.preferencial);
+      const normPool = pool.filter((r) => !r.preferencial);
+      return wantPreferential() ? (prefPool[0] || normPool[0]) : (normPool[0] || prefPool[0]);
+    }
+    // sempre tenta o tamanho EXATO primeiro
+    const exato = pickFrom(wait.filter((r) => Number(r.pessoas) === x));
+    if (regra === "exato" || exato) return exato;
+    // modo "ate": não há exato -> pega um grupo MENOR que caiba
+    return pickFrom(wait.filter((r) => Number(r.pessoas) < x));
   }
 
   async function addPerson({ nome, telefone, pessoas, preferencial }) {
@@ -341,6 +341,19 @@
       </li>`;
   }
 
+  // Botão de adicionar: rótulo por aba e bloqueio quando a fila está fechada (totem)
+  function updateAddBtn() {
+    const btn = $("#openFormBtn");
+    if (!btn) return;
+    if (!isStaff() && CFG.filaFechada === true) {
+      btn.disabled = true;
+      btn.textContent = "🔒 Fila fechada";
+    } else {
+      btn.disabled = false;
+      btn.textContent = "➕ " + (isStaff() ? "Adicionar cliente" : "Entrar na fila");
+    }
+  }
+
   function render() {
     const w = waiting();
     const c = called();
@@ -367,7 +380,7 @@
         <span class="ci-name">${esc(firstName(r.nome))}</span>
         <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)</span>
         ${staff ? `<div class="ci-actions staff-only">
-          ${r.telefone ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
+          ${(CFG.whatsAtivo !== false && r.telefone) ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
           <button class="btn btn-sm ci-ok" data-seat="${r.id}">✓ Sentou</button>
           <button class="btn btn-sm ci-back" data-back="${r.id}">↩ Voltar à fila</button>
           <button class="btn btn-sm ci-end" data-toend="${r.id}">⬇ Fim da fila</button>
@@ -379,6 +392,11 @@
     $("#queueListNorm").innerHTML = norm.map((r, i) => queueItemHTML(r, i, staff)).join("");
     $("#emptyPref").hidden = pref.length > 0;
     $("#emptyNorm").hidden = norm.length > 0;
+
+    // boas-vindas (totem) e estado do botão de adicionar (fila fechada)
+    const wb = $("#welcomeBanner");
+    if (wb) { const txt = (CFG.boasVindas || "").trim(); wb.textContent = txt; wb.hidden = !txt; }
+    updateAddBtn();
 
     tickTimes();
     maybeBeep(c);
@@ -414,7 +432,7 @@
     let novo = false;
     ids.forEach((id) => { if (!lastCalledIds.has(id)) novo = true; });
     lastCalledIds = ids;
-    if (novo) beep();
+    if (novo && CFG.somAtivo !== false) beep();
   }
   let audioCtx = null;
   function beep() {
@@ -448,7 +466,6 @@
     const rotulo = v === "staff" ? "Adicionar cliente" : "Entrar na fila";
     $("#formTitle").textContent = rotulo;
     $("#joinBtn").textContent = rotulo;
-    $("#openFormBtn").textContent = "➕ " + rotulo;
     render();
   }
 
@@ -485,14 +502,16 @@
     // stepper pessoas (formulário)
     $$(".step-btn[data-step]").forEach((b) =>
       b.addEventListener("click", () => {
-        pessoas = Math.min(MAX_P, Math.max(MIN_P, pessoas + Number(b.dataset.step)));
+        const max = Number(CFG.maxPessoas) || MAX_P;
+        pessoas = Math.min(max, Math.max(MIN_P, pessoas + Number(b.dataset.step)));
         $("#fPessoas").textContent = pessoas;
       })
     );
     // stepper mesa (atendente)
     $$(".step-btn[data-freestep]").forEach((b) =>
       b.addEventListener("click", () => {
-        mesa = Math.min(MAX_P, Math.max(MIN_P, mesa + Number(b.dataset.freestep)));
+        const max = Number(CFG.maxPessoas) || MAX_P;
+        mesa = Math.min(max, Math.max(MIN_P, mesa + Number(b.dataset.freestep)));
         $("#fMesa").textContent = mesa;
       })
     );
@@ -538,7 +557,10 @@
       const smsg = $("#staffMsg");
       const chosen = pickNext(mesa);
       if (!chosen) {
-        smsg.textContent = `Nenhum grupo de exatamente ${mesa} ${mesa === 1 ? "pessoa" : "pessoas"} na fila.`;
+        const alvo = mesa === 1 ? "pessoa" : "pessoas";
+        smsg.textContent = (CFG.regraTamanho === "ate")
+          ? `Nenhum grupo de até ${mesa} ${alvo} na fila.`
+          : `Nenhum grupo de exatamente ${mesa} ${alvo} na fila.`;
         smsg.className = "form-msg err";
         pendingCall = null;
         return;
@@ -550,7 +572,7 @@
     $("#callConfirm").addEventListener("click", async () => {
       const p = pendingCall;
       // abre o WhatsApp já com a mensagem (precisa ser dentro do clique p/ não ser bloqueado)
-      if (p && CFG.whatsAuto && p.telefone) {
+      if (p && CFG.whatsAtivo !== false && CFG.whatsAuto && p.telefone) {
         const link = waLink(p);
         if (link) window.open(link, "_blank");
       }
@@ -591,9 +613,24 @@
     $("#resetAvgBtn").addEventListener("click", () => { $("#resetModal").hidden = false; });
     $("#resetAvgOk").addEventListener("click", () => { resetMedia(); $("#resetModal").hidden = true; });
 
-    // ajuda iOS
-    $("#iosHelpBtn").addEventListener("click", () => { $("#iosModal").hidden = false; });
-    $("#iosClose").addEventListener("click", () => { $("#iosModal").hidden = true; });
+    // configurações (engrenagem) — pede senha TODA vez
+    $("#cfgBtn").addEventListener("click", () => {
+      $("#cfgPinInput").value = "";
+      $("#cfgPinMsg").textContent = "";
+      $("#cfgPinModal").hidden = false;
+      setTimeout(() => $("#cfgPinInput").focus(), 50);
+    });
+    $("#cfgPinOk").addEventListener("click", () => {
+      if ($("#cfgPinInput").value === String(CFG.pinConfig || "12345678")) {
+        $("#cfgPinModal").hidden = true;
+        openCfg();
+      } else {
+        $("#cfgPinMsg").textContent = "Senha incorreta.";
+        $("#cfgPinMsg").className = "form-msg err";
+      }
+    });
+    $("#cfgPinInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#cfgPinOk").click(); });
+    $("#cfgSave").addEventListener("click", saveCfgFromForm);
   }
 
   // ==========================================================
@@ -615,11 +652,6 @@
     });
     window.addEventListener("appinstalled", () => { $("#installBtn").hidden = true; });
 
-    // iOS não dispara beforeinstallprompt -> mostrar dica manual
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    const standalone = window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches;
-    if (isIOS && !standalone) $("#iosHelpBtn").hidden = false;
-
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("./sw.js").catch((e) => console.warn("SW falhou:", e));
@@ -632,9 +664,120 @@
   // ==========================================================
   function setConn(state) {
     const b = $("#connBadge");
+    if (!b) return; // badge de status removido da interface
     if (state === "online") { b.textContent = "● Nuvem"; b.className = "badge badge-online"; b.title = "Sincronizando em tempo real"; }
     else if (state === "off") { b.textContent = "● Sem ligação"; b.className = "badge badge-off"; b.title = "Sem ligação com a nuvem"; }
     else { b.textContent = "● Local"; b.className = "badge badge-local"; b.title = "Modo local (só este aparelho). Configure o Supabase para sincronizar."; }
+  }
+
+  // ==========================================================
+  //  CONFIGURAÇÕES (compartilhadas na nuvem, com fallback local)
+  // ==========================================================
+  const SETTINGS_KEYS = ["prazoComparecer", "msgWhats", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto", "autoFimDaFila", "somAtivo", "filaFechada", "maxPessoas", "boasVindas", "pinAtendente", "restaurante", "paisDDI"];
+
+  function settingsSnapshot() {
+    const o = {};
+    SETTINGS_KEYS.forEach((k) => { o[k] = CFG[k]; });
+    return o;
+  }
+
+  function applyBrand() {
+    $("#brandName").textContent = CFG.marca || "Fila Fácil";
+    $("#brandSub").textContent = CFG.restaurante || "Quinta do Aveiro";
+  }
+
+  async function loadSettings() {
+    let stored = {};
+    try {
+      if (backend.mode === "online" && backend.client) {
+        const { data, error } = await backend.client.from("fila_config").select("dados").eq("id", 1).maybeSingle();
+        if (error) throw error;
+        if (data && data.dados) stored = data.dados;
+      } else {
+        stored = JSON.parse(localStorage.getItem("fila_settings")) || {};
+      }
+    } catch (e) {
+      // tabela fila_config ainda não existe -> usa o que estiver salvo localmente
+      try { stored = JSON.parse(localStorage.getItem("fila_settings")) || {}; } catch (_) {}
+      console.warn("Config: tabela na nuvem indisponível, usando local.", e);
+    }
+    Object.assign(CFG, stored);
+    applyBrand();
+  }
+
+  async function saveSettings(obj) {
+    Object.assign(CFG, obj);
+    const snap = settingsSnapshot();
+    try {
+      if (backend.mode === "online" && backend.client) {
+        const { error } = await backend.client.from("fila_config").upsert({ id: 1, dados: snap });
+        if (error) throw error;
+      } else {
+        localStorage.setItem("fila_settings", JSON.stringify(snap));
+      }
+    } catch (e) {
+      console.warn("Config: não salvou na nuvem (crie a tabela fila_config). Salvo localmente.", e);
+      localStorage.setItem("fila_settings", JSON.stringify(snap));
+    }
+    applyBrand();
+    render();
+  }
+
+  function subscribeConfig() {
+    if (backend.mode !== "online" || !backend.client) return;
+    backend.client
+      .channel("fila-cfg-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "fila_config" }, async () => {
+        await loadSettings();
+        render();
+      })
+      .subscribe();
+  }
+
+  // preenche e abre a tela de configurações
+  function openCfg() {
+    $("#cfgPrazo").value = CFG.prazoComparecer || 5;
+    $("#cfgAutoFim").value = CFG.autoFimDaFila === false ? "nao" : "sim";
+    $("#cfgAlt").value = CFG.alternancia || "1:1";
+    $("#cfgRegra").value = CFG.regraTamanho || "exato";
+    $("#cfgMsg").value = CFG.msgWhats || "";
+    $("#cfgWhatsMode").value = CFG.whatsAtivo === false ? "off" : (CFG.whatsAuto === false ? "toque" : "auto");
+    $("#cfgRest").value = CFG.restaurante || "";
+    $("#cfgBoas").value = CFG.boasVindas || "";
+    $("#cfgMaxP").value = CFG.maxPessoas || 20;
+    $("#cfgSom").value = CFG.somAtivo === false ? "nao" : "sim";
+    $("#cfgFechada").value = CFG.filaFechada === true ? "fechada" : "aberta";
+    $("#cfgPinAtend").value = CFG.pinAtendente || "";
+    $("#cfgMsgStatus").textContent = "";
+    $("#cfgModal").hidden = false;
+  }
+
+  async function saveCfgFromForm() {
+    const prazo = Math.max(1, Math.min(60, parseInt($("#cfgPrazo").value, 10) || 5));
+    const obj = {
+      prazoComparecer: prazo,
+      autoFimDaFila: $("#cfgAutoFim").value === "sim",
+      alternancia: $("#cfgAlt").value,
+      regraTamanho: $("#cfgRegra").value,
+      msgWhats: $("#cfgMsg").value.trim(),
+      whatsAtivo: $("#cfgWhatsMode").value !== "off",
+      whatsAuto: $("#cfgWhatsMode").value === "auto",
+      restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
+      boasVindas: $("#cfgBoas").value.trim(),
+      maxPessoas: Math.max(1, Math.min(99, parseInt($("#cfgMaxP").value, 10) || 20)),
+      somAtivo: $("#cfgSom").value === "sim",
+      filaFechada: $("#cfgFechada").value === "fechada",
+      pinAtendente: $("#cfgPinAtend").value.trim() || CFG.pinAtendente,
+    };
+    const btn = $("#cfgSave");
+    btn.disabled = true;
+    $("#cfgMsgStatus").textContent = "Salvando…";
+    $("#cfgMsgStatus").className = "form-msg";
+    await saveSettings(obj);
+    $("#cfgMsgStatus").textContent = "✅ Salvo!";
+    $("#cfgMsgStatus").className = "form-msg ok";
+    btn.disabled = false;
+    setTimeout(() => { $("#cfgModal").hidden = true; $("#cfgMsgStatus").textContent = ""; }, 900);
   }
 
   // ==========================================================
@@ -657,6 +800,8 @@
     }
 
     backend.onChange(refresh);
+    await loadSettings();
+    subscribeConfig();
     wireUI();
     wirePWA();
     await refresh();

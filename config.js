@@ -25,6 +25,9 @@ window.FILA_CONFIG = {
   // PIN para desbloquear a área da ATENDENTE (troque para o que quiser)
   pinAtendente: "4321",
 
+  // Senha para abrir as CONFIGURAÇÕES (pedida toda vez que clicar na engrenagem)
+  pinConfig: "12345678",
+
   // Regra de chamada: "exato" = só chama grupos com o número exato de lugares
   regraTamanho: "exato",
 
@@ -33,9 +36,14 @@ window.FILA_CONFIG = {
 
   // --- Aviso via WhatsApp (grátis, com 1 toque) ---
   paisDDI: "55",          // código do país (Brasil = 55)
+  whatsAtivo: true,       // false = não usa WhatsApp (some o botão e o envio)
   whatsAuto: true,        // true = ao confirmar a chamada, abre o WhatsApp já com a mensagem
   prazoComparecer: 5,     // minutos para o cliente comparecer antes de perder a vez
   autoFimDaFila: true,    // true = ao estourar o prazo, manda sozinho para o fim da fila
+  somAtivo: true,         // som/beep quando alguém é chamado
+  filaFechada: false,     // true = pausa novas entradas no totem (fila fechada)
+  maxPessoas: 20,         // máximo de pessoas por grupo
+  boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
   msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Por favor, compareça à recepção em até {prazo} minutos para não perder a vez. Obrigado!",
 
   // --- Preencher para ativar o modo nuvem (Supabase) ---

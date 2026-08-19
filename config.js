@@ -32,6 +32,6 @@ window.FILA_CONFIG = {
   alternancia: "1:1",
 
   // --- Preencher para ativar o modo nuvem (Supabase) ---
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+  supabaseUrl: "https://xmnrzjuvgegfdalbgpwb.supabase.co",
+  supabaseAnonKey: "sb_publishable_egn2eVf5KSLsPRfHiKgkiQ_jJTvnNZY",
 };

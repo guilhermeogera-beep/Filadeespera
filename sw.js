@@ -1,7 +1,7 @@
 /* Service Worker — Fila de Espera (Quinta do Aveiro)
    Cacheia o "app shell" para carregar rápido e abrir offline.
    Os DADOS da fila vêm sempre da rede (Supabase) — nunca são cacheados. */
-const CACHE = "fila-qa-v1";
+const CACHE = "fila-qa-v2";
 const SHELL = [
   "./",
   "./index.html",
@@ -37,17 +37,15 @@ self.addEventListener("fetch", (e) => {
     return; // deixa ir direto para a rede
   }
 
-  // App shell: cache-first, com atualização em segundo plano
+  // App shell: NETWORK-FIRST — sempre pega a versão nova quando online;
+  // usa o cache só quando estiver sem internet (offline).
   e.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req).then((res) => {
-        if (res && res.status === 200) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-        }
-        return res;
-      }).catch(() => cached);
-      return cached || network;
-    })
+    fetch(req).then((res) => {
+      if (res && res.status === 200) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+      }
+      return res;
+    }).catch(() => caches.match(req))
   );
 });

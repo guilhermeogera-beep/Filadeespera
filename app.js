@@ -222,14 +222,41 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+  // HTML de um item da fila (usado nas duas listas: preferencial e normal)
+  function queueItemHTML(r, i, staff) {
+    const tel = staff && r.telefone ? `<span>📞 ${esc(r.telefone)}</span>` : "";
+    const actions = staff ? `
+      <div class="q-actions staff-only">
+        <button class="btn btn-sm btn-accent" data-call="${r.id}">Chamar</button>
+        <button class="btn btn-sm btn-primary" data-seat="${r.id}">Sentou</button>
+        <button class="btn btn-sm btn-danger" data-drop="${r.id}">Saiu</button>
+      </div>` : "";
+    return `
+      <li class="q-item ${r.preferencial ? "is-pref" : ""}">
+        <div class="q-pos">${i + 1}</div>
+        <div class="q-main">
+          <div class="q-name">${esc(staff ? r.nome : firstName(r.nome))}</div>
+          <div class="q-sub">
+            <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
+            <span>⏱ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>
+            ${tel}
+          </div>
+        </div>
+        ${actions}
+      </li>`;
+  }
+
   function render() {
     const w = waiting();
     const c = called();
     const staff = isStaff();
 
-    // -------- estatísticas --------
+    // -------- filas separadas: preferencial e normal --------
+    const pref = w.filter((r) => r.preferencial);
+    const norm = w.filter((r) => !r.preferencial);
     $("#statTotal").textContent = w.length;
-    $("#statPref").textContent = w.filter((r) => r.preferencial).length;
+    $("#statPref").textContent = pref.length;
+    $("#statNorm").textContent = norm.length;
 
     // -------- painel "chamando" --------
     const callList = $("#callList");
@@ -244,34 +271,11 @@
         <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado há <b data-since="${r.chamado_em}">agora</b></span>
       </div>`).join("");
 
-    // -------- lista da fila --------
-    const list = $("#queueList");
-    $("#queueEmpty").hidden = w.length > 0;
-    list.innerHTML = w.map((r, i) => {
-      const tel = staff && r.telefone ? `<span>📞 ${esc(r.telefone)}</span>` : "";
-      const actions = staff ? `
-        <div class="q-actions staff-only">
-          <button class="btn btn-sm btn-accent" data-call="${r.id}">Chamar</button>
-          <button class="btn btn-sm btn-primary" data-seat="${r.id}">Sentou</button>
-          <button class="btn btn-sm btn-danger" data-drop="${r.id}">Saiu</button>
-        </div>` : "";
-      return `
-      <li class="q-item ${r.preferencial ? "is-pref" : ""}">
-        <div class="q-pos">${i + 1}</div>
-        <div class="q-main">
-          <div class="q-name">
-            ${esc(staff ? r.nome : firstName(r.nome))}
-            ${r.preferencial ? `<span class="q-tag pref">★ Pref</span>` : ""}
-          </div>
-          <div class="q-sub">
-            <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
-            <span>⏱ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>
-            ${tel}
-          </div>
-        </div>
-        ${actions}
-      </li>`;
-    }).join("");
+    // -------- listas separadas (cada uma na ordem de chegada) --------
+    $("#queueListPref").innerHTML = pref.map((r, i) => queueItemHTML(r, i, staff)).join("");
+    $("#queueListNorm").innerHTML = norm.map((r, i) => queueItemHTML(r, i, staff)).join("");
+    $("#emptyPref").hidden = pref.length > 0;
+    $("#emptyNorm").hidden = norm.length > 0;
 
     tickTimes();
     maybeBeep(c);
@@ -437,6 +441,22 @@
       else if (t.dataset.seat) await seatPerson(t.dataset.seat);
       else if (t.dataset.drop) { if (confirm("Remover este cliente da fila?")) await dropPerson(t.dataset.drop); }
       else if (t.dataset.back) await backToQueue(t.dataset.back);
+    });
+
+    // fechar pop-ups: botão "X", clique fora e tecla Esc
+    function closeModal(m) {
+      if (!m) return;
+      m.hidden = true;
+      if (m.id === "callModal") pendingCall = null;
+    }
+    document.addEventListener("click", (e) => {
+      const x = e.target.closest("[data-close]");
+      if (x) { closeModal(x.closest(".modal")); return; }
+      // clique no fundo escuro (fora da caixa) fecha
+      if (e.target.classList && e.target.classList.contains("modal")) closeModal(e.target);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") $$(".modal").forEach((m) => { if (!m.hidden) closeModal(m); });
     });
 
     // ajuda iOS

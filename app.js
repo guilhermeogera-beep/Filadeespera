@@ -219,24 +219,6 @@
     $("#callModal").hidden = false;
   }
 
-  // Devolve a pessoa chamada para a fila e já sugere o próximo da mesma mesa
-  async function recallNext(id) {
-    const p = rows.find((r) => r.id === id);
-    if (!p) return;
-    await backend.update(id, { status: STATUS.AGUARDANDO, chamado_em: null });
-    await refresh();
-    const smsg = $("#staffMsg");
-    const next = pickNext(Number(p.pessoas), id);
-    if (!next) {
-      smsg.textContent = `${firstName(p.nome)} voltou à fila. Não há outro grupo de ${p.pessoas} ${p.pessoas === 1 ? "pessoa" : "pessoas"} para chamar.`;
-      smsg.className = "form-msg err";
-      return;
-    }
-    smsg.textContent = `${firstName(p.nome)} voltou à fila. Chamando o próximo…`;
-    smsg.className = "form-msg ok";
-    openCallConfirm(next);
-  }
-
   async function refresh() {
     try {
       rows = await backend.list();
@@ -319,7 +301,7 @@
         <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)</span>
         ${staff ? `<div class="ci-actions staff-only">
           <button class="btn btn-sm ci-ok" data-seat="${r.id}">✓ Sentou</button>
-          <button class="btn btn-sm ci-back" data-recall="${r.id}">↩ Voltar e chamar próximo</button>
+          <button class="btn btn-sm ci-back" data-back="${r.id}">↩ Voltar à fila</button>
         </div>` : ""}
       </div>`).join("");
 
@@ -481,14 +463,13 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-recall]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard]");
       if (!t) return;
       if (t.dataset.call) await callPerson(t.dataset.call);
       else if (t.dataset.seat) await seatPerson(t.dataset.seat);
       else if (t.dataset.drop) { if (confirm("Remover este cliente da fila?")) await dropPerson(t.dataset.drop); }
       else if (t.dataset.back) await backToQueue(t.dataset.back);
       else if (t.dataset.discard) { if (confirm("Remover esta chamada?")) await dropPerson(t.dataset.discard); }
-      else if (t.dataset.recall) await recallNext(t.dataset.recall);
     });
 
     // fechar pop-ups: botão "X", clique fora e tecla Esc

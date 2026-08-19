@@ -445,7 +445,10 @@
     $("#tabTotem").classList.toggle("is-active", v === "totem");
     $("#tabStaff").classList.toggle("is-active", v === "staff");
     $("#staffBar").hidden = v !== "staff";
-    $("#formTitle").textContent = v === "staff" ? "Adicionar cliente" : "Entrar na fila";
+    const rotulo = v === "staff" ? "Adicionar cliente" : "Entrar na fila";
+    $("#formTitle").textContent = rotulo;
+    $("#joinBtn").textContent = rotulo;
+    $("#openFormBtn").textContent = "➕ " + rotulo;
     render();
   }
 
@@ -494,6 +497,16 @@
       })
     );
 
+    // abrir o formulário em pop-up
+    $("#openFormBtn").addEventListener("click", () => {
+      $("#joinForm").reset();
+      pessoas = 2; $("#fPessoas").textContent = pessoas;
+      $('input[name="tipo"][value="normal"]').checked = true;
+      $("#formMsg").textContent = "";
+      $("#formModal").hidden = false;
+      setTimeout(() => $("#fNome").focus(), 60);
+    });
+
     // formulário: entrar na fila
     $("#joinForm").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -505,14 +518,12 @@
       $("#joinBtn").disabled = true;
       try {
         await addPerson({ nome, telefone: tel, pessoas, preferencial: tipo === "preferencial" });
-        const pos = waiting().length;
-        msg.textContent = `✅ ${firstName(nome)} entrou na fila — ${tipo === "preferencial" ? "preferencial" : "posição " + pos}.`;
+        msg.textContent = `✅ ${firstName(nome)} entrou na fila!`;
         msg.className = "form-msg ok";
         e.target.reset();
         pessoas = 2; $("#fPessoas").textContent = pessoas;
         $('input[name="tipo"][value="normal"]').checked = true;
-        $("#fNome").focus();
-        setTimeout(() => { if (msg.classList.contains("ok")) msg.textContent = ""; }, 6000);
+        setTimeout(() => { $("#formModal").hidden = true; msg.textContent = ""; }, 1300);
       } catch (err) {
         console.error(err);
         msg.textContent = "Erro ao entrar na fila. Tente de novo.";
@@ -632,7 +643,6 @@
   async function start() {
     $("#brandName").textContent = CFG.marca || "Fila Fácil";
     $("#brandSub").textContent = CFG.restaurante || "Quinta do Aveiro";
-    $("#footInfo").textContent = `${CFG.marca || "Fila Fácil"} • ${CFG.restaurante || "Quinta do Aveiro"}`;
 
     const hasSupabase = CFG.supabaseUrl && CFG.supabaseAnonKey && window.supabase;
     try {

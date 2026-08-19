@@ -60,7 +60,7 @@ button{font-family:inherit}
 .topbar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 
 .badge{font-size:.72rem;padding:4px 9px;border-radius:999px;font-weight:600;white-space:nowrap}
-.badge-local{background:rgba(255,255,255,.18);color:#fff}
+.badge-local{background:#e8edf2;color:#5a6472}
 .badge-online{background:#d6f5e3;color:#166b3f}
 .badge-off{background:#ffd9d4;color:#8a2418}
 
@@ -90,7 +90,7 @@ button{font-family:inherit}
 .btn-sm{padding:8px 12px;font-size:.85rem;border-radius:10px}
 
 /* ---------------- CONTEÚDO ---------------- */
-.content{padding:16px;display:flex;flex-direction:column;gap:16px;flex:1}
+.content{padding:16px 16px 104px;display:flex;flex-direction:column;gap:16px;flex:1}
 
 .card{
   background:var(--card);border-radius:var(--radius);
@@ -222,16 +222,21 @@ button{font-family:inherit}
 
 /* ---------------- BARRA ATENDENTE ---------------- */
 .staff-bar{border:2px dashed var(--accent);background:#fffdf6}
+.staff-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.staff-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .free-row{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap}
 .free-field{flex:0 0 auto}
 .free-row .btn-big{flex:1;min-width:220px;width:auto}
 
 /* ---------------- RODAPÉ ---------------- */
-.foot{
-  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
-  padding:14px 16px;color:var(--muted);font-size:.85rem;
-  padding-bottom:calc(14px + env(safe-area-inset-bottom));
+/* ---------------- BOTÃO FIXO INFERIOR ---------------- */
+.add-bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:15;
+  display:flex;justify-content:center;
+  padding:12px 16px calc(14px + env(safe-area-inset-bottom));
+  background:var(--bg);box-shadow:0 -6px 16px rgba(30,92,148,.12);
 }
+.add-bar .btn{max-width:700px;width:100%}
 
 /* ---------------- MODAIS ---------------- */
 .modal{position:fixed;inset:0;background:rgba(20,30,25,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}

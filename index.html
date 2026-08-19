@@ -21,100 +21,29 @@
         <span class="brand-sub" id="brandSub">Quinta do Aveiro</span>
       </div>
     </div>
-
-    <div class="topbar-actions">
-      <span id="connBadge" class="badge badge-local" title="Estado da ligação">● Local</span>
-      <button id="installBtn" class="btn btn-ghost" hidden>⬇ Instalar app</button>
-      <div class="viewswitch" role="tablist" aria-label="Modo de visualização">
-        <button id="tabTotem" class="vs-btn is-active" role="tab">Totem</button>
-        <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
-      </div>
+    <div class="viewswitch" role="tablist" aria-label="Modo de visualização">
+      <button id="tabTotem" class="vs-btn is-active" role="tab">Totem</button>
+      <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
     </div>
   </header>
 
   <main class="content">
 
-    <!-- ============ PAINEL "CHAMANDO AGORA" ============ -->
+    <!-- ============ PAINEL "CHAMANDO AGORA" (topo nas duas abas) ============ -->
     <section id="callPanel" class="call-panel" aria-live="polite">
       <div class="call-empty" id="callEmpty">Nenhuma mesa sendo chamada no momento</div>
       <div class="call-list" id="callList"></div>
     </section>
 
-    <div class="grid">
-
-      <!-- ============ COLUNA ESQUERDA: FORMULÁRIO ============ -->
-      <section class="card form-card">
-        <h2 class="card-title" id="formTitle">Entrar na fila</h2>
-        <form id="joinForm" class="join-form" autocomplete="off">
-          <label class="field">
-            <span>Nome</span>
-            <input id="fNome" name="nome" type="text" required maxlength="40" placeholder="Seu nome" />
-          </label>
-
-          <label class="field">
-            <span>Telefone</span>
-            <input id="fTel" name="telefone" type="tel" inputmode="tel" maxlength="20" placeholder="(opcional) para avisos" />
-          </label>
-
-          <div class="field">
-            <span>Quantas pessoas?</span>
-            <div class="stepper">
-              <button type="button" class="step-btn" data-step="-1" aria-label="Menos">−</button>
-              <output id="fPessoas" class="step-val">2</output>
-              <button type="button" class="step-btn" data-step="1" aria-label="Mais">+</button>
-            </div>
-          </div>
-
-          <div class="field">
-            <span>Tipo de atendimento</span>
-            <div class="segmented">
-              <label class="seg">
-                <input type="radio" name="tipo" value="normal" checked />
-                <span>Normal</span>
-              </label>
-              <label class="seg seg-pref">
-                <input type="radio" name="tipo" value="preferencial" />
-                <span>★ Preferencial</span>
-              </label>
-            </div>
-            <small class="hint">Preferencial: idosos, gestantes, PCD, crianças de colo.</small>
-          </div>
-
-          <button type="submit" class="btn btn-primary btn-big" id="joinBtn">Entrar na fila</button>
-          <p class="form-msg" id="formMsg" role="status"></p>
-        </form>
-      </section>
-
-      <!-- ============ COLUNA DIREITA: AS FILAS ============ -->
-      <section class="card queue-card">
-        <div class="queue-head">
-          <h2 class="card-title">Fila de espera</h2>
-          <div class="queue-stats">
-            <span class="stat"><b id="statTotal">0</b> na fila</span>
-            <span class="stat stat-avg">⏱ espera média <b id="statAvg">—</b><button class="avg-reset staff-only" id="resetAvgBtn" title="Resetar média" aria-label="Resetar média">↺</button></span>
-          </div>
-        </div>
-
-        <div class="queue-group">
-          <div class="qg-head qg-pref">
-            <span>★ Preferencial</span><span class="qg-count" id="statPref">0</span>
-          </div>
-          <ol class="queue-list" id="queueListPref"></ol>
-          <div class="queue-empty" id="emptyPref">Nenhum preferencial na fila</div>
-        </div>
-
-        <div class="queue-group">
-          <div class="qg-head qg-norm">
-            <span>Normal</span><span class="qg-count" id="statNorm">0</span>
-          </div>
-          <ol class="queue-list" id="queueListNorm"></ol>
-          <div class="queue-empty" id="emptyNorm">Ninguém na fila normal</div>
-        </div>
-      </section>
-    </div>
-
-    <!-- ============ BARRA DE CONTROLE (SÓ ATENDENTE) ============ -->
+    <!-- ============ CONTROLES DA ATENDENTE (antes da fila; só na aba atendente) ============ -->
     <section class="card staff-bar" id="staffBar" hidden>
+      <div class="staff-top">
+        <span id="connBadge" class="badge badge-local" title="Estado da ligação">● Local</span>
+        <span class="staff-tools">
+          <button id="installBtn" class="btn btn-ghost btn-sm" hidden>⬇ Instalar app</button>
+          <button class="btn btn-link" id="iosHelpBtn" hidden>Instalar no iPhone?</button>
+        </span>
+      </div>
       <h2 class="card-title">Liberar mesa</h2>
       <div class="free-row">
         <div class="field free-field">
@@ -130,12 +59,85 @@
       <p class="form-msg" id="staffMsg" role="status"></p>
     </section>
 
+    <!-- ============ A FILA ============ -->
+    <section class="card queue-card">
+      <div class="queue-head">
+        <h2 class="card-title">Fila de espera</h2>
+        <div class="queue-stats">
+          <span class="stat"><b id="statTotal">0</b> na fila</span>
+          <span class="stat stat-avg">⏱ espera média <b id="statAvg">—</b><button class="avg-reset staff-only" id="resetAvgBtn" title="Resetar média" aria-label="Resetar média">↺</button></span>
+        </div>
+      </div>
+
+      <div class="queue-group">
+        <div class="qg-head qg-pref">
+          <span>★ Preferencial</span><span class="qg-count" id="statPref">0</span>
+        </div>
+        <ol class="queue-list" id="queueListPref"></ol>
+        <div class="queue-empty" id="emptyPref">Nenhum preferencial na fila</div>
+      </div>
+
+      <div class="queue-group">
+        <div class="qg-head qg-norm">
+          <span>Normal</span><span class="qg-count" id="statNorm">0</span>
+        </div>
+        <ol class="queue-list" id="queueListNorm"></ol>
+        <div class="queue-empty" id="emptyNorm">Ninguém na fila normal</div>
+      </div>
+    </section>
+
   </main>
 
-  <footer class="foot">
-    <span id="footInfo">Fila de Espera • Quinta do Aveiro</span>
-    <button class="btn btn-link" id="iosHelpBtn" hidden>Como instalar no iPhone?</button>
-  </footer>
+  <!-- ============ BOTÃO FIXO: ADICIONAR / ENTRAR (abre o pop-up do formulário) ============ -->
+  <div class="add-bar">
+    <button class="btn btn-primary btn-big" id="openFormBtn">➕ Entrar na fila</button>
+  </div>
+
+  <!-- ============ MODAL: FORMULÁRIO (entrar / adicionar) ============ -->
+  <div class="modal" id="formModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3 id="formTitle">Entrar na fila</h3>
+      <form id="joinForm" class="join-form" autocomplete="off">
+        <label class="field">
+          <span>Nome</span>
+          <input id="fNome" name="nome" type="text" required maxlength="40" placeholder="Nome do cliente" />
+        </label>
+
+        <label class="field">
+          <span>Telefone</span>
+          <input id="fTel" name="telefone" type="tel" inputmode="tel" maxlength="20" placeholder="(opcional) para avisar no WhatsApp" />
+        </label>
+
+        <div class="field">
+          <span>Quantas pessoas?</span>
+          <div class="stepper">
+            <button type="button" class="step-btn" data-step="-1" aria-label="Menos">−</button>
+            <output id="fPessoas" class="step-val">2</output>
+            <button type="button" class="step-btn" data-step="1" aria-label="Mais">+</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span>Tipo de atendimento</span>
+          <div class="segmented">
+            <label class="seg">
+              <input type="radio" name="tipo" value="normal" checked />
+              <span>Normal</span>
+            </label>
+            <label class="seg seg-pref">
+              <input type="radio" name="tipo" value="preferencial" />
+              <span>★ Preferencial</span>
+            </label>
+          </div>
+          <small class="hint">Preferencial: idosos, gestantes, PCD, crianças de colo.</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-big" id="joinBtn">Entrar na fila</button>
+        <p class="form-msg" id="formMsg" role="status"></p>
+      </form>
+    </div>
+  </div>
 
   <!-- ============ MODAL: PIN DA ATENDENTE ============ -->
   <div class="modal" id="pinModal" hidden>

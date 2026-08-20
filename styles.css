@@ -486,8 +486,11 @@ button{font-family:inherit}
 .mesa-tag{font-size:.7rem;font-weight:800;padding:2px 8px;border-radius:999px;background:#e8eef4;color:#41505f;text-transform:uppercase;letter-spacing:.03em}
 .mesa-tag.pet{background:#d9f5e9;color:#0b6b48}
 .mesa-hora{color:var(--muted);font-size:.8rem}
-.mesa-acoes{display:flex;gap:6px;align-items:center}
-.mesa-acoes .btn{min-height:40px;padding:8px 11px}
+.mesa-acoes{display:flex;gap:8px;align-items:center}
+/* os dois botões do cartão têm o mesmo tamanho: ✓ verde e ✕ vermelho */
+.mesa-acoes .btn{width:44px;height:44px;min-height:44px;padding:0;font-size:1.05rem;flex:0 0 auto}
+.btn-usei{background:#1E7A52;color:#fff}
+.btn-usei:hover{filter:brightness(1.12)}
 .mesas-empty{color:var(--muted);padding:12px 0;font-size:.95rem;font-style:italic;text-align:center}
 
 /* números da mesa no pop-up do garçom (com o "+" para juntar mesas) */
@@ -504,3 +507,4 @@ button{font-family:inherit}
 .num-mais{font-weight:800;color:var(--muted)}
 .mesa-obs{color:var(--muted);font-size:.85rem;font-style:italic}
 .q-chip.chip-mesa{background:var(--meso-soft);color:#2c4349}
+.mesa-sem-num{color:var(--muted);font-weight:600;font-style:italic;font-size:.9rem}

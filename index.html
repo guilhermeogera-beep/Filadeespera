@@ -334,7 +334,7 @@
   <div class="modal" id="mesaModal" hidden>
     <div class="modal-box">
       <button class="modal-x" data-close aria-label="Fechar">×</button>
-      <h3>🍽 Lançar mesa livre</h3>
+      <h3 id="mesaTitulo">🍽 Lançar mesa livre</h3>
       <div class="join-form">
         <div class="field">
           <span>Quantos lugares tem a mesa?</span>
@@ -363,25 +363,11 @@
           <span>Número da mesa</span>
           <div class="num-row">
             <input id="mNumero" type="text" maxlength="8" inputmode="numeric" placeholder="ex.: 12" />
-            <button type="button" class="btn btn-neutral num-add" id="mAddNum" title="Lançar outra mesa junto">+</button>
+            <button type="button" class="btn btn-neutral num-add" id="mAddNum" title="Juntar outra mesa">+</button>
           </div>
           <div class="num-chips" id="mNumChips"></div>
-          <small class="hint" id="mNumHint">Vagou mais de uma? Toque no <b>+</b> para lançar várias de uma vez.</small>
-        </div>
-
-        <!-- só aparece quando há 2 ou mais números -->
-        <div class="field" id="mModoField" hidden>
-          <span>Como lançar essas mesas?</span>
-          <div class="segmented segmented-col">
-            <label class="seg">
-              <input type="radio" name="mesamodo" value="separadas" checked />
-              <span id="mModoSep">Mesas separadas</span>
-            </label>
-            <label class="seg">
-              <input type="radio" name="mesamodo" value="juntas" />
-              <span id="mModoJun">Juntei tudo numa mesa só</span>
-            </label>
-          </div>
+          <small class="hint">Juntou mesas? Toque no <b>+</b> para somar a próxima (ex.: 12 + 13).
+            Lembre de ajustar os lugares acima para o total.</small>
         </div>
 
         <label class="field">

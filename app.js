@@ -42,6 +42,7 @@
   let mesaSelecionada = null; // mesa que a atendente escolheu para a próxima chamada
   let lugaresNovaMesa = 2;  // stepper do pop-up do garçom
   let numerosNovaMesa = []; // números das mesas juntadas (ex.: 12 + 13)
+  let editandoMesaId = null; // mesa que o garçom está corrigindo (null = nova)
   let semTabelaMesas = false; // true se a tabela `mesas_livres` ainda não existe no banco
 
   // A mesa que a atendente está liberando é da área pet?
@@ -784,6 +785,25 @@
     return salva || nova;
   }
 
+  // O garçom errou o lançamento: corrige sem precisar apagar e refazer
+  async function corrigirMesa(id, { lugares, pet, identificacao, numeros }) {
+    const patch = {
+      lugares: Number(lugares),
+      pet: !!pet,
+      identificacao: (identificacao || "").trim() || null,
+      numeros: (numeros || []).length ? numeros.join(" + ") : null,
+    };
+    try {
+      await backend.updateMesa(id, patch);
+    } catch (e) {
+      // banco sem a coluna "numeros": grava o resto
+      if (!colunaNaoExiste(e)) throw e;
+      delete patch.numeros;
+      await backend.updateMesa(id, patch);
+    }
+    await refresh();
+  }
+
   async function usarMesa(id) {
     await backend.updateMesa(id, { status: MESAS.USADA, usada_em: new Date().toISOString() });
     if (mesaSelecionada === id) mesaSelecionada = null;
@@ -1090,14 +1110,16 @@
            ${staff ? `data-selmesa="${m.id}" role="button" tabindex="0"` : ""}>
         <div class="mesa-lug">${m.lugares}<small>${m.lugares === 1 ? "lugar" : "lugares"}</small></div>
         <div class="mesa-info">
-          ${m.numeros ? `<b class="mesa-nome">Mesa ${esc(m.numeros)}</b>` : ""}
+          <b class="mesa-nome">${m.numeros ? "Mesa " + esc(m.numeros) : `<span class="mesa-sem-num">sem número</span>`}</b>
           ${m.identificacao ? `<span class="mesa-obs">${esc(m.identificacao)}</span>` : ""}
           <span class="mesa-tags">${m.pet ? `<span class="mesa-tag pet">🐾 área pet</span>` : `<span class="mesa-tag">sem pet</span>`}</span>
           <span class="mesa-hora">livre há <b data-since="${m.criado_em}">agora</b></span>
         </div>
         <div class="mesa-acoes">
-          ${staff ? `<button class="btn btn-sm btn-primary" data-usarmesa="${m.id}">✓ Usei</button>` : ""}
-          <button class="btn btn-sm btn-danger" data-apagarmesa="${m.id}" title="Cancelar este lançamento">✕</button>
+          ${staff
+            ? `<button class="btn btn-sm btn-usei" data-usarmesa="${m.id}" title="Já usei esta mesa" aria-label="Já usei esta mesa">✓</button>`
+            : `<button class="btn btn-sm btn-edit" data-editmesa="${m.id}" title="Corrigir esta mesa" aria-label="Corrigir esta mesa">✏️</button>`}
+          <button class="btn btn-sm btn-danger" data-apagarmesa="${m.id}" title="Cancelar este lançamento" aria-label="Cancelar este lançamento">✕</button>
         </div>
       </div>`).join("");
 
@@ -1277,55 +1299,36 @@
     }
   }
 
-  // pop-up do garçom para lançar uma mesa livre
-  function abrirMesaModal() {
-    lugaresNovaMesa = 2;
-    numerosNovaMesa = [];
+  // pop-up do garçom: lança uma mesa nova ou corrige uma que ele já lançou
+  function abrirMesaModal(id) {
+    const m = id ? mesasLivres.find((x) => x.id === id) : null;
+    editandoMesaId = m ? id : null;
+    lugaresNovaMesa = m ? (Number(m.lugares) || 2) : 2;
+    numerosNovaMesa = m && m.numeros
+      ? String(m.numeros).split("+").map((s) => s.trim()).filter(Boolean)
+      : [];
     $("#mLugares").textContent = lugaresNovaMesa;
-    const nao = $('input[name="mesapetnova"][value="nao"]');
-    if (nao) nao.checked = true;
+    const alvo = $(`input[name="mesapetnova"][value="${m && m.pet ? "sim" : "nao"}"]`);
+    if (alvo) alvo.checked = true;
     $("#mNumero").value = "";
-    $("#mIdent").value = "";
+    $("#mIdent").value = (m && m.identificacao) || "";
     $("#mMsg").textContent = "";
     $("#mPetField").hidden = CFG.petAtivo === false;
+    $("#mesaTitulo").textContent = m ? "✏️ Corrigir mesa" : "🍽 Lançar mesa livre";
+    $("#mSalvar").textContent = m ? "Salvar alterações" : "🍽 Liberar esta mesa";
     renderNumChips();
     $("#mesaModal").hidden = false;
     setTimeout(() => $("#mNumero").focus(), 60);
   }
 
-  // Números já adicionados. Com dois ou mais, o garçom escolhe se são mesas
-  // separadas (o normal) ou se ele juntou tudo numa mesa só.
+  // Números já adicionados (quando o garçom junta duas ou mais mesas)
   function renderNumChips() {
     const box = $("#mNumChips");
     if (!box) return;
-    const juntas = modoMesasJuntas();
     box.innerHTML = numerosNovaMesa.map((n, i) => `
       <span class="num-chip">${esc(n)}<button type="button" data-tiranum="${i}" aria-label="Tirar">✕</button></span>`)
-      .join(juntas ? '<span class="num-mais">+</span>' : '<span class="num-mais">·</span>');
+      .join('<span class="num-mais">+</span>');
     box.hidden = !numerosNovaMesa.length;
-
-    // o seletor "separadas x juntas" só faz sentido com 2+ mesas
-    const campo = $("#mModoField");
-    if (campo) campo.hidden = numerosNovaMesa.length < 2;
-    const qtd = numerosNovaMesa.length;
-    const lug = lugaresNovaMesa;
-    const sep = $("#mModoSep"), jun = $("#mModoJun");
-    if (sep) sep.textContent = `${qtd} mesas separadas, de ${lug} ${lug === 1 ? "lugar" : "lugares"} cada`;
-    if (jun) jun.textContent = `Uma mesa só, com ${lug} ${lug === 1 ? "lugar" : "lugares"} no total`;
-
-    const hint = $("#mNumHint");
-    if (hint) {
-      hint.innerHTML = qtd < 2
-        ? "Vagou mais de uma? Toque no <b>+</b> para lançar várias de uma vez."
-        : (juntas
-          ? "Como você juntou as mesas, os lugares acima devem ser o <b>total</b> da mesa grande."
-          : `Vai entrar <b>${qtd} mesas</b> na lista, uma para cada número.`);
-    }
-  }
-
-  function modoMesasJuntas() {
-    const r = $('input[name="mesamodo"]:checked');
-    return !!r && r.value === "juntas" && numerosNovaMesa.length > 1;
   }
 
   // Guarda o que está digitado no campo de número (chamado ao adicionar e ao salvar)
@@ -1438,15 +1441,22 @@
       msg.textContent = "Salvando…"; msg.className = "form-msg";
       try {
         const pet = ($('input[name="mesapetnova"]:checked') || {}).value === "sim";
-        await lancarMesa({
+        const dados = {
           lugares: lugaresNovaMesa, pet,
           identificacao: $("#mIdent").value,
           numeros: numerosNovaMesa,
-        });
+        };
+        if (editandoMesaId) await corrigirMesa(editandoMesaId, dados);
+        else await lancarMesa(dados);
+        const corrigiu = !!editandoMesaId;
+        editandoMesaId = null;
         $("#mesaModal").hidden = true;
         msg.textContent = "";
         const m = $("#mesasMsg");
-        if (m) { m.textContent = "✅ Mesa liberada — a recepção já está vendo."; m.className = "form-msg ok"; }
+        if (m) {
+          m.textContent = corrigiu ? "✅ Mesa corrigida." : "✅ Mesa liberada — a recepção já está vendo.";
+          m.className = "form-msg ok";
+        }
       } catch (e) {
         console.error("Erro ao lançar mesa:", e);
         msg.textContent = semTabelaMesas
@@ -1460,10 +1470,11 @@
 
     // ações nos cartões de mesa (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-usarmesa],[data-apagarmesa],[data-selmesa]");
+      const t = e.target.closest("[data-usarmesa],[data-apagarmesa],[data-editmesa],[data-selmesa]");
       if (!t) return;
       try {
-        if (t.dataset.usarmesa) { e.stopPropagation(); await usarMesa(t.dataset.usarmesa); }
+        if (t.dataset.editmesa) { e.stopPropagation(); abrirMesaModal(t.dataset.editmesa); }
+        else if (t.dataset.usarmesa) { e.stopPropagation(); await usarMesa(t.dataset.usarmesa); }
         else if (t.dataset.apagarmesa) {
           e.stopPropagation();
           if (confirm("Tirar esta mesa da lista?")) await apagarMesa(t.dataset.apagarmesa);

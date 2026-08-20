@@ -87,7 +87,7 @@ window.FILA_CONFIG = {
 
   // --- Aba do GARÇOM (lança as mesas que vagaram) ---
   garcomAtivo: true,      // mostra a aba "Garçom" e o painel de mesas livres
-  pinGarcom: "",          // PIN da aba do garçom (vazio = abre sem senha)
+  pinGarcom: "4321",      // PIN da aba do garçom (deixe vazio para abrir sem senha)
 
   // --- Aviso de "pedido pronto" (botão na aba da atendente) ---
   avisoPedido: true,      // mostra o botão "🍽 Pedido pronto" junto de Chamar/Sentou/Saiu

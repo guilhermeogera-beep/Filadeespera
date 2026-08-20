@@ -13,7 +13,7 @@
 
   // Colunas que podem ainda não existir no banco do cliente.
   // Se faltarem, o app continua funcionando sem elas (e avisa nas configurações).
-  const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em", "sem_area_pet", "pedido_em"];
+  const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em", "sem_area_pet", "pedido_em", "mesa_numero"];
   const LS_COLS = "fila_cols_ausentes";
   const LS_PIN = "fila_pin_atendente";
   const LS_PIN_G = "fila_pin_garcom";
@@ -41,6 +41,7 @@
   let mesasLivres = [];     // mesas que o garçom liberou e ainda não foram usadas
   let mesaSelecionada = null; // mesa que a atendente escolheu para a próxima chamada
   let lugaresNovaMesa = 2;  // stepper do pop-up do garçom
+  let numerosNovaMesa = []; // números das mesas juntadas (ex.: 12 + 13)
   let semTabelaMesas = false; // true se a tabela `mesas_livres` ainda não existe no banco
 
   // A mesa que a atendente está liberando é da área pet?
@@ -326,9 +327,15 @@
         return data || [];
       },
       async addMesa(m) {
-        const { data, error } = await client.from(T_MESAS).insert(m).select().single();
-        if (error) throw error;
-        return data;
+        let r = await client.from(T_MESAS).insert(m).select().single();
+        // se o banco ainda não tem a coluna "numeros", grava sem ela
+        if (r.error && colunaNaoExiste(r.error) && m.numeros !== undefined) {
+          const copia = Object.assign({}, m);
+          delete copia.numeros;
+          r = await client.from(T_MESAS).insert(copia).select().single();
+        }
+        if (r.error) throw r.error;
+        return r.data;
       },
       async updateMesa(id, patch) {
         const { error } = await client.from(T_MESAS).update(patch).eq("id", id);
@@ -482,8 +489,10 @@
     }, extras || {}));
     await refresh();
   }
-  async function seatPerson(id) {
-    await backend.update(id, { status: STATUS.SENTADO, sentou_em: new Date().toISOString() });
+  async function seatPerson(id, mesaNumero) {
+    const patch = { status: STATUS.SENTADO, sentou_em: new Date().toISOString() };
+    if (mesaNumero !== undefined) patch.mesa_numero = (mesaNumero || "").trim() || null;
+    await backend.update(id, patch);
     await refresh();
   }
   async function dropPerson(id) {
@@ -709,12 +718,13 @@
     if (mesaSelecionada && !mesasLivres.some((m) => m.id === mesaSelecionada)) mesaSelecionada = null;
   }
 
-  async function lancarMesa({ lugares, pet, identificacao }) {
+  async function lancarMesa({ lugares, pet, identificacao, numeros }) {
     const nova = {
       id: uuid(),
       lugares: Number(lugares),
       pet: !!pet,
       identificacao: (identificacao || "").trim() || null,
+      numeros: (numeros || []).length ? numeros.join(" + ") : null,   // "12 + 13" quando juntam mesas
       status: MESAS.LIVRE,
       criado_em: new Date().toISOString(),
       usada_em: null,
@@ -752,7 +762,8 @@
   }
 
   function descMesa(m) {
-    return `${m.identificacao ? "“" + m.identificacao + "” • " : ""}${m.lugares} ${m.lugares === 1 ? "lugar" : "lugares"}${m.pet ? " 🐾" : ""}`;
+    const nome = m.numeros ? `${m.numeros} • ` : (m.identificacao ? `“${m.identificacao}” • ` : "");
+    return `${nome}${m.lugares} ${m.lugares === 1 ? "lugar" : "lugares"}${m.pet ? " 🐾" : ""}`;
   }
 
   // ==========================================================
@@ -1027,7 +1038,8 @@
            ${staff ? `data-selmesa="${m.id}" role="button" tabindex="0"` : ""}>
         <div class="mesa-lug">${m.lugares}<small>${m.lugares === 1 ? "lugar" : "lugares"}</small></div>
         <div class="mesa-info">
-          ${m.identificacao ? `<b class="mesa-nome">${esc(m.identificacao)}</b>` : ""}
+          ${m.numeros ? `<b class="mesa-nome">Mesa ${esc(m.numeros)}</b>` : ""}
+          ${m.identificacao ? `<span class="mesa-obs">${esc(m.identificacao)}</span>` : ""}
           <span class="mesa-tags">${m.pet ? `<span class="mesa-tag pet">🐾 área pet</span>` : `<span class="mesa-tag">sem pet</span>`}</span>
           <span class="mesa-hora">livre há <b data-since="${m.criado_em}">agora</b></span>
         </div>
@@ -1216,13 +1228,39 @@
   // pop-up do garçom para lançar uma mesa livre
   function abrirMesaModal() {
     lugaresNovaMesa = 2;
+    numerosNovaMesa = [];
     $("#mLugares").textContent = lugaresNovaMesa;
     const nao = $('input[name="mesapetnova"][value="nao"]');
     if (nao) nao.checked = true;
+    $("#mNumero").value = "";
     $("#mIdent").value = "";
     $("#mMsg").textContent = "";
     $("#mPetField").hidden = CFG.petAtivo === false;
+    renderNumChips();
     $("#mesaModal").hidden = false;
+    setTimeout(() => $("#mNumero").focus(), 60);
+  }
+
+  // Números já adicionados (quando o garçom junta duas ou mais mesas)
+  function renderNumChips() {
+    const box = $("#mNumChips");
+    if (!box) return;
+    box.innerHTML = numerosNovaMesa.map((n, i) => `
+      <span class="num-chip">${esc(n)}<button type="button" data-tiranum="${i}" aria-label="Tirar">✕</button></span>`)
+      .join('<span class="num-mais">+</span>');
+    box.hidden = !numerosNovaMesa.length;
+  }
+
+  // Guarda o que está digitado no campo de número (chamado ao adicionar e ao salvar)
+  function guardarNumeroDigitado() {
+    const campo = $("#mNumero");
+    const n = campo.value.trim();
+    if (!n) return false;
+    if (numerosNovaMesa.length >= 6) return false;
+    numerosNovaMesa.push(n);
+    campo.value = "";
+    renderNumChips();
+    return true;
   }
 
   function abrirFormulario() {
@@ -1291,14 +1329,43 @@
         $("#mLugares").textContent = lugaresNovaMesa;
       })
     );
+    // "+" junta outra mesa ao mesmo lançamento
+    $("#mAddNum").addEventListener("click", () => {
+      if (!guardarNumeroDigitado()) {
+        const msg = $("#mMsg");
+        msg.textContent = numerosNovaMesa.length >= 6
+          ? "São no máximo 6 mesas juntas."
+          : "Digite o número da mesa antes de tocar no +.";
+        msg.className = "form-msg err";
+        $("#mNumero").focus();
+        return;
+      }
+      $("#mMsg").textContent = "";
+      $("#mNumero").focus();
+    });
+    $("#mNumero").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); $("#mAddNum").click(); }
+    });
+    $("#mNumChips").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-tiranum]");
+      if (!b) return;
+      numerosNovaMesa.splice(Number(b.dataset.tiranum), 1);
+      renderNumChips();
+    });
+
     $("#mSalvar").addEventListener("click", async () => {
       const btn = $("#mSalvar"), msg = $("#mMsg");
       if (btn.disabled) return;
+      guardarNumeroDigitado();   // aproveita o número que ficou digitado sem tocar no +
       btn.disabled = true;
       msg.textContent = "Salvando…"; msg.className = "form-msg";
       try {
         const pet = ($('input[name="mesapetnova"]:checked') || {}).value === "sim";
-        await lancarMesa({ lugares: lugaresNovaMesa, pet, identificacao: $("#mIdent").value });
+        await lancarMesa({
+          lugares: lugaresNovaMesa, pet,
+          identificacao: $("#mIdent").value,
+          numeros: numerosNovaMesa,
+        });
         $("#mesaModal").hidden = true;
         msg.textContent = "";
         const m = $("#mesasMsg");

@@ -311,6 +311,25 @@
     </div>
   </div>
 
+  <!-- ============ MODAL: EM QUE MESA O CLIENTE SENTOU ============ -->
+  <div class="modal" id="sentouModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>✓ Cliente sentou</h3>
+      <p id="sentouQuem"></p>
+      <label class="field">
+        <span id="sentouLabel">Em qual mesa?</span>
+        <input id="sentouMesa" type="text" maxlength="20" placeholder="ex.: 12 ou 30 + 31" />
+        <small class="hint">Fica registrado no relatório — ajuda a saber onde cada grupo foi.</small>
+      </label>
+      <p class="form-msg" id="sentouMsg" role="status"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Cancelar</button>
+        <button class="btn btn-primary" id="sentouOk">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ MODAL: LANÇAR MESA LIVRE (garçom) ============ -->
   <div class="modal" id="mesaModal" hidden>
     <div class="modal-box">
@@ -340,9 +359,20 @@
           </div>
         </div>
 
+        <div class="field">
+          <span>Número da mesa</span>
+          <div class="num-row">
+            <input id="mNumero" type="text" maxlength="8" inputmode="numeric" placeholder="ex.: 12" />
+            <button type="button" class="btn btn-neutral num-add" id="mAddNum" title="Juntar outra mesa">+</button>
+          </div>
+          <div class="num-chips" id="mNumChips"></div>
+          <small class="hint">Juntou mesas? Toque no <b>+</b> para somar a próxima (ex.: 12 + 13).
+            Lembre de ajustar os lugares acima para o total.</small>
+        </div>
+
         <label class="field">
-          <span>Número ou nome da mesa <small>(opcional)</small></span>
-          <input id="mIdent" type="text" maxlength="14" placeholder="ex.: 12, varanda, deck" />
+          <span>Observação <small>(opcional)</small></span>
+          <input id="mIdent" type="text" maxlength="14" placeholder="ex.: varanda, deck" />
         </label>
 
         <button type="button" class="btn btn-primary btn-big" id="mSalvar">🍽 Liberar esta mesa</button>
@@ -673,6 +703,16 @@
         </label>
 
         <label class="field">
+          <span>Perguntar a mesa ao marcar "Sentou"</span>
+          <select id="cfgPerguntarMesa">
+            <option value="opcional">Sim — pode deixar em branco</option>
+            <option value="obrigatorio">Sim — é obrigatório informar</option>
+            <option value="nao">Não perguntar</option>
+          </select>
+          <small class="hint">Quando a chamada sai de uma mesa lançada pelo garçom, o número já vem preenchido.</small>
+        </label>
+
+        <label class="field">
           <span>Aba do garçom (lançar mesas livres)</span>
           <select id="cfgGarcomOn">
             <option value="sim">Mostrar</option>
@@ -684,7 +724,9 @@
         <label class="field">
           <span>PIN do garçom</span>
           <input id="cfgPinGarcom" type="text" inputmode="numeric" maxlength="8" placeholder="deixe vazio para não pedir" />
-          <small class="hint">Guardado só neste aparelho. Vazio = a aba abre sem senha.</small>
+          <small class="hint">Guardado só neste aparelho. Vazio = a aba abre sem senha.
+            Se for <b>igual ao da atendente</b>, quem souber um entra nos dois — use números
+            diferentes se quiser separar.</small>
         </label>
 
         <p class="form-msg" id="cfgMsgStatus"></p>

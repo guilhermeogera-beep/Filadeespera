@@ -414,6 +414,11 @@ button{font-family:inherit}
 /* o painel de mesas livres aparece para a atendente E para o garçom */
 #app[data-view="totem"] .salao-only,
 #app[data-view="publico"] .salao-only{display:none !important}
+/* a tela do garçom é só o que ele precisa: lançar mesas e ver as que liberou */
+#app[data-view="garcom"] .queue-card,
+#app[data-view="garcom"] .call-panel,
+#app[data-view="garcom"] .welcome,
+#app[data-view="garcom"] .closed-banner{display:none !important}
 
 /* ---------------- ÁREA PET (mesa que aceita animais) ---------------- */
 /* selo de quem pediu para NÃO sentar perto de animais */
@@ -484,3 +489,17 @@ button{font-family:inherit}
 .mesa-acoes{display:flex;gap:6px;align-items:center}
 .mesa-acoes .btn{min-height:40px;padding:8px 11px}
 .mesas-empty{color:var(--muted);padding:12px 0;font-size:.95rem;font-style:italic;text-align:center}
+
+/* números da mesa no pop-up do garçom (com o "+" para juntar mesas) */
+.num-row{display:flex;gap:10px;align-items:stretch}
+.num-row input{flex:1;border:1.5px solid var(--line);border-radius:12px;padding:14px;font-size:1.05rem;background:#FAFAF8}
+.num-row input:focus{outline:none;border-color:var(--brand);background:#fff}
+.num-add{flex:0 0 auto;width:58px;font-size:1.6rem;font-weight:800;border-radius:12px;padding:0}
+.num-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+.num-chip{display:inline-flex;align-items:center;gap:6px;background:var(--meso);color:#fff;
+  border-radius:999px;padding:5px 6px 5px 13px;font-weight:800;font-size:.95rem}
+.num-chip button{border:0;background:rgba(0,0,0,.22);color:#fff;width:22px;height:22px;border-radius:50%;
+  cursor:pointer;font-size:.75rem;line-height:1;display:flex;align-items:center;justify-content:center}
+.num-chip button:hover{background:rgba(0,0,0,.40)}
+.num-mais{font-weight:800;color:var(--muted)}
+.mesa-obs{color:var(--muted);font-size:.85rem;font-style:italic}

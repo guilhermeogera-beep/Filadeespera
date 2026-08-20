@@ -742,6 +742,20 @@
     } catch (e) { console.warn("Não deu para registrar o aviso do pedido:", e); }
   }
 
+  // Protege um botão contra "tela desatualizada": se o app for atualizado e o
+  // aparelho ainda tiver um pedaço da tela antiga, o clique falharia em silêncio
+  // (o botão parece travado). Assim ele avisa e ensina o que fazer.
+  function acaoSegura(nome, fn) {
+    return async function (ev) {
+      try {
+        return await fn.call(this, ev);
+      } catch (e) {
+        console.error("Falha em " + nome + ":", e);
+        avisoStaff("⚠ O app precisa ser atualizado: feche e abra de novo. (" + nome + ")");
+      }
+    };
+  }
+
   // O selo de conexão saiu da interface: os erros aparecem na faixa da atendente.
   function avisoStaff(txt, ok) {
     const smsg = $("#staffMsg");
@@ -1538,10 +1552,10 @@
     );
 
     // abrir o formulário em pop-up
-    $("#openFormBtn").addEventListener("click", () => {
+    $("#openFormBtn").addEventListener("click", acaoSegura("abrir o formulário", () => {
       if (isGarcom()) abrirMesaModal();
       else abrirFormulario();
-    });
+    }));
 
     // regras da fila (termos)
     $("#verTermosBtn").addEventListener("click", openTermos);
@@ -1598,7 +1612,7 @@
     $("#publicCopy").addEventListener("click", () => copiarLink(publicUrl(), null));
 
     // atendente: liberar mesa -> escolher próximo
-    $("#freeTableBtn").addEventListener("click", () => {
+    $("#freeTableBtn").addEventListener("click", acaoSegura("chamar próximo", () => {
       const smsg = $("#staffMsg");
       const aceitaPet = mesaAceitaPet();
       const chosen = pickNext(mesa, null, aceitaPet);
@@ -1619,7 +1633,7 @@
       }
       smsg.textContent = "";
       openCallConfirm(chosen, aceitaPet);
-    });
+    }));
     $("#callCancel").addEventListener("click", () => { $("#callModal").hidden = true; pendingCall = null; });
     $("#callConfirm").addEventListener("click", async () => {
       const p = pendingCall;
@@ -1679,12 +1693,12 @@
       // abrir o pop-up de chamada não grava nada: sai antes
       if (t.dataset.call) {
         const p = rows.find((r) => r.id === t.dataset.call);
-        if (p) openCallConfirm(p);
+        if (p) await acaoSegura("chamar", () => openCallConfirm(p))();
         return;
       }
-      if (t.dataset.edit) { openEdit(t.dataset.edit); return; }
+      if (t.dataset.edit) { await acaoSegura("editar", () => openEdit(t.dataset.edit))(); return; }
       // "Sentou" pode perguntar em qual mesa (o pop-up é que grava)
-      if (t.dataset.seat) { await pedirMesaSentou(t.dataset.seat); return; }
+      if (t.dataset.seat) { await acaoSegura("sentou", () => pedirMesaSentou(t.dataset.seat))(); return; }
       // "pedido pronto" é um link: o WhatsApp abre sozinho, só registramos a hora
       if (t.dataset.pedido) { marcarPedido(t.dataset.pedido); return; }
 

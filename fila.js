@@ -19,14 +19,15 @@
   // código do cliente que abriu o link (?id=...) — para destacar "você"
   const meuId = new URLSearchParams(location.search).get("id") || "";
 
-  // Só os campos que esta página realmente desenha. Telefone, comanda, pager e
-  // termos_em NÃO saem do balcão: quem acompanha a fila não precisa deles.
-  const COLS_PUB = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
-  const COLS_PUB_SIMPLES = "id,nome,pessoas,preferencial,status,criado_em,chamado_em";
+  // Esta página mostra SÓ a situação de quem abriu o link. Por isso a fila dos
+  // outros vem sem NOME e sem telefone: só o suficiente para calcular a posição.
+  // O nome de quem abriu vem numa consulta à parte, só do registro dele.
+  const COLS_FILA = "id,pessoas,preferencial,status,criado_em,chamado_em";
 
   // Só estas configurações interessam a quem acompanha a fila. Copiar `dados`
   // inteiro traria junto qualquer ajuste interno guardado na configuração.
-  const CFG_PUBLICAS = ["restaurante", "marca", "mostrarMedia", "mesonaAtiva", "mesonaMin", "prazoComparecer", "filasJuntas"];
+  const CFG_PUBLICAS = ["restaurante", "marca", "mostrarMedia", "mesonaAtiva", "mesonaMin", "prazoComparecer",
+    "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera"];
 
   // Janela de histórico: a página não precisa (nem deve) baixar a tabela inteira
   const JANELA_HIST_MS = 24 * 3600 * 1000;
@@ -34,7 +35,6 @@
 
   let rows = [];
   let client = null;
-  let colsPub = COLS_PUB;   // vira a versão simples se o banco ainda não tiver `pet`
 
   // ---------- utilidades ----------
   function fmtElapsed(ms) {
@@ -50,15 +50,6 @@
     return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   }
   function firstName(n) { return (n || "").split(/\s+/)[0] || n || "Cliente"; }
-  // Nome curto e discreto: "Guilherme S." (não expõe o nome completo em público)
-  function nomePublico(n) {
-    const p = String(n || "").trim().split(/\s+/);
-    if (!p[0]) return "Cliente";
-    return p.length > 1 ? `${p[0]} ${p[1][0].toUpperCase()}.` : p[0];
-  }
-  function isMesona(r) {
-    return CFG.mesonaAtiva === true && Number(r.pessoas) >= (Number(CFG.mesonaMin) || 8);
-  }
 
   const byCreatedAsc = (a, b) => new Date(a.criado_em) - new Date(b.criado_em);
   const waiting = () => rows.filter((r) => r.status === STATUS.AGUARDANDO).sort(byCreatedAsc);
@@ -78,28 +69,25 @@
       try { rows = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { rows = []; }
       return;
     }
-    // duas consultas curtas: quem está na fila + histórico recente (para a média)
-    const busca = async (cols) => {
-      const ativos = await client.from(T).select(cols)
-        .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO])
-        .order("criado_em", { ascending: true }).limit(PAGINA);
-      if (ativos.error) return ativos;
-      const desde = new Date(Date.now() - JANELA_HIST_MS).toISOString();
-      const hist = await client.from(T).select(cols)
-        .gte("criado_em", desde)
-        .order("criado_em", { ascending: false }).limit(PAGINA);
-      if (hist.error) return hist;
-      return { data: (ativos.data || []).concat(hist.data || []) };
-    };
-    let res = await busca(colsPub);
-    // se o banco ainda não tem a coluna `pet`, repete sem ela
-    if (res.error && colsPub === COLS_PUB) {
-      colsPub = COLS_PUB_SIMPLES;
-      res = await busca(colsPub);
-    }
-    if (res.error) throw res.error;
+    // 1) a fila SEM NOMES: só para saber quantos estão na frente e a média
+    const ativos = await client.from(T).select(COLS_FILA)
+      .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO])
+      .order("criado_em", { ascending: true }).limit(PAGINA);
+    if (ativos.error) throw ativos.error;
+    const desde = new Date(Date.now() - JANELA_HIST_MS).toISOString();
+    const hist = await client.from(T).select(COLS_FILA)
+      .gte("criado_em", desde)
+      .order("criado_em", { ascending: false }).limit(PAGINA);
+    if (hist.error) throw hist.error;
+
     const mapa = new Map();
-    (res.data || []).forEach((r) => mapa.set(r.id, r));
+    (ativos.data || []).concat(hist.data || []).forEach((r) => mapa.set(r.id, r));
+
+    // 2) só o registro de quem abriu o link traz o nome — e mais nada de ninguém
+    if (meuId) {
+      const eu = await client.from(T).select(COLS_FILA + ",nome").eq("id", meuId).limit(1);
+      if (!eu.error && eu.data && eu.data[0]) mapa.set(eu.data[0].id, eu.data[0]);
+    }
     rows = Array.from(mapa.values()).sort(byCreatedAsc);
   }
 
@@ -156,8 +144,8 @@
         corpo = `<div class="me-label">Olá, ${esc(firstName(me.nome))} — ordem de chegada</div>
           <div class="me-big">${pos}º</div>
           <div class="me-sub">${frase}
-            • ${me.pessoas} ${me.pessoas === 1 ? "pessoa" : "pessoas"}
-            • esperando há <b data-since="${me.criado_em}">agora</b></div>
+            • ${me.pessoas} ${me.pessoas === 1 ? "pessoa" : "pessoas"}${
+              CFG.mostrarTempoEspera !== false ? ` • esperando há <b data-since="${me.criado_em}">agora</b>` : ""}</div>
           <div class="me-note">A chamada <b>não</b> segue esta ordem: as mesas saem conforme o
             tamanho do grupo e a preferência legal. Grupos de ${me.pessoas}
             ${me.pessoas === 1 ? "pessoa" : "pessoas"} na sua frente: <b>${mesmos}</b>.</div>`;
@@ -168,59 +156,14 @@
       meCard.innerHTML = corpo;
       meCard.hidden = false;
       meCard.classList.toggle("me-chamado", me.status === STATUS.CHAMADO);
+      $("#semCodigo").hidden = true;
+      $("#resumoCard").hidden = false;
     } else {
       meCard.hidden = true;
+      // sem código no link (ou código que não está mais na fila): não há o que mostrar
+      $("#semCodigo").hidden = false;
+      $("#resumoCard").hidden = !meuId;
     }
-
-    // ---- mesas sendo chamadas ----
-    $("#callEmpty").hidden = c.length > 0;
-    $("#callList").innerHTML = c.map((r, i) => `
-      <div class="call-item ${r.preferencial ? "pref" : ""} ${r.id === meuId ? "is-me" : ""} ${i === 0 ? "fresh" : ""}">
-        <span class="ci-label">${r.preferencial ? "★ Preferencial" : "Chamando"}</span>
-        <span class="ci-name">${esc(firstName(r.nome))}</span>
-        <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)</span>
-      </div>`).join("");
-
-    // ---- a fila: tudo junto ou separada em grupos (segue a engrenagem) ----
-    const item = (r, i, junto) => {
-      const selos = (junto
-        ? (r.preferencial ? `<span class="q-tag pref">★ preferencial</span>` : "") +
-          (isMesona(r) ? `<span class="q-tag meso">🍽 mesa grande</span>` : "")
-        : "") +
-        (r.pet ? `<span class="q-tag petx">🐾 pet</span>` : "");
-      return `
-        <li class="q-item ${r.preferencial ? "is-pref" : ""} ${isMesona(r) ? "is-meso-pub" : ""} ${r.id === meuId ? "is-me" : ""}">
-          <div class="q-pos">${i + 1}</div>
-          <div class="q-main">
-            <div class="q-name">${esc(nomePublico(r.nome))}${r.id === meuId ? `<span class="q-tag voce">você</span>` : ""}${selos}</div>
-            <div class="q-sub">
-              <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
-              <span>🕐 entrou ${fmtClock(r.criado_em)}</span>
-              <span>⏱ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>
-            </div>
-          </div>
-        </li>`;
-    };
-
-    if (CFG.filasJuntas === false) {
-      // separada: mesas grandes, preferencial e normal — cada uma na ordem de chegada
-      const meso = w.filter(isMesona);
-      const pref = w.filter((r) => r.preferencial && !isMesona(r));
-      const norm = w.filter((r) => !r.preferencial && !isMesona(r));
-      const grupo = (titulo, classe, lista, vazio) => (!lista.length && !vazio) ? "" : `
-        <div class="queue-group">
-          <div class="qg-head ${classe}"><span>${titulo}</span><span class="qg-count">${lista.length}</span></div>
-          <ol class="queue-list">${lista.map((r, i) => item(r, i, false)).join("")}</ol>
-          ${lista.length ? "" : `<div class="queue-empty">${vazio}</div>`}
-        </div>`;
-      $("#queueWrap").innerHTML =
-        (CFG.mesonaAtiva === true ? grupo(`🍽 Mesas grandes (${Number(CFG.mesonaMin) || 8}+ pessoas)`, "qg-meso", meso, "Nenhuma mesa grande na fila") : "") +
-        grupo("★ Preferencial", "qg-pref", pref, "Nenhum preferencial na fila") +
-        grupo("Normal", "qg-norm", norm, "Ninguém na fila normal");
-    } else {
-      $("#queueWrap").innerHTML = `<ol class="queue-list">${w.map((r, i) => item(r, i, true)).join("")}</ol>`;
-    }
-    $("#queueEmpty").hidden = w.length > 0;
 
     tick();
     $("#pubUpdated").textContent = "atualizado às " + fmtClock(new Date().toISOString());

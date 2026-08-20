@@ -57,7 +57,6 @@
         <button id="tabGarcom" class="vs-btn" role="tab">Garçom</button>
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
-      <button id="qrBtn" class="icon-btn-h staff-only" title="QR Code da página do cliente" aria-label="QR Code da página do cliente">📱</button>
       <button id="relBtn" class="icon-btn-h staff-only" title="Relatório" aria-label="Relatório">📊</button>
       <button id="cfgBtn" class="icon-btn-h staff-only" title="Configurações" aria-label="Configurações">⚙</button>
       <button id="sairBtn" class="icon-btn-h" title="Sair" aria-label="Sair" hidden>⏻</button>
@@ -126,6 +125,15 @@
 
     <!-- ============ A FILA ============ -->
     <section class="card queue-card">
+      <!-- Busca: um campo só, que procura em tudo (nome, telefone, comanda, pager, mesa) -->
+      <div class="busca-bar staff-only">
+        <span class="busca-lupa" aria-hidden="true">🔎</span>
+        <input id="buscaInput" type="search" autocomplete="off" autocapitalize="none" spellcheck="false"
+               placeholder="Procurar por nome, telefone, comanda, pager ou mesa" aria-label="Procurar na fila" />
+        <button type="button" id="buscaLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
+      </div>
+      <p class="busca-info" id="buscaInfo" hidden></p>
+
       <div class="queue-head">
         <h2 class="card-title">Fila de espera</h2>
         <div class="queue-stats">
@@ -488,7 +496,6 @@
 
       <div class="cfg-shortcuts">
         <button class="btn btn-sm btn-primary" id="openRelBtn">📊 Relatório</button>
-        <button class="btn btn-sm btn-ghost btn-neutral" id="openPublicBtn">🔗 Página do cliente</button>
       </div>
 
       <div class="cfg-form">
@@ -553,8 +560,20 @@
 
         <label class="field">
           <span>Alerta de espera da mesa grande (minutos)</span>
-          <input id="cfgMesoPrazo" type="number" min="1" max="600" />
+          <input id="cfgMesoPrazo" type="number" min="0" max="600" />
           <small class="hint">Na tela da atendente, a mesa grande vai de <b>verde</b> a <b>vermelho</b> conforme se aproxima desse tempo.</small>
+        </label>
+
+        <label class="field">
+          <span>Alerta de espera do preferencial (minutos)</span>
+          <input id="cfgPrefPrazo" type="number" min="0" max="600" />
+          <small class="hint">Mesma cor, na fila preferencial. Use <b>0</b> para não colorir.</small>
+        </label>
+
+        <label class="field">
+          <span>Alerta de espera da fila normal (minutos)</span>
+          <input id="cfgNormalPrazo" type="number" min="0" max="600" />
+          <small class="hint">Mesma cor, na fila normal. Use <b>0</b> para não colorir.</small>
         </label>
 
         <div class="cfg-sec">Entrada na fila (totem)</div>
@@ -606,6 +625,24 @@
             <option value="separadas">Separado: mesas grandes, preferencial e normal</option>
           </select>
           <small class="hint">Na aba da atendente a fila fica <b>sempre separada</b>.</small>
+        </label>
+
+        <label class="field">
+          <span>Mostrar a hora de chegada de cada pessoa</span>
+          <select id="cfgMostrarHora">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar</option>
+          </select>
+          <small class="hint">Vale para o totem e a página do cliente. Na aba da atendente aparece sempre.</small>
+        </label>
+
+        <label class="field">
+          <span>Mostrar há quanto tempo cada um espera</span>
+          <select id="cfgMostrarTempo">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar</option>
+          </select>
+          <small class="hint">Vale para o totem e a página do cliente. Na aba da atendente aparece sempre.</small>
         </label>
 
         <label class="field">
@@ -814,14 +851,16 @@
   <div class="modal" id="publicModal" hidden>
     <div class="modal-box">
       <button class="modal-x" data-close aria-label="Fechar">×</button>
-      <h3>🔗 Página do cliente</h3>
-      <p>Tela só de leitura com a fila e as mesas sendo chamadas. Imprima este QR Code e deixe no balcão, se quiser.</p>
+      <h3>📱 QR Code do cliente</h3>
+      <p id="publicQuem"></p>
+      <p>Peça para o cliente <b>apontar a câmera</b>. Ele passa a ver a própria
+         posição na fila, atualizada sozinha — e só a dele.</p>
       <div class="qr-box qr-box-lg" id="publicQr"></div>
       <p class="public-url" id="publicUrl"></p>
       <div class="modal-actions modal-actions-wrap">
         <button class="btn btn-ghost btn-neutral" data-close>Fechar</button>
         <button class="btn btn-ghost btn-neutral" id="publicCopy">🔗 Copiar link</button>
-        <a class="btn btn-primary" id="publicOpen" href="./fila.html" target="_blank" rel="noopener">↗ Abrir a página</a>
+        <a class="btn btn-wa" id="publicWa" href="#" target="_blank" rel="noopener" hidden>📲 Enviar no WhatsApp</a>
       </div>
     </div>
   </div>

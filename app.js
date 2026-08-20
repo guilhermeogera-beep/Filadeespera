@@ -976,6 +976,76 @@
       ${feito ? "✅ pedido avisado" : "🍽 Pedido pronto"}</a>`;
   }
 
+  // ==========================================================
+  //  BUSCA NA FILA (só a atendente)
+  // ----------------------------------------------------------
+  //  Um campo só, que procura em tudo. No corrido do serviço, escolher antes
+  //  "buscar por nome / por telefone" seria um toque a mais sem ganho: os
+  //  formatos quase nunca se confundem e ela reconhece o resultado na hora.
+  // ==========================================================
+  let busca = "";
+
+  const semAcento = (s) => String(s == null ? "" : s)
+    .toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const soDigitos = (s) => String(s == null ? "" : s).replace(/\D/g, "");
+
+  function combinaBusca(r) {
+    const t = semAcento(busca).trim();
+    if (!t) return true;
+    // nome, comanda, pager e mesa: comparação de texto (sem acento, sem maiúscula)
+    if ([r.nome, r.comanda, r.pager, r.mesa_numero].some((c) => semAcento(c).includes(t))) return true;
+    // telefone: compara só os números, para achar digitando sem parênteses ou traço
+    const dig = soDigitos(t);
+    if (dig.length >= 3 && soDigitos(r.telefone).includes(dig)) return true;
+    return false;
+  }
+
+  function atualizarAvisoBusca(buscando, achou, total) {
+    const info = $("#buscaInfo"), x = $("#buscaLimpar");
+    if (x) x.hidden = !busca;
+    if (!info) return;
+    info.hidden = !buscando;
+    if (!buscando) return;
+    info.textContent = achou === 0
+      ? `Ninguém encontrado com “${busca}”. Toque no ✕ para ver a fila inteira.`
+      : `${achou} ${achou === 1 ? "resultado" : "resultados"} para “${busca}” (de ${total} na tela).`;
+    info.className = "busca-info" + (achou === 0 ? " vazio" : "");
+  }
+
+  // QR Code de UM cliente: o link leva à página que mostra só a situação dele
+  function abrirQrCliente(id) {
+    const r = rows.find((x) => x.id === id);
+    if (!r) return;
+    const url = publicUrl(r.id);
+    $("#publicQuem").innerHTML = `<b>${esc(r.nome)}</b> — ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}`;
+    drawQR($("#publicQr"), url);
+    $("#publicUrl").textContent = url;
+    $("#publicCopy").dataset.link = url;
+    const wa = $("#publicWa");
+    const num = waNumber(r.telefone);
+    if (CFG.whatsAtivo !== false && num) {
+      const msg = (CFG.msgLink || "Acompanhe a sua vez na fila: {link}")
+        .replace(/\{nome\}/g, firstName(r.nome))
+        .replace(/\{restaurante\}/g, CFG.restaurante || "")
+        .replace(/\{posicao\}/g, String(waiting().findIndex((x) => x.id === r.id) + 1))
+        .replace(/\{link\}/g, url);
+      wa.href = "https://wa.me/" + num + "?text=" + encodeURIComponent(msg);
+      wa.hidden = false;
+    } else {
+      wa.hidden = true;
+    }
+    $("#publicModal").hidden = false;
+  }
+
+  // Em quantos minutos esta pessoa deveria ter sido chamada. É o que define a
+  // cor do item na tela da atendente (verde no começo, vermelho ao estourar).
+  // 0 ou vazio = essa fila não usa o semáforo.
+  function prazoDaFila(r) {
+    if (isMesona(r)) return Number(CFG.mesonaPrazo) || 0;
+    if (r.preferencial) return Number(CFG.prefPrazo) || 0;
+    return Number(CFG.normalPrazo) || 0;
+  }
+
   // HTML de um item da fila. `junto` = lista única (totem): como não há cabeçalho
   // de grupo, o tipo de cada pessoa vira selo no próprio item.
   function queueItemHTML(r, i, staff, junto) {
@@ -991,18 +1061,19 @@
         <button class="btn btn-sm btn-primary" data-seat="${r.id}">Sentou</button>
         <button class="btn btn-sm btn-danger" data-drop="${r.id}">Saiu</button>
         <button class="btn btn-sm btn-edit" data-edit="${r.id}">✏️ Editar</button>
+        ${CFG.linkAtivo === false ? "" : `<button class="btn btn-sm btn-qr" data-qrcliente="${r.id}" title="QR Code deste cliente">📱 QR</button>`}
         ${pedidoBtnHTML(r)}
       </div>` : "";
     return `
       <li class="q-item ${r.preferencial ? "is-pref" : ""} ${meso ? "is-meso" : ""} ${staff && r.chamadas_perdidas ? "is-perdeu" : ""}"
-          ${meso && staff ? `data-meso-since="${r.criado_em}"` : ""}>
+          ${staff && prazoDaFila(r) ? `data-espera-since="${r.criado_em}" data-espera-prazo="${prazoDaFila(r)}"` : ""}>
         <div class="q-pos">${i + 1}</div>
         <div class="q-main">
           <div class="q-name">${esc(staff ? r.nome : firstName(r.nome))}${selosTipo}${staff && r.chamadas_perdidas ? `<span class="q-tag perdeu">⚠️ perdeu a vez${r.chamadas_perdidas > 1 ? " (" + r.chamadas_perdidas + "×)" : ""}</span>` : ""}</div>
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
-            <span>🕐 entrou ${fmtClock(r.criado_em)}</span>
-            <span>⏱ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>
+            ${(staff || CFG.mostrarHoraEntrada !== false) ? `<span>🕐 entrou ${fmtClock(r.criado_em)}</span>` : ""}
+            ${(staff || CFG.mostrarTempoEspera !== false) ? `<span>⏱ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>` : ""}
             ${tel}
             ${chipsHTML(r, staff)}
           </div>
@@ -1031,15 +1102,21 @@
   }
 
   function render() {
-    const w = waiting();
-    const c = called();
+    const wTodos = waiting();
+    const cTodos = called();
     const staff = isStaff();
+
+    // busca (só na tela da atendente): esconde quem não combina, sem tirar da fila
+    const buscando = staff && !!busca.trim();
+    const w = buscando ? wTodos.filter(combinaBusca) : wTodos;
+    const c = buscando ? cTodos.filter(combinaBusca) : cTodos;
+    atualizarAvisoBusca(buscando, w.length + c.length, wTodos.length + cTodos.length);
 
     // -------- listas: mesas grandes, preferencial e normal --------
     const meso = w.filter(isMesona);
     const pref = w.filter((r) => r.preferencial && !isMesona(r));
     const norm = w.filter((r) => !r.preferencial && !isMesona(r));
-    $("#statTotal").textContent = w.length;
+    $("#statTotal").textContent = buscando ? `${w.length}/${wTodos.length}` : wTodos.length;
     $("#statPref").textContent = pref.length;
     $("#statNorm").textContent = norm.length;
     $("#statMeso").textContent = meso.length;
@@ -1084,7 +1161,13 @@
       // uma lista só, na ordem de chegada, com o tipo indicado em cada pessoa
       $("#queueListTodas").innerHTML = w.map((r, i) => queueItemHTML(r, i, staff, true)).join("");
       $("#emptyTodas").hidden = w.length > 0;
+      // esvazia as listas separadas: senão ficam itens escondidos no ar,
+      // que o relógio continuaria atualizando à toa
+      $("#queueListMeso").innerHTML = "";
+      $("#queueListPref").innerHTML = "";
+      $("#queueListNorm").innerHTML = "";
     } else {
+      $("#queueListTodas").innerHTML = "";
       $("#queueListMeso").innerHTML = meso.map((r, i) => queueItemHTML(r, i, staff)).join("");
       $("#queueListPref").innerHTML = pref.map((r, i) => queueItemHTML(r, i, staff)).join("");
       $("#queueListNorm").innerHTML = norm.map((r, i) => queueItemHTML(r, i, staff)).join("");
@@ -1182,12 +1265,13 @@
       card.style.background = `hsl(${Math.round(hue)}, 75%, 44%)`;
       card.classList.toggle("expirado", frac >= 1);
     });
-    // mesas grandes: mesma escala de cor, só na tela da atendente
-    const mesoMs = (Number(CFG.mesonaPrazo) || 20) * 60000;
-    $$("[data-meso-since]").forEach((item) => {
-      const d = new Date(item.getAttribute("data-meso-since")).getTime();
-      if (isNaN(d)) return;
-      const frac = Math.max(0, Math.min(1, (now - d) / mesoMs));
+    // Semáforo da espera (só na tela da atendente): cada fila tem o seu prazo,
+    // e o item vai de verde a vermelho conforme se aproxima dele.
+    $$("[data-espera-since]").forEach((item) => {
+      const d = new Date(item.getAttribute("data-espera-since")).getTime();
+      const min = Number(item.getAttribute("data-espera-prazo")) || 0;
+      if (isNaN(d) || min <= 0) return;
+      const frac = Math.max(0, Math.min(1, (now - d) / (min * 60000)));
       const hue = Math.round(120 * (1 - frac));
       item.style.background = `hsl(${hue}, 80%, 94%)`;
       item.style.borderColor = `hsl(${hue}, 60%, 48%)`;
@@ -1359,8 +1443,13 @@
 
     const sb = $("#sairBtn");
     if (sb) sb.hidden = !ligado;
+    // configurações e relatório são do administrador
     const cb = $("#cfgBtn");
-    if (cb) cb.hidden = !ehAdm();   // configurações são do administrador
+    if (cb) cb.hidden = !ehAdm();
+    const rb = $("#relBtn");
+    if (rb) rb.hidden = !ehAdm();
+    // o administrador mantém os controles do cabeçalho em qualquer aba
+    appEl.setAttribute("data-papel", (ligado && usuario && usuario.papel) || "");
 
     if (ligado && usuario) {
       $("#brandSub").textContent = (CFG.restaurante || "") +
@@ -1812,7 +1901,6 @@
 
     // copiar o link de acompanhamento
     $("#joinedCopy").addEventListener("click", () => copiarLink($("#joinedCopy").dataset.link, $("#joinedMsg")));
-    $("#publicCopy").addEventListener("click", () => copiarLink(publicUrl(), null));
 
     // atendente: liberar mesa -> escolher próximo
     $("#freeTableBtn").addEventListener("click", acaoSegura("chamar próximo", () => {
@@ -1890,7 +1978,7 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente]");
       if (!t) return;
 
       // abrir o pop-up de chamada não grava nada: sai antes
@@ -1900,6 +1988,7 @@
         return;
       }
       if (t.dataset.edit) { await acaoSegura("editar", () => openEdit(t.dataset.edit))(); return; }
+      if (t.dataset.qrcliente) { await acaoSegura("QR do cliente", () => abrirQrCliente(t.dataset.qrcliente))(); return; }
       // "Sentou" pode perguntar em qual mesa (o pop-up é que grava)
       if (t.dataset.seat) { await acaoSegura("sentou", () => pedirMesaSentou(t.dataset.seat))(); return; }
       // "pedido pronto" é um link: o WhatsApp abre sozinho, só registramos a hora
@@ -1954,6 +2043,18 @@
     // editar cliente
     $("#edSave").addEventListener("click", salvarEdicao);
 
+    // busca na fila
+    $("#buscaInput").addEventListener("input", (e) => { busca = e.target.value; render(); });
+    $("#buscaInput").addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { busca = ""; e.target.value = ""; render(); }
+    });
+    $("#buscaLimpar").addEventListener("click", () => {
+      busca = "";
+      $("#buscaInput").value = "";
+      render();
+      $("#buscaInput").focus();
+    });
+
     // resetar média
     $("#resetAvgBtn").addEventListener("click", () => { $("#resetModal").hidden = false; });
     $("#resetAvgOk").addEventListener("click", () => { resetMedia(); $("#resetModal").hidden = true; });
@@ -1985,16 +2086,9 @@
     $("#openRelBtn").addEventListener("click", () => { $("#cfgModal").hidden = true; openRelatorio(); });
     // o relatório também tem botão próprio no cabeçalho (a atendente usa sem abrir as configurações)
     $("#relBtn").addEventListener("click", openRelatorio);
-    // QR da página do cliente: pelo botão do cabeçalho ou de dentro das configurações
-    function abrirQrPublico() {
-      const url = publicUrl();
-      drawQR($("#publicQr"), url);
-      $("#publicUrl").textContent = url;
-      $("#publicOpen").href = url;   // ver a página do cliente numa aba nova
-      $("#publicModal").hidden = false;
-    }
-    $("#openPublicBtn").addEventListener("click", abrirQrPublico);
-    $("#qrBtn").addEventListener("click", abrirQrPublico);
+    // QR de UM cliente: o link é pessoal e mostra só a situação dele
+    $("#publicCopy").addEventListener("click", () =>
+      copiarLink($("#publicCopy").dataset.link, null));
 
     // relatório
     $("#relPeriodo").addEventListener("change", renderRelatorio);
@@ -2226,8 +2320,8 @@
     "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
-    "termosTexto", "petAtivo", "campoSemPet", "filasJuntas",
-    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo",
+    "termosTexto", "petAtivo", "campoSemPet", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
+    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
     "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa",
   ];
 
@@ -2348,7 +2442,9 @@
 
     $("#cfgMesoAtiva").value = CFG.mesonaAtiva === true ? "sim" : "nao";
     $("#cfgMesoMin").value = Number(CFG.mesonaMin) || 8;
-    $("#cfgMesoPrazo").value = Number(CFG.mesonaPrazo) || 20;
+    $("#cfgMesoPrazo").value = Number(CFG.mesonaPrazo) || 0;
+    $("#cfgPrefPrazo").value = Number(CFG.prefPrazo) || 0;
+    $("#cfgNormalPrazo").value = Number(CFG.normalPrazo) || 0;
 
     $("#cfgTelObrig").value = CFG.telObrigatorio === false ? "nao" : "sim";
     $("#cfgTermosOn").value = CFG.exigirTermos === false ? "nao" : "sim";
@@ -2356,6 +2452,8 @@
     $("#cfgPetOn").value = CFG.petAtivo === false ? "nao" : "sim";
     $("#cfgSemPetOn").value = CFG.campoSemPet === false ? "nao" : "sim";
     $("#cfgFilasJuntas").value = CFG.filasJuntas === false ? "separadas" : "juntas";
+    $("#cfgMostrarHora").value = CFG.mostrarHoraEntrada === false ? "nao" : "sim";
+    $("#cfgMostrarTempo").value = CFG.mostrarTempoEspera === false ? "nao" : "sim";
     $("#cfgMostrarMedia").value = CFG.mostrarMedia === false ? "nao" : "sim";
     $("#cfgBoas").value = CFG.boasVindas || "";
     $("#cfgMaxP").value = CFG.maxPessoas || 20;
@@ -2401,7 +2499,9 @@
 
       mesonaAtiva: $("#cfgMesoAtiva").value === "sim",
       mesonaMin: num("#cfgMesoMin", 2, 99, 8),
-      mesonaPrazo: num("#cfgMesoPrazo", 1, 600, 20),
+      mesonaPrazo: num("#cfgMesoPrazo", 0, 600, 20),
+      prefPrazo: num("#cfgPrefPrazo", 0, 600, 0),
+      normalPrazo: num("#cfgNormalPrazo", 0, 600, 0),
 
       telObrigatorio: $("#cfgTelObrig").value === "sim",
       exigirTermos: $("#cfgTermosOn").value === "sim",
@@ -2409,6 +2509,8 @@
       petAtivo: $("#cfgPetOn").value === "sim",
       campoSemPet: $("#cfgSemPetOn").value === "sim",
       filasJuntas: $("#cfgFilasJuntas").value === "juntas",
+      mostrarHoraEntrada: $("#cfgMostrarHora").value === "sim",
+      mostrarTempoEspera: $("#cfgMostrarTempo").value === "sim",
       mostrarMedia: $("#cfgMostrarMedia").value === "sim",
       boasVindas: $("#cfgBoas").value.trim(),
       maxPessoas: num("#cfgMaxP", 1, 99, 20),
@@ -2454,7 +2556,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "qrBtn", "editModal",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

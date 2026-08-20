@@ -531,3 +531,40 @@ button{font-family:inherit}
 .login-totem{margin-top:22px;padding-top:18px;border-top:1.5px dashed var(--line)}
 .login-totem p{margin:0 0 10px;color:var(--muted);font-size:.88rem}
 .login-totem .btn{width:100%;min-height:48px}
+
+/* ---------------- ADMINISTRADOR: cabeçalho completo em qualquer aba ---------------- */
+/* Os botões do topo são "staff-only" e sumiriam nas abas Totem e Garçom.
+   Para quem entrou como administrador eles continuam à mão.
+   O :not([hidden]) preserva o que o próprio app decide esconder
+   (por exemplo, o botão de abrir/fechar fila quando está desligado). */
+#app[data-papel="adm"] .topbar-right .icon-btn-h.staff-only:not([hidden]){display:flex !important}
+#app[data-papel="adm"] .topbar-right .pill-btn.staff-only:not([hidden]){display:inline-block !important}
+
+/* ---------------- BUSCA NA FILA (aba da atendente) ---------------- */
+.busca-bar{
+  display:flex;align-items:center;gap:8px;margin:0 0 12px;
+  border:1.5px solid var(--line);border-radius:12px;background:#FAFAF8;padding:0 12px;
+}
+.busca-bar:focus-within{border-color:var(--brand);background:#fff}
+.busca-lupa{font-size:1.05rem;opacity:.65}
+.busca-bar input{
+  flex:1;border:0;background:transparent;padding:13px 0;font-size:1.02rem;
+  font-family:inherit;color:var(--ink);min-width:0;
+}
+.busca-bar input:focus{outline:none}
+.busca-bar input::-webkit-search-cancel-button{display:none}
+.busca-x{
+  border:0;background:#E3E3DE;color:#41413C;width:32px;height:32px;border-radius:50%;
+  cursor:pointer;font-size:.9rem;line-height:1;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;
+}
+.busca-x:hover{background:#D5D5CF}
+.busca-info{margin:-6px 0 12px;font-size:.88rem;font-weight:600;color:var(--muted)}
+.busca-info.vazio{color:var(--danger)}
+.btn-qr{background:#E7EBEC;color:#2c4349}
+.btn-qr:hover{background:#D9DFE1}
+/* página do cliente: aviso de "peça o seu QR" e resumo sem nomes */
+.sem-codigo p{margin:0 0 10px;line-height:1.55}
+.sem-codigo p:last-child{margin-bottom:0}
+.resumo-card{display:flex;flex-direction:column;gap:12px}
+.resumo-card .queue-stats{justify-content:center}

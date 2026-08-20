@@ -54,6 +54,10 @@ window.FILA_CONFIG = {
   mesonaMin: 8,           // a partir de quantas pessoas é "mesa grande"
   mesonaPrazo: 20,        // minutos: na tela da atendente vai de verde a vermelho até esse tempo
 
+  // --- Alerta de espera das outras filas (0 = não colorir) ---
+  prefPrazo: 0,           // minutos até a fila PREFERENCIAL ficar vermelha
+  normalPrazo: 0,         // minutos até a fila NORMAL ficar vermelha
+
   // --- Entrada na fila (totem) ---
   telObrigatorio: true,   // exige telefone para entrar na fila
   exigirTermos: true,     // exige aceitar as regras (termos) no totem
@@ -62,6 +66,8 @@ window.FILA_CONFIG = {
   campoSemPet: true,      // mostra "não sentar na área pet" (alergia/receio de animais)
   filasJuntas: true,      // true = totem e página do cliente mostram TUDO numa lista só
                           // (a atendente vê sempre separado: mesas grandes / preferencial / normal)
+  mostrarHoraEntrada: true, // mostra "entrou HH:MM" no totem e na página do cliente
+  mostrarTempoEspera: true, // mostra "esperando há X" no totem e na página do cliente
   mostrarMedia: true,     // mostra o tempo médio de espera no TOTEM (na atendente aparece sempre)
   maxPessoas: 20,         // máximo de pessoas por grupo
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)

@@ -2,7 +2,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#1A1A1A" />
 <meta name="robots" content="noindex" />
-<title>Acompanhar a fila — Fila Fácil</title>
+<title>Sua vez na fila — Fila Fácil</title>
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <link rel="stylesheet" href="./styles.css" />
@@ -24,28 +24,26 @@
 
   <main class="content">
 
-    <!-- Cartão do próprio cliente (só quando o link tem o seu código) -->
+    <!-- ESTE link é pessoal: mostra só a situação de quem o recebeu.
+         Ninguém vê o nome nem a posição de outro cliente. -->
     <section class="me-card" id="meCard" hidden></section>
 
-    <!-- Mesas sendo chamadas agora -->
-    <section class="call-panel" aria-live="polite">
-      <div class="call-empty" id="callEmpty">Nenhuma mesa sendo chamada no momento</div>
-      <div class="call-list" id="callList"></div>
+    <!-- Sem código no endereço, não há o que mostrar -->
+    <section class="card sem-codigo" id="semCodigo" hidden>
+      <h2 class="card-title">Acompanhe a sua vez</h2>
+      <p>Este endereço mostra <b>a sua posição</b> na fila — e só a sua.</p>
+      <p>Para receber o seu, peça na recepção: a atendente gera um <b>QR Code</b>
+         só para você, ou envia o link pelo WhatsApp quando você entra na fila.</p>
     </section>
 
-    <!-- Fila completa: preferencial, normal e mesas grandes, tudo junto na ordem de chegada -->
-    <section class="card queue-card">
-      <div class="queue-head">
-        <h2 class="card-title">Fila de espera</h2>
-        <div class="queue-stats">
-          <span class="stat"><b id="statTotal">0</b> na fila</span>
-          <span class="stat stat-avg" id="statAvgWrap" hidden>⏱ espera média <b id="statAvg">—</b></span>
-        </div>
+    <!-- Números gerais da casa (sem nome de ninguém) -->
+    <section class="card resumo-card" id="resumoCard" hidden>
+      <div class="queue-stats">
+        <span class="stat"><b id="statTotal">0</b> na fila agora</span>
+        <span class="stat stat-avg" id="statAvgWrap" hidden>⏱ espera média <b id="statAvg">—</b></span>
       </div>
-      <!-- o fila.js monta aqui uma lista só ou três grupos, conforme a engrenagem -->
-      <div id="queueWrap"></div>
-      <div class="queue-empty" id="queueEmpty">Ninguém na fila neste momento 🎉</div>
-      <p class="pub-note">A ordem pode mudar: mesas são liberadas conforme o tamanho do grupo e a preferência legal (idosos, gestantes, PCD e crianças de colo).</p>
+      <p class="pub-note">A ordem pode mudar: as mesas são liberadas conforme o tamanho do grupo
+        e a preferência legal (idosos, gestantes, PCD e crianças de colo).</p>
     </section>
 
   </main>

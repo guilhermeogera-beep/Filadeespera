@@ -2,7 +2,7 @@
   "name": "Fila Fácil — Quinta do Aveiro",
   "short_name": "Fila Fácil",
   "description": "Controle da fila de espera do restaurante Quinta do Aveiro.",
-  "lang": "pt-PT",
+  "lang": "pt-BR",
   "id": "./",
   "start_url": "./",
   "scope": "./",

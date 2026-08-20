@@ -36,6 +36,9 @@
     <!-- ============ BOAS-VINDAS (só no totem) ============ -->
     <div class="welcome totem-only" id="welcomeBanner" hidden></div>
 
+    <!-- ============ AVISO DE FILA FECHADA ============ -->
+    <div class="closed-banner" id="closedBanner" hidden></div>
+
     <!-- ============ PAINEL "CHAMANDO AGORA" (topo nas duas abas) ============ -->
     <section id="callPanel" class="call-panel" aria-live="polite">
       <div class="call-empty" id="callEmpty">Nenhuma mesa sendo chamada no momento</div>
@@ -47,7 +50,7 @@
       <div class="staff-head">
         <h2 class="card-title">Liberar mesa</h2>
         <div class="staff-head-actions">
-          <button id="installBtn" class="btn btn-ghost btn-sm" hidden>⬇ Instalar</button>
+          <button id="installBtn" class="btn btn-neutral btn-sm" hidden>⬇ Instalar</button>
         </div>
       </div>
       <div class="free-row">
@@ -70,8 +73,17 @@
         <h2 class="card-title">Fila de espera</h2>
         <div class="queue-stats">
           <span class="stat"><b id="statTotal">0</b> na fila</span>
-          <span class="stat stat-avg">⏱ espera média <b id="statAvg">—</b><button class="avg-reset staff-only" id="resetAvgBtn" title="Resetar média" aria-label="Resetar média">↺</button></span>
+          <span class="stat stat-avg" id="statAvgWrap">⏱ espera média <b id="statAvg">—</b><button class="avg-reset staff-only" id="resetAvgBtn" title="Resetar média" aria-label="Resetar média">↺</button></span>
         </div>
+      </div>
+
+      <!-- Mesas grandes ("mesonas"): aparecem separadas, mas seguem a mesma ordem de chegada -->
+      <div class="queue-group" id="groupMesona" hidden>
+        <div class="qg-head qg-meso">
+          <span id="mesoTitle">🍽 Mesas grandes</span><span class="qg-count" id="statMeso">0</span>
+        </div>
+        <ol class="queue-list" id="queueListMeso"></ol>
+        <div class="queue-empty" id="emptyMeso">Nenhuma mesa grande na fila</div>
       </div>
 
       <div class="queue-group">
@@ -110,8 +122,9 @@
         </label>
 
         <label class="field">
-          <span>Telefone</span>
-          <input id="fTel" name="telefone" type="tel" inputmode="tel" maxlength="20" placeholder="(opcional) para avisar no WhatsApp" />
+          <span id="fTelLabel">Telefone</span>
+          <input id="fTel" name="telefone" type="tel" inputmode="tel" maxlength="20" placeholder="(11) 90000-0000" />
+          <small class="hint" id="fTelHint">Usamos só para avisar quando a sua mesa estiver pronta.</small>
         </label>
 
         <div class="field">
@@ -121,6 +134,7 @@
             <output id="fPessoas" class="step-val">2</output>
             <button type="button" class="step-btn" data-step="1" aria-label="Mais">+</button>
           </div>
+          <small class="hint" id="fMesoHint" hidden></small>
         </div>
 
         <div class="field">
@@ -138,9 +152,65 @@
           <small class="hint">Preferencial: idosos, gestantes, PCD, crianças de colo.</small>
         </div>
 
+        <!-- PET: escolhido pelo próprio cliente no totem -->
+        <label class="check-row" id="petRow">
+          <input type="checkbox" id="fPet" />
+          <span class="check-txt"><b>🐾 Estou com pet</b><small>Temos mesas específicas para clientes com animais.</small></span>
+        </label>
+
+        <!-- TERMOS: obrigatório para entrar na fila -->
+        <label class="check-row" id="termosRow">
+          <input type="checkbox" id="fTermos" />
+          <span class="check-txt">
+            <b>Li e concordo com as regras da fila</b>
+            <small>Inclui o prazo para comparecer e a regra de <b>50% do grupo presente</b>.
+              <button type="button" class="btn-link-inline" id="verTermosBtn">Ler as regras</button></small>
+          </span>
+        </label>
+
         <button type="submit" class="btn btn-primary btn-big" id="joinBtn">Entrar na fila</button>
         <p class="form-msg" id="formMsg" role="status"></p>
       </form>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: REGRAS / TERMOS DE USO ============ -->
+  <div class="modal" id="termosModal" hidden>
+    <div class="modal-box modal-box-lg">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>Regras da fila de espera</h3>
+      <div class="termos-txt" id="termosTxt"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Fechar</button>
+        <button class="btn btn-primary" id="termosAceitar">Li e concordo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: ENTROU NA FILA (posição + QR + link) ============ -->
+  <div class="modal" id="joinedModal" hidden>
+    <div class="modal-box modal-box-lg">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3 id="joinedTitle">✅ Você está na fila!</h3>
+      <div class="joined-box">
+        <div class="joined-pos">
+          <span class="jp-label">Sua posição</span>
+          <b class="jp-num" id="joinedPos">—</b>
+          <span class="jp-sub" id="joinedSub"></span>
+        </div>
+        <div class="joined-qr">
+          <p class="joined-hint">📱 Aponte a câmera do celular para acompanhar a fila em tempo real:</p>
+          <div class="qr-box" id="joinedQr"></div>
+          <div class="joined-actions">
+            <a class="btn btn-sm btn-wa" id="joinedWa" href="#" target="_blank" rel="noopener" hidden>📲 Enviar link no WhatsApp</a>
+            <button class="btn btn-sm btn-ghost btn-neutral" id="joinedCopy">🔗 Copiar link</button>
+          </div>
+          <p class="form-msg" id="joinedMsg"></p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" data-close>Pronto</button>
+      </div>
     </div>
   </div>
 
@@ -153,7 +223,7 @@
       <input id="pinInput" type="password" inputmode="numeric" maxlength="8" class="pin-input" placeholder="PIN" />
       <p class="form-msg" id="pinMsg"></p>
       <div class="modal-actions">
-        <button class="btn btn-ghost" id="pinCancel">Cancelar</button>
+        <button class="btn btn-ghost btn-neutral" id="pinCancel">Cancelar</button>
         <button class="btn btn-primary" id="pinOk">Entrar</button>
       </div>
     </div>
@@ -165,8 +235,27 @@
       <button class="modal-x" data-close aria-label="Fechar">×</button>
       <h3>Chamar cliente</h3>
       <div id="callModalBody" class="call-confirm"></div>
+
+      <div class="call-extra">
+        <label class="check-row check-sm" id="callPetRow">
+          <input type="checkbox" id="callPet" />
+          <span class="check-txt"><b>🐾 Com pet</b><small>Encaminhar para mesa que aceita animais.</small></span>
+        </label>
+        <div class="two-cols">
+          <label class="field" id="callComandaField">
+            <span>🧾 Comanda</span>
+            <input id="callComanda" type="text" maxlength="12" inputmode="numeric" placeholder="nº" />
+          </label>
+          <label class="field" id="callPagerField">
+            <span>🔔 Pager</span>
+            <input id="callPager" type="text" maxlength="12" inputmode="numeric" placeholder="nº" />
+          </label>
+        </div>
+      </div>
+
+      <p class="form-msg" id="callMsg" role="status"></p>
       <div class="modal-actions">
-        <button class="btn btn-ghost" id="callCancel">Cancelar</button>
+        <button class="btn btn-ghost btn-neutral" id="callCancel">Cancelar</button>
         <button class="btn btn-accent" id="callConfirm">🔔 Confirmar chamada</button>
       </div>
     </div>
@@ -179,7 +268,7 @@
       <h3>Resetar tempo médio?</h3>
       <p>Isso zera o cálculo do tempo médio de espera. As pessoas na fila <b>não</b> são afetadas.</p>
       <div class="modal-actions">
-        <button class="btn btn-ghost" data-close>Cancelar</button>
+        <button class="btn btn-ghost btn-neutral" data-close>Cancelar</button>
         <button class="btn btn-primary" id="resetAvgOk">Resetar média</button>
       </div>
     </div>
@@ -194,7 +283,7 @@
       <input id="cfgPinInput" type="password" inputmode="numeric" maxlength="16" class="pin-input" placeholder="Senha" />
       <p class="form-msg" id="cfgPinMsg"></p>
       <div class="modal-actions">
-        <button class="btn btn-ghost" data-close>Cancelar</button>
+        <button class="btn btn-ghost btn-neutral" data-close>Cancelar</button>
         <button class="btn btn-primary" id="cfgPinOk">Entrar</button>
       </div>
     </div>
@@ -205,7 +294,15 @@
     <div class="modal-box modal-box-lg">
       <button class="modal-x" data-close aria-label="Fechar">×</button>
       <h3>⚙ Configurações</h3>
+
+      <div class="cfg-shortcuts">
+        <button class="btn btn-sm btn-primary" id="openRelBtn">📊 Relatório</button>
+        <button class="btn btn-sm btn-ghost btn-neutral" id="openPublicBtn">🔗 Página do cliente</button>
+      </div>
+
       <div class="cfg-form">
+
+        <div class="cfg-sec">Chamada das mesas</div>
 
         <label class="field">
           <span>Tempo máximo após chamar (minutos)</span>
@@ -240,23 +337,74 @@
         </label>
 
         <label class="field">
-          <span>Mensagem padrão do WhatsApp</span>
-          <textarea id="cfgMsg" rows="3"></textarea>
-          <small class="hint">Use {nome}, {restaurante} e {prazo}.</small>
+          <span>Som ao chamar</span>
+          <select id="cfgSom">
+            <option value="sim">Ligado</option>
+            <option value="nao">Desligado</option>
+          </select>
+        </label>
+
+        <div class="cfg-sec">Mesas grandes (mesonas)</div>
+
+        <label class="field">
+          <span>Separar as mesas grandes na tela</span>
+          <select id="cfgMesoAtiva">
+            <option value="sim">Sim, mostrar em uma lista própria</option>
+            <option value="nao">Não</option>
+          </select>
+          <small class="hint">Elas continuam sendo chamadas na mesma ordem de chegada — só ficam separadas para a atendente ver melhor.</small>
         </label>
 
         <label class="field">
-          <span>Avisar por WhatsApp</span>
-          <select id="cfgWhatsMode">
-            <option value="auto">Sim — abre automático ao chamar</option>
-            <option value="toque">Sim — só pelo botão 📲</option>
-            <option value="off">Não usar WhatsApp</option>
+          <span>É mesa grande a partir de quantas pessoas?</span>
+          <input id="cfgMesoMin" type="number" min="2" max="99" />
+        </label>
+
+        <label class="field">
+          <span>Alerta de espera da mesa grande (minutos)</span>
+          <input id="cfgMesoPrazo" type="number" min="1" max="600" />
+          <small class="hint">Na tela da atendente, a mesa grande vai de <b>verde</b> a <b>vermelho</b> conforme se aproxima desse tempo.</small>
+        </label>
+
+        <div class="cfg-sec">Entrada na fila (totem)</div>
+
+        <label class="field">
+          <span>Telefone do cliente</span>
+          <select id="cfgTelObrig">
+            <option value="sim">Obrigatório</option>
+            <option value="nao">Opcional</option>
           </select>
         </label>
 
         <label class="field">
-          <span>Nome do estabelecimento</span>
-          <input id="cfgRest" type="text" maxlength="40" />
+          <span>Pedir aceite das regras (termos de uso)</span>
+          <select id="cfgTermosOn">
+            <option value="sim">Sim, obrigatório</option>
+            <option value="nao">Não pedir</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Texto das regras</span>
+          <textarea id="cfgTermosTxt" rows="7"></textarea>
+          <small class="hint">Use {restaurante} e {prazo}. Uma linha em branco separa os parágrafos.</small>
+        </label>
+
+        <label class="field">
+          <span>Perguntar se está com pet</span>
+          <select id="cfgPetOn">
+            <option value="sim">Sim, mostrar no totem</option>
+            <option value="nao">Não</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Mostrar o tempo médio de espera no totem</span>
+          <select id="cfgMostrarMedia">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar</option>
+          </select>
+          <small class="hint">Na aba da atendente o tempo médio aparece sempre.</small>
         </label>
 
         <label class="field">
@@ -269,12 +417,21 @@
           <input id="cfgMaxP" type="number" min="1" max="99" />
         </label>
 
+        <div class="cfg-sec">Fechamento automático da fila</div>
+
         <label class="field">
-          <span>Som ao chamar</span>
-          <select id="cfgSom">
-            <option value="sim">Ligado</option>
-            <option value="nao">Desligado</option>
+          <span>Fechar a fila sozinha quando encher</span>
+          <select id="cfgAutoFecha">
+            <option value="sim">Sim</option>
+            <option value="nao">Não</option>
           </select>
+          <small class="hint">Ao reabrir, é sempre manual — a fila não abre sozinha de novo.</small>
+        </label>
+
+        <label class="field">
+          <span>Fechar ao chegar em quantas pessoas na fila?</span>
+          <input id="cfgAutoFechaQtd" type="number" min="1" max="999" />
+          <small class="hint">Conta o total de <b>pessoas</b> aguardando (soma o tamanho dos grupos), não a quantidade de grupos.</small>
         </label>
 
         <label class="field">
@@ -285,16 +442,133 @@
           </select>
         </label>
 
+        <div class="cfg-sec">Comanda, pager e WhatsApp</div>
+
+        <label class="field">
+          <span>Campo de comanda (ao chamar)</span>
+          <select id="cfgComandaOn">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Campo de pager (ao chamar)</span>
+          <select id="cfgPagerOn">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Avisar por WhatsApp</span>
+          <select id="cfgWhatsMode">
+            <option value="auto">Sim — abre automático ao chamar</option>
+            <option value="toque">Sim — só pelo botão 📲</option>
+            <option value="off">Não usar WhatsApp</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Mensagem padrão do WhatsApp (mesa pronta)</span>
+          <textarea id="cfgMsg" rows="3"></textarea>
+          <small class="hint">Use {nome}, {restaurante} e {prazo}.</small>
+        </label>
+
+        <label class="field">
+          <span>Mensagem do link de acompanhamento</span>
+          <textarea id="cfgMsgLink" rows="3"></textarea>
+          <small class="hint">Use {nome}, {restaurante}, {posicao} e {link}.</small>
+        </label>
+
+        <div class="cfg-sec">Identificação e acesso</div>
+
+        <label class="field">
+          <span>Nome do estabelecimento</span>
+          <input id="cfgRest" type="text" maxlength="40" />
+        </label>
+
         <label class="field">
           <span>PIN da atendente</span>
           <input id="cfgPinAtend" type="text" inputmode="numeric" maxlength="8" />
+          <small class="hint">Fica guardado só <b>neste aparelho</b> (por segurança, não é enviado para a nuvem).</small>
         </label>
 
         <p class="form-msg" id="cfgMsgStatus"></p>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-ghost" data-close>Cancelar</button>
+        <button class="btn btn-ghost btn-neutral" data-close>Cancelar</button>
         <button class="btn btn-primary" id="cfgSave">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: RELATÓRIO ============ -->
+  <div class="modal" id="relModal" hidden>
+    <div class="modal-box modal-box-full">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>📊 Relatório de atendimentos</h3>
+
+      <div class="rel-bar">
+        <label class="rel-filter">
+          <span>Período</span>
+          <select id="relPeriodo">
+            <option value="hoje">Hoje</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="tudo">Tudo</option>
+          </select>
+        </label>
+        <div class="rel-actions">
+          <button class="btn btn-sm btn-primary" id="relExport">⬇ Exportar CSV</button>
+          <button class="btn btn-sm btn-danger" id="relClear">🗑 Limpar dados</button>
+        </div>
+      </div>
+
+      <div class="rel-cards" id="relCards"></div>
+
+      <div class="rel-table-wrap">
+        <table class="rel-table">
+          <thead>
+            <tr>
+              <th>Nome</th><th>Telefone</th><th>Pessoas</th><th>Tipo</th><th>Pet</th>
+              <th>Comanda</th><th>Pager</th><th>Entrou</th><th>Chamado</th><th>Sentou</th>
+              <th>Espera até chamar</th><th>Tempo total</th><th>Perdeu a vez</th><th>Situação</th>
+            </tr>
+          </thead>
+          <tbody id="relBody"></tbody>
+        </table>
+        <div class="queue-empty" id="relEmpty" hidden>Nenhum atendimento nesse período.</div>
+      </div>
+      <p class="form-msg" id="relMsg"></p>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: CONFIRMAR LIMPEZA DO RELATÓRIO ============ -->
+  <div class="modal" id="relClearModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>Limpar os dados do relatório?</h3>
+      <p id="relClearTxt"></p>
+      <p><b>Quem ainda está na fila (aguardando ou chamado) não é apagado.</b> Esta ação não pode ser desfeita.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Cancelar</button>
+        <button class="btn btn-danger" id="relClearOk">Apagar mesmo assim</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: LINK/QR DA PÁGINA DO CLIENTE ============ -->
+  <div class="modal" id="publicModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>🔗 Página do cliente</h3>
+      <p>Tela só de leitura com a fila e as mesas sendo chamadas. Imprima este QR Code e deixe no balcão, se quiser.</p>
+      <div class="qr-box qr-box-lg" id="publicQr"></div>
+      <p class="public-url" id="publicUrl"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" id="publicCopy">🔗 Copiar link</button>
+        <button class="btn btn-primary" data-close>Fechar</button>
       </div>
     </div>
   </div>
@@ -303,4 +577,5 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
+<script src="./qr.js"></script>
 <script src="./app.js"></script>

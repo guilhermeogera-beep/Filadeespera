@@ -88,7 +88,7 @@ window.FILA_CONFIG = {
   // --- LOGIN por perfil (adm / atendente / garçom) ---
   // false = app funciona como sempre (com os PINs). Só ligue DEPOIS de criar
   // os usuários no Supabase e testar a entrada — veja o README.
-  loginAtivo: false,
+  loginAtivo: true,
 
   // A equipe digita só "atendente", "garcom" ou "adm". O app completa com o
   // domínio abaixo para formar o e-mail que o Supabase exige.

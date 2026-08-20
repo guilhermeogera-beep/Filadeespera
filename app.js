@@ -1001,7 +1001,10 @@
   }
 
   function atualizarAvisoBusca(buscando, achou, total) {
-    const info = $("#buscaInfo"), x = $("#buscaLimpar");
+    const info = $("#buscaInfo"), x = $("#buscaLimpar"), campo = $("#buscaInput");
+    // o navegador às vezes preenche o campo sozinho (autocompletar): manda o
+    // que está guardado aqui, que é o que a atendente realmente digitou
+    if (campo && campo.value !== busca && document.activeElement !== campo) campo.value = busca;
     if (x) x.hidden = !busca;
     if (!info) return;
     info.hidden = !buscando;

@@ -128,7 +128,10 @@
       <!-- Busca: um campo só, que procura em tudo (nome, telefone, comanda, pager, mesa) -->
       <div class="busca-bar staff-only">
         <span class="busca-lupa" aria-hidden="true">🔎</span>
-        <input id="buscaInput" type="search" autocomplete="off" autocapitalize="none" spellcheck="false"
+        <!-- name esquisito + autocomplete=off: sem isso o navegador acha que é um
+             campo de usuário e preenche sozinho com o último login digitado -->
+        <input id="buscaInput" type="text" name="busca-fila-x" autocomplete="off"
+               autocapitalize="none" spellcheck="false" inputmode="search"
                placeholder="Procurar por nome, telefone, comanda, pager ou mesa" aria-label="Procurar na fila" />
         <button type="button" id="buscaLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
       </div>
@@ -507,7 +510,6 @@
           <input id="cfgPrazo" type="number" min="1" max="60" />
           <small class="hint">Depois desse tempo, a pessoa vai para o fim da fila.</small>
         </label>
-
         <label class="field">
           <span>Mover para o fim da fila automaticamente</span>
           <select id="cfgAutoFim">
@@ -515,7 +517,6 @@
             <option value="nao">Não (só manual)</option>
           </select>
         </label>
-
         <label class="field">
           <span>Prioridade do atendimento</span>
           <select id="cfgAlt">
@@ -525,7 +526,6 @@
             <option value="pref">Preferencial sempre primeiro</option>
           </select>
         </label>
-
         <label class="field">
           <span>Tipo de chamado (tamanho da mesa)</span>
           <select id="cfgRegra">
@@ -533,7 +533,6 @@
             <option value="ate">Exato ou, se não houver, um grupo menor</option>
           </select>
         </label>
-
         <label class="field">
           <span>Som ao chamar</span>
           <select id="cfgSom">
@@ -541,8 +540,16 @@
             <option value="nao">Desligado</option>
           </select>
         </label>
-
-        <div class="cfg-sec">Mesas grandes (mesonas)</div>
+        <label class="field">
+          <span>Perguntar a mesa ao marcar "Sentou"</span>
+          <select id="cfgPerguntarMesa">
+            <option value="opcional">Sim — pode deixar em branco</option>
+            <option value="obrigatorio">Sim — é obrigatório informar</option>
+            <option value="nao">Não perguntar</option>
+          </select>
+          <small class="hint">Quando a chamada sai de uma mesa lançada pelo garçom, o número já vem preenchido.</small>
+        </label>
+        <div class="cfg-sec">Filas e alerta de espera</div>
 
         <label class="field">
           <span>Separar as mesas grandes na tela</span>
@@ -552,30 +559,25 @@
           </select>
           <small class="hint">Elas continuam sendo chamadas na mesma ordem de chegada — só ficam separadas para a atendente ver melhor.</small>
         </label>
-
         <label class="field">
           <span>É mesa grande a partir de quantas pessoas?</span>
           <input id="cfgMesoMin" type="number" min="2" max="99" />
         </label>
-
         <label class="field">
           <span>Alerta de espera da mesa grande (minutos)</span>
           <input id="cfgMesoPrazo" type="number" min="0" max="600" />
           <small class="hint">Na tela da atendente, a mesa grande vai de <b>verde</b> a <b>vermelho</b> conforme se aproxima desse tempo.</small>
         </label>
-
         <label class="field">
           <span>Alerta de espera do preferencial (minutos)</span>
           <input id="cfgPrefPrazo" type="number" min="0" max="600" />
           <small class="hint">Mesma cor, na fila preferencial. Use <b>0</b> para não colorir.</small>
         </label>
-
         <label class="field">
           <span>Alerta de espera da fila normal (minutos)</span>
           <input id="cfgNormalPrazo" type="number" min="0" max="600" />
           <small class="hint">Mesma cor, na fila normal. Use <b>0</b> para não colorir.</small>
         </label>
-
         <div class="cfg-sec">Entrada na fila (totem)</div>
 
         <label class="field">
@@ -585,7 +587,6 @@
             <option value="nao">Opcional</option>
           </select>
         </label>
-
         <label class="field">
           <span>Pedir aceite das regras (termos de uso)</span>
           <select id="cfgTermosOn">
@@ -593,13 +594,11 @@
             <option value="nao">Não pedir</option>
           </select>
         </label>
-
         <label class="field">
           <span>Texto das regras</span>
           <textarea id="cfgTermosTxt" rows="7"></textarea>
           <small class="hint">Use {restaurante} e {prazo}. Uma linha em branco separa os parágrafos.</small>
         </label>
-
         <label class="field">
           <span>Perguntar se está com pet</span>
           <select id="cfgPetOn">
@@ -607,7 +606,6 @@
             <option value="nao">Não</option>
           </select>
         </label>
-
         <label class="field">
           <span>Perguntar "não sentar na área pet"</span>
           <select id="cfgSemPetOn">
@@ -617,6 +615,15 @@
           <small class="hint">Para quem tem alergia ou receio de animais. Ao chamar, essas pessoas
             nunca são encaminhadas para uma mesa marcada como "aceita pet".</small>
         </label>
+        <label class="field">
+          <span>Máximo de pessoas por grupo</span>
+          <input id="cfgMaxP" type="number" min="1" max="99" />
+        </label>
+        <label class="field">
+          <span>Mensagem de boas-vindas no totem</span>
+          <input id="cfgBoas" type="text" maxlength="80" placeholder="(opcional) ex.: Bem-vindo à Quinta do Aveiro!" />
+        </label>
+        <div class="cfg-sec">O que o cliente enxerga</div>
 
         <label class="field">
           <span>Como mostrar a fila (totem e página do cliente)</span>
@@ -626,7 +633,6 @@
           </select>
           <small class="hint">Na aba da atendente a fila fica <b>sempre separada</b>.</small>
         </label>
-
         <label class="field">
           <span>Mostrar a hora de chegada de cada pessoa</span>
           <select id="cfgMostrarHora">
@@ -635,7 +641,6 @@
           </select>
           <small class="hint">Vale para o totem e a página do cliente. Na aba da atendente aparece sempre.</small>
         </label>
-
         <label class="field">
           <span>Mostrar há quanto tempo cada um espera</span>
           <select id="cfgMostrarTempo">
@@ -644,7 +649,6 @@
           </select>
           <small class="hint">Vale para o totem e a página do cliente. Na aba da atendente aparece sempre.</small>
         </label>
-
         <label class="field">
           <span>Mostrar o tempo médio de espera no totem</span>
           <select id="cfgMostrarMedia">
@@ -653,17 +657,6 @@
           </select>
           <small class="hint">Na aba da atendente o tempo médio aparece sempre.</small>
         </label>
-
-        <label class="field">
-          <span>Mensagem de boas-vindas no totem</span>
-          <input id="cfgBoas" type="text" maxlength="80" placeholder="(opcional) ex.: Bem-vindo à Quinta do Aveiro!" />
-        </label>
-
-        <label class="field">
-          <span>Máximo de pessoas por grupo</span>
-          <input id="cfgMaxP" type="number" min="1" max="99" />
-        </label>
-
         <div class="cfg-sec">Fechamento automático da fila</div>
 
         <label class="field">
@@ -674,13 +667,11 @@
           </select>
           <small class="hint">Ao reabrir, é sempre manual — a fila não abre sozinha de novo.</small>
         </label>
-
         <label class="field">
           <span>Fechar ao chegar em quantas pessoas na fila?</span>
           <input id="cfgAutoFechaQtd" type="number" min="1" max="999" />
           <small class="hint">Conta o total de <b>pessoas</b> aguardando (soma o tamanho dos grupos), não a quantidade de grupos.</small>
         </label>
-
         <label class="field">
           <span>Botão de abrir/fechar fila (no cabeçalho)</span>
           <select id="cfgMostrarFila">
@@ -688,8 +679,7 @@
             <option value="nao">Ocultar</option>
           </select>
         </label>
-
-        <div class="cfg-sec">Comanda, pager e WhatsApp</div>
+        <div class="cfg-sec">Comanda e pager</div>
 
         <label class="field">
           <span>Campo de comanda (ao chamar)</span>
@@ -698,7 +688,6 @@
             <option value="nao">Ocultar</option>
           </select>
         </label>
-
         <label class="field">
           <span>Campo de pager (ao chamar)</span>
           <select id="cfgPagerOn">
@@ -706,6 +695,7 @@
             <option value="nao">Ocultar</option>
           </select>
         </label>
+        <div class="cfg-sec">WhatsApp e avisos</div>
 
         <label class="field">
           <span>Avisar por WhatsApp</span>
@@ -715,19 +705,16 @@
             <option value="off">Não usar WhatsApp</option>
           </select>
         </label>
-
         <label class="field">
           <span>Mensagem padrão do WhatsApp (mesa pronta)</span>
           <textarea id="cfgMsg" rows="3"></textarea>
           <small class="hint">Use {nome}, {restaurante} e {prazo}.</small>
         </label>
-
         <label class="field">
           <span>Mensagem do link de acompanhamento</span>
           <textarea id="cfgMsgLink" rows="3"></textarea>
           <small class="hint">Use {nome}, {restaurante}, {posicao} e {link}.</small>
         </label>
-
         <label class="field">
           <span>Botão "🍽 Pedido pronto"</span>
           <select id="cfgAvisoPedido">
@@ -736,36 +723,22 @@
           </select>
           <small class="hint">Avisa o cliente no WhatsApp que o pedido pode ser retirado.</small>
         </label>
-
         <label class="field">
           <span>Mensagem do pedido pronto</span>
           <textarea id="cfgMsgPedido" rows="3"></textarea>
           <small class="hint">Use {nome}, {restaurante}, {comanda} e {pager}.</small>
         </label>
-
-        <div class="cfg-sec">Identificação e acesso</div>
+        <div class="cfg-sec">Equipe e acesso</div>
 
         <label class="field">
           <span>Nome do estabelecimento</span>
           <input id="cfgRest" type="text" maxlength="40" />
         </label>
-
         <label class="field">
           <span>PIN da atendente</span>
           <input id="cfgPinAtend" type="text" inputmode="numeric" maxlength="8" />
           <small class="hint">Fica guardado só <b>neste aparelho</b> (por segurança, não é enviado para a nuvem).</small>
         </label>
-
-        <label class="field">
-          <span>Perguntar a mesa ao marcar "Sentou"</span>
-          <select id="cfgPerguntarMesa">
-            <option value="opcional">Sim — pode deixar em branco</option>
-            <option value="obrigatorio">Sim — é obrigatório informar</option>
-            <option value="nao">Não perguntar</option>
-          </select>
-          <small class="hint">Quando a chamada sai de uma mesa lançada pelo garçom, o número já vem preenchido.</small>
-        </label>
-
         <label class="field">
           <span>Aba do garçom (lançar mesas livres)</span>
           <select id="cfgGarcomOn">
@@ -774,7 +747,6 @@
           </select>
           <small class="hint">O garçom avisa quais mesas vagaram; a atendente vê o resumo e chama o próximo.</small>
         </label>
-
         <label class="field">
           <span>PIN do garçom</span>
           <input id="cfgPinGarcom" type="text" inputmode="numeric" maxlength="8" placeholder="deixe vazio para não pedir" />
@@ -782,7 +754,6 @@
             Se for <b>igual ao da atendente</b>, quem souber um entra nos dois — use números
             diferentes se quiser separar.</small>
         </label>
-
         <p class="form-msg" id="cfgMsgStatus"></p>
       </div>
       <div class="modal-actions">

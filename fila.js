@@ -1,8 +1,7 @@
 /* ============================================================
    fila.js — Página PÚBLICA de acompanhamento (só leitura)
-   Mostra a fila inteira (preferencial + normal + mesas grandes,
-   tudo junto na ordem de chegada) e as mesas sendo chamadas.
-   Nenhum botão de ação: o cliente só acompanha.
+   Mostra APENAS a situação de quem abriu o link (?id=...).
+   Ninguém vê o nome nem a posição de outro cliente.
    ============================================================ */
 (function () {
   "use strict";
@@ -114,7 +113,6 @@
 
     $("#brandName").textContent = CFG.marca || "Fila Fácil";
     $("#brandSub").textContent = CFG.restaurante || "";
-    $("#statTotal").textContent = w.length;
 
     // tempo médio: segue a mesma configuração do totem
     const avg = avgWaitMs();
@@ -133,22 +131,19 @@
           <div class="me-sub">Dirija-se à recepção agora. Você foi chamado às ${fmtClock(me.chamado_em)}
           e tem até ${esc(String(CFG.prazoComparecer || 5))} minutos para comparecer.</div>`;
       } else if (me.status === STATUS.AGUARDANDO) {
-        const naFrente = pos - 1;
-        // quem de fato disputa uma mesa deste tamanho são os grupos do mesmo
-        // tamanho que chegaram antes — a chamada NÃO segue a ordem de chegada
+        // O que realmente conta para ele: quantos grupos DO MESMO TAMANHO estão
+        // na frente — porque as mesas são chamadas pelo tamanho do grupo.
         const mesmos = w.slice(0, Math.max(0, pos - 1))
           .filter((r) => Number(r.pessoas) === Number(me.pessoas)).length;
-        const frase = naFrente === 0
-          ? "Ninguém chegou antes de você"
-          : `${naFrente} ${naFrente === 1 ? "grupo chegou" : "grupos chegaram"} antes de você`;
-        corpo = `<div class="me-label">Olá, ${esc(firstName(me.nome))} — ordem de chegada</div>
+        const qtd = `${me.pessoas} ${me.pessoas === 1 ? "pessoa" : "pessoas"}`;
+        const frente = mesmos === 0
+          ? `Você é o <b>próximo</b> para uma mesa de ${qtd}`
+          : `${mesmos} ${mesmos === 1 ? "grupo" : "grupos"} de ${qtd} na sua frente`;
+        corpo = `<div class="me-label">Olá, ${esc(firstName(me.nome))} — sua posição</div>
           <div class="me-big">${pos}º</div>
-          <div class="me-sub">${frase}
-            • ${me.pessoas} ${me.pessoas === 1 ? "pessoa" : "pessoas"}${
-              CFG.mostrarTempoEspera !== false ? ` • esperando há <b data-since="${me.criado_em}">agora</b>` : ""}</div>
-          <div class="me-note">A chamada <b>não</b> segue esta ordem: as mesas saem conforme o
-            tamanho do grupo e a preferência legal. Grupos de ${me.pessoas}
-            ${me.pessoas === 1 ? "pessoa" : "pessoas"} na sua frente: <b>${mesmos}</b>.</div>`;
+          <div class="me-sub">${frente}${
+            CFG.mostrarTempoEspera !== false ? ` • esperando há <b data-since="${me.criado_em}">agora</b>` : ""}</div>
+          <div class="me-note">A ordem pode mudar conforme o tamanho das mesas que vagam.</div>`;
       } else {
         corpo = `<div class="me-big">Atendimento encerrado</div>
           <div class="me-sub">Este código não está mais na fila. Bom apetite! 🍽️</div>`;
@@ -157,12 +152,12 @@
       meCard.hidden = false;
       meCard.classList.toggle("me-chamado", me.status === STATUS.CHAMADO);
       $("#semCodigo").hidden = true;
-      $("#resumoCard").hidden = false;
+      $("#resumoCard").hidden = !mostrarMedia;
     } else {
       meCard.hidden = true;
       // sem código no link (ou código que não está mais na fila): não há o que mostrar
       $("#semCodigo").hidden = false;
-      $("#resumoCard").hidden = !meuId;
+      $("#resumoCard").hidden = true;
     }
 
     tick();

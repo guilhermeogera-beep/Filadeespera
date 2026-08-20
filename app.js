@@ -8,6 +8,9 @@
   const CFG = window.FILA_CONFIG || {};
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   const MIN_P = 1, MAX_P = 20;
+  // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
+  // No balcão a atendente lança o tamanho real do grupo, sem teto artificial.
+  const TETO_EQUIPE = 99;
   const LS_KEY = "fila_espera_v1";
   const SESSION_PIN = "fila_staff_ok";
 
@@ -744,7 +747,7 @@
     $("#edAniversario").value = r.aniversario || "";
     $("#edAniversarioField").hidden = (CFG.campoAniversario || "nao") === "nao";
     $("#edPessoas").value = Number(r.pessoas) || 1;
-    $("#edPessoas").max = Number(CFG.maxPessoas) || MAX_P;
+    $("#edPessoas").max = TETO_EQUIPE;
     $("#edTipo").value = r.preferencial ? "preferencial" : "normal";
     $("#edComanda").value = r.comanda || "";
     $("#edPager").value = r.pager || "";
@@ -765,7 +768,7 @@
     const msg = $("#edMsg");
     const nome = $("#edNome").value.trim();
     if (!nome) { msg.textContent = "Digite o nome."; msg.className = "form-msg err"; return; }
-    const max = Number(CFG.maxPessoas) || MAX_P;
+    const max = TETO_EQUIPE;
     const patch = {
       nome,
       telefone: $("#edTel").value.trim(),
@@ -916,7 +919,7 @@
     if (!m) return;
     mesaSelecionada = (mesaSelecionada === id) ? null : id;
     if (mesaSelecionada) {
-      mesa = Math.max(MIN_P, Math.min(Number(CFG.maxPessoas) || MAX_P, Number(m.lugares) || 2));
+      mesa = Math.max(MIN_P, Math.min(TETO_EQUIPE, Number(m.lugares) || 2));
       $("#fMesa").textContent = mesa;
       const alvo = $(`input[name="mesapet"][value="${m.pet ? "sim" : "nao"}"]`);
       if (alvo) alvo.checked = true;
@@ -1055,25 +1058,47 @@
   // conferência simples de e-mail: tem @, tem ponto depois, sem espaços
   const emailValido = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s || "").trim());
 
-  // aniversário: guardamos só o dia e o mês, sempre como "dd/mm".
-  // Aceita 7/3, 0703, 07/03/1990 — e devolve "" se a data não existir.
+  // aniversário: guardamos dia, mês e ano, sempre como "dd/mm/aaaa".
+  // Aceita 7/3/1990, 07031990, 7-3-90 — e devolve "" se a data não existir.
+  // O ano permite o estudo de faixa etária do relatório.
   function normalizaAniversario(s) {
     const txt = String(s == null ? "" : s).trim();
     if (!txt) return "";
-    let dia, mes;
+    let dia, mes, ano;
     const partes = txt.split(/[^0-9]+/).filter(Boolean);
-    if (partes.length >= 2) {            // veio com separador: 7/3, 07-03, 7.3.1990
-      dia = +partes[0]; mes = +partes[1];
-    } else {                             // veio tudo junto: 703, 0703, 07031990
-      const d = partes[0] || "";
-      if (d.length < 3) return "";       // falta o mês
-      dia = d.length === 3 ? +d.slice(0, 1) : +d.slice(0, 2);
-      mes = d.length === 3 ? +d.slice(1)    : +d.slice(2, 4);
+    if (partes.length >= 3) {                  // com separador: 7/3/1990
+      dia = +partes[0]; mes = +partes[1]; ano = +partes[2];
+    } else if (partes.length === 1) {           // tudo junto: 07031990 ou 070390
+      const d = partes[0];
+      if (d.length !== 8 && d.length !== 6) return "";
+      dia = +d.slice(0, 2); mes = +d.slice(2, 4); ano = +d.slice(4);
+    } else {
+      return "";                                // veio só dia e mês: falta o ano
     }
+    if (ano < 100) ano += ano <= (new Date().getFullYear() % 100) ? 2000 : 1900;
+    const hoje = new Date();
+    if (!(ano >= 1900 && ano <= hoje.getFullYear())) return "";
     if (!(mes >= 1 && mes <= 12)) return "";
-    const limite = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1];
+    const bissexto = (ano % 4 === 0 && ano % 100 !== 0) || ano % 400 === 0;
+    const limite = [31, bissexto ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1];
     if (!(dia >= 1 && dia <= limite)) return "";
-    return String(dia).padStart(2, "0") + "/" + String(mes).padStart(2, "0");
+    // data no futuro não é aniversário de ninguém
+    if (new Date(ano, mes - 1, dia) > hoje) return "";
+    return String(dia).padStart(2, "0") + "/" + String(mes).padStart(2, "0") + "/" + ano;
+  }
+
+  // Idade a partir do "dd/mm/aaaa" guardado. Registros antigos, gravados
+  // só com dia e mês, devolvem null.
+  function idadeDe(aniversario) {
+    const p = String(aniversario || "").split("/");
+    if (p.length !== 3) return null;
+    const [d, m, a] = p.map(Number);
+    if (!a) return null;
+    const hoje = new Date();
+    let idade = hoje.getFullYear() - a;
+    const fezAniver = hoje.getMonth() + 1 > m || (hoje.getMonth() + 1 === m && hoje.getDate() >= d);
+    if (!fezAniver) idade -= 1;
+    return idade >= 0 && idade <= 130 ? idade : null;
   }
 
   function combinaBusca(r) {
@@ -1837,7 +1862,7 @@
     // stepper de lugares (pop-up do garçom)
     $$(".step-btn[data-mesastep]").forEach((b) =>
       b.addEventListener("click", () => {
-        const max = Number(CFG.maxPessoas) || MAX_P;
+        const max = TETO_EQUIPE;
         lugaresNovaMesa = Math.min(max, Math.max(MIN_P, lugaresNovaMesa + Number(b.dataset.mesastep)));
         $("#mLugares").textContent = lugaresNovaMesa;
       })
@@ -1939,7 +1964,7 @@
     // stepper pessoas (formulário)
     $$(".step-btn[data-step]").forEach((b) =>
       b.addEventListener("click", () => {
-        const max = Number(CFG.maxPessoas) || MAX_P;
+        const max = isStaff() ? TETO_EQUIPE : (Number(CFG.maxPessoas) || MAX_P);
         pessoas = Math.min(max, Math.max(MIN_P, pessoas + Number(b.dataset.step)));
         $("#fPessoas").textContent = pessoas;
         prepararFormulario();
@@ -1948,7 +1973,7 @@
     // stepper mesa (atendente)
     $$(".step-btn[data-freestep]").forEach((b) =>
       b.addEventListener("click", () => {
-        const max = Number(CFG.maxPessoas) || MAX_P;
+        const max = TETO_EQUIPE;
         mesa = Math.min(max, Math.max(MIN_P, mesa + Number(b.dataset.freestep)));
         $("#fMesa").textContent = mesa;
       })
@@ -1997,8 +2022,8 @@
       const anivTxt = $("#fAniversario").value.trim();
       const modoAniv = CFG.campoAniversario || "nao";
       if (modoAniv !== "nao") {
-        if (modoAniv === "obrigatorio" && !anivTxt) return erro("Digite a data de aniversário (dia e mês).");
-        if (anivTxt && !normalizaAniversario(anivTxt)) return erro("Aniversário inválido — digite o dia e o mês, como 07/03.");
+        if (modoAniv === "obrigatorio" && !anivTxt) return erro("Digite a data de aniversário (dia, mês e ano).");
+        if (anivTxt && !normalizaAniversario(anivTxt)) return erro("Aniversário inválido — digite dia, mês e ano, como 07/03/1990.");
       }
       if (precisaTermos && !$("#fTermos").checked) return erro("É preciso aceitar as regras da fila para entrar.");
       if (!isStaff() && CFG.filaFechada === true) return erro("A fila está fechada no momento.");
@@ -2306,6 +2331,7 @@
         <td>${esc(r.telefone || "—")}</td>
         <td>${esc(r.email || "—")}</td>
         <td>${esc(r.aniversario || "—")}</td>
+        <td>${idadeDe(r.aniversario) == null ? "—" : idadeDe(r.aniversario) + " anos"}</td>
         <td>${r.pessoas}</td>
         <td>${r.preferencial ? "★ Pref." : "Normal"}${isMesona(r) ? " / 🍽 grande" : ""}</td>
         <td>${r.pet ? "🐾 sim" : (r.sem_area_pet ? "🚫 sem área pet" : "não")}</td>
@@ -2355,10 +2381,10 @@
       return;
     }
     const min = (ms) => (ms == null ? "" : String(Math.round(ms / 60000)).replace(".", ","));
-    const cab = ["Nome", "Telefone", "E-mail", "Aniversario", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
+    const cab = ["Nome", "Telefone", "E-mail", "Aniversario", "Idade", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
       "Mesa", "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera ate chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situacao"];
     const linhas = relCache.map((r) => [
-      r.nome, r.telefone || "", r.email || "", r.aniversario || "", r.pessoas,
+      r.nome, r.telefone || "", r.email || "", r.aniversario || "", (idadeDe(r.aniversario) == null ? "" : idadeDe(r.aniversario)), r.pessoas,
       r.preferencial ? "Preferencial" : "Normal",
       isMesona(r) ? "Sim" : "Nao",
       r.pet ? "Sim" : (r.sem_area_pet ? "Nao - sem area pet" : "Nao"),

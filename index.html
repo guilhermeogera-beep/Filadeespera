@@ -213,8 +213,8 @@
         <label class="field" id="fAniversarioField" hidden>
           <span id="fAniversarioLabel">Aniversário</span>
           <input id="fAniversario" name="aniversario" type="text" inputmode="numeric"
-                 maxlength="5" placeholder="dia/mês (ex.: 07/03)" />
-          <small class="hint" id="fAniversarioHint">Só o dia e o mês — para a casa lembrar de você na data.</small>
+                 maxlength="10" placeholder="dia/mês/ano (ex.: 07/03/1990)" />
+          <small class="hint" id="fAniversarioHint">Dia, mês e ano — a casa lembra de você na data.</small>
         </label>
 
         <div class="field">
@@ -464,7 +464,7 @@
 
           <label class="field" id="edAniversarioField">
             <span>Aniversário</span>
-            <input id="edAniversario" type="text" inputmode="numeric" maxlength="5" placeholder="dia/mês (ex.: 07/03)" />
+            <input id="edAniversario" type="text" inputmode="numeric" maxlength="10" placeholder="dia/mês/ano (ex.: 07/03/1990)" />
           </label>
         <div class="two-cols">
           <label class="field" id="edComandaField">
@@ -668,6 +668,7 @@
         <label class="field">
           <span>Máximo de pessoas por grupo</span>
           <input id="cfgMaxP" type="number" min="1" max="99" />
+          <small class="hint">Vale só para o totem. No balcão a atendente lança o tamanho real do grupo.</small>
         </label>
         <label class="field">
           <span>Mensagem de boas-vindas no totem</span>
@@ -841,7 +842,7 @@
         <table class="rel-table">
           <thead>
             <tr>
-              <th>Nome</th><th>Telefone</th><th>E-mail</th><th>Aniversário</th><th>Pessoas</th><th>Tipo</th><th>Pet</th>
+              <th>Nome</th><th>Telefone</th><th>E-mail</th><th>Aniversário</th><th>Idade</th><th>Pessoas</th><th>Tipo</th><th>Pet</th>
               <th>Mesa</th><th>Comanda</th><th>Pager</th><th>Entrou</th><th>Chamado</th><th>Sentou</th><th>Pedido avisado</th>
               <th>Espera até chamar</th><th>Tempo total</th><th>Perdeu a vez</th><th>Situação</th>
             </tr>

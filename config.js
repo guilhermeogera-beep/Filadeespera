@@ -85,6 +85,21 @@ window.FILA_CONFIG = {
   msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Por favor, compareça à recepção em até {prazo} minutos para não perder a vez. Obrigado!",
   msgLink: "Olá {nome}! Você entrou na fila da {restaurante} 🍽️ Sua posição no momento: {posicao}. Acompanhe a fila em tempo real por aqui: {link}",
 
+  // --- LOGIN por perfil (adm / atendente / garçom) ---
+  // false = app funciona como sempre (com os PINs). Só ligue DEPOIS de criar
+  // os usuários no Supabase e testar a entrada — veja o README.
+  loginAtivo: false,
+
+  // A equipe digita só "atendente", "garcom" ou "adm". O app completa com o
+  // domínio abaixo para formar o e-mail que o Supabase exige.
+  //   atendente  ->  atendente@filafacil.local
+  dominioLogin: "filafacil.local",
+
+  // O Supabase exige senha de 6+ caracteres, mas a equipe usa 4 dígitos.
+  // O app junta este final à senha digitada. Ou seja: quem digita "4321"
+  // está enviando "4321-filafacil" — que é a senha a cadastrar no painel.
+  sufixoSenha: "-filafacil",
+
   // --- Aba do GARÇOM (lança as mesas que vagaram) ---
   garcomAtivo: true,      // mostra a aba "Garçom" e o painel de mesas livres
   pinGarcom: "4321",      // PIN da aba do garçom (deixe vazio para abrir sem senha)

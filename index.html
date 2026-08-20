@@ -10,6 +10,35 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <link rel="stylesheet" href="./styles.css" />
 
+<!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
+<div class="login-screen" id="loginScreen" hidden>
+  <div class="login-box">
+    <img class="login-logo" src="./icons/icon-192.png" alt="" />
+    <h1 class="login-tit">Fila Fácil</h1>
+    <p class="login-sub" id="loginSub">Quinta do Aveiro</p>
+
+    <form class="login-form" id="loginForm" autocomplete="on">
+      <label class="field">
+        <span>Usuário</span>
+        <input id="loginEmail" type="text" autocomplete="username" autocapitalize="none"
+               spellcheck="false" placeholder="atendente, garcom ou adm" required />
+      </label>
+      <label class="field">
+        <span>Senha</span>
+        <input id="loginSenha" type="password" inputmode="numeric" autocomplete="current-password"
+               placeholder="sua senha" required />
+      </label>
+      <button type="submit" class="btn btn-primary btn-big" id="loginBtn">Entrar</button>
+      <p class="form-msg" id="loginMsg" role="status"></p>
+    </form>
+
+    <div class="login-totem">
+      <p>Este aparelho é o <b>totem do salão</b>?</p>
+      <button type="button" class="btn btn-neutral" id="loginTotemBtn">📺 Usar como totem (sem senha)</button>
+    </div>
+  </div>
+</div>
+
 <div id="app" data-view="totem">
 
   <!-- ================= TOPO ================= -->
@@ -29,7 +58,9 @@
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
       <button id="qrBtn" class="icon-btn-h staff-only" title="QR Code da página do cliente" aria-label="QR Code da página do cliente">📱</button>
+      <button id="relBtn" class="icon-btn-h staff-only" title="Relatório" aria-label="Relatório">📊</button>
       <button id="cfgBtn" class="icon-btn-h staff-only" title="Configurações" aria-label="Configurações">⚙</button>
+      <button id="sairBtn" class="icon-btn-h" title="Sair" aria-label="Sair" hidden>⏻</button>
     </div>
   </header>
 

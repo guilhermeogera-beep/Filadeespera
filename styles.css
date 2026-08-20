@@ -507,3 +507,27 @@ button{font-family:inherit}
 .mesa-obs{color:var(--muted);font-size:.85rem;font-style:italic}
 .q-chip.chip-mesa{background:var(--meso-soft);color:#2c4349}
 .mesa-sem-num{color:var(--muted);font-weight:600;font-style:italic;font-size:.9rem}
+
+/* ---------------- TELA DE LOGIN ---------------- */
+.login-screen{
+  position:fixed;inset:0;z-index:60;background:var(--brand);color:#fff;
+  display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;
+}
+.login-screen[hidden]{display:none !important}
+.login-box{
+  background:var(--card);color:var(--ink);border-radius:20px;padding:28px 24px;
+  width:100%;max-width:400px;box-shadow:var(--shadow-lg);text-align:center;
+}
+.login-logo{width:96px;height:96px;border-radius:18px;margin:0 auto 12px;display:block;border:1px solid var(--line)}
+.login-tit{margin:0;font-size:1.5rem;color:var(--brand-dark)}
+.login-sub{margin:2px 0 20px;color:var(--muted);font-size:.9rem}
+.login-form{display:flex;flex-direction:column;gap:14px;text-align:left}
+.login-form input{
+  border:1.5px solid var(--line);border-radius:12px;padding:14px;font-size:1.05rem;
+  background:#FAFAF8;width:100%;font-family:inherit;
+}
+.login-form input:focus{outline:none;border-color:var(--brand);background:#fff}
+.login-form .form-msg{text-align:center;margin:0}
+.login-totem{margin-top:22px;padding-top:18px;border-top:1.5px dashed var(--line)}
+.login-totem p{margin:0 0 10px;color:var(--muted);font-size:.88rem}
+.login-totem .btn{width:100%;min-height:48px}

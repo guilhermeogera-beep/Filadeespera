@@ -81,6 +81,24 @@ alter table public.mesas_livres add column if not exists numeros text;
 
 
 -- ---------------------------------------------------------------------
+--  3b. USUÁRIOS E PERFIS (para o login por perfil)
+-- ---------------------------------------------------------------------
+--  Só é usada quando você ligar `loginAtivo: true` no config.js.
+--  Criar a tabela agora não muda nada no app.
+create table if not exists public.fila_usuarios (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  nome text,
+  papel text not null default 'atendente',   -- adm | atendente | garcom
+  criado_em timestamptz not null default now()
+);
+alter table public.fila_usuarios enable row level security;
+drop policy if exists "usuarios_ler_proprio" on public.fila_usuarios;
+-- cada pessoa só enxerga o próprio perfil
+create policy "usuarios_ler_proprio" on public.fila_usuarios
+  for select using (auth.uid() = user_id);
+
+
+-- ---------------------------------------------------------------------
 --  4. ÍNDICES (deixam as consultas do app rápidas)
 -- ---------------------------------------------------------------------
 create index if not exists fila_espera_status_idx  on public.fila_espera (status);
@@ -183,6 +201,9 @@ from (
   select 'tabela mesas_livres',
          to_regclass('public.mesas_livres') is not null
   union all
+  select 'tabela fila_usuarios (login)',
+         to_regclass('public.fila_usuarios') is not null
+  union all
   select 'colunas novas da fila (10)',
          (select count(*) from information_schema.columns
            where table_schema = 'public' and table_name = 'fila_espera'
@@ -216,3 +237,45 @@ from (
              and tablename in ('fila_espera','fila_config','mesas_livres')) = 3
 ) t
 order by ok, item;
+
+
+-- =====================================================================
+--  USUÁRIOS DO LOGIN (só se você for usar o login por perfil)
+-- =====================================================================
+--  PASSO 1 — criar as contas no painel:
+--     Authentication -> Users -> "Add user" -> "Create new user"
+--     Marque "Auto Confirm User" e cadastre exatamente assim:
+--
+--       E-mail                        Senha            Quem usa
+--       ---------------------------   --------------   -----------------
+--       adm@filafacil.local           9876-filafacil   você (acesso total)
+--       atendente@filafacil.local     4321-filafacil   recepção
+--       garcom@filafacil.local        4321-filafacil   salão
+--
+--     Na TELA DO APP a pessoa digita só o começo:
+--       usuário "adm"        senha "9876"
+--       usuário "atendente"  senha "4321"
+--       usuário "garcom"     senha "4321"
+--     (o app completa o resto sozinho — o "-filafacil" e o "@filafacil.local")
+--
+--  PASSO 2 — dizer o perfil de cada um: rode o bloco abaixo.
+
+insert into public.fila_usuarios (user_id, nome, papel)
+select id, 'Administrador', 'adm' from auth.users where email = 'adm@filafacil.local'
+on conflict (user_id) do update set papel = excluded.papel, nome = excluded.nome;
+
+insert into public.fila_usuarios (user_id, nome, papel)
+select id, 'Recepção', 'atendente' from auth.users where email = 'atendente@filafacil.local'
+on conflict (user_id) do update set papel = excluded.papel, nome = excluded.nome;
+
+insert into public.fila_usuarios (user_id, nome, papel)
+select id, 'Salão', 'garcom' from auth.users where email = 'garcom@filafacil.local'
+on conflict (user_id) do update set papel = excluded.papel, nome = excluded.nome;
+
+--  PASSO 3 — conferir (cada linha deve mostrar o perfil certo):
+select u.email, f.nome, f.papel
+from public.fila_usuarios f
+join auth.users u on u.id = f.user_id
+order by f.papel, u.email;
+
+--  PASSO 4 — no config.js, trocar para  loginAtivo: true  e publicar.

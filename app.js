@@ -1116,9 +1116,9 @@
       fb.classList.toggle("is-closed", fechada);
       fb.hidden = CFG.mostrarBtnFila === false;
     }
-    // aba do garçom: some quando o recurso está desligado
+    // aba do garçom: some quando o recurso está desligado ou o perfil não a alcança
     const tg = $("#tabGarcom");
-    if (tg) tg.hidden = CFG.garcomAtivo === false;
+    if (tg) tg.hidden = CFG.garcomAtivo === false || !podeVer("garcom");
 
     tickTimes();
     maybeBeep(c);
@@ -1220,6 +1220,204 @@
   }
 
   // ==========================================================
+  //  LOGIN E PERFIS DE ACESSO
+  // ----------------------------------------------------------
+  //  Só entra em ação com `loginAtivo: true` no config.js. Enquanto estiver
+  //  desligado, o app funciona como sempre funcionou (com os PINs) — assim dá
+  //  para criar e testar os usuários sem correr o risco de ficar trancado fora.
+  // ==========================================================
+  const PAPEL = { ADM: "adm", ATENDENTE: "atendente", GARCOM: "garcom", TOTEM: "totem" };
+  const LS_TOTEM = "fila_modo_totem";
+  let usuario = null;   // { email, papel, nome } — null quando não há login
+
+  function loginLigado() {
+    return CFG.loginAtivo === true && !!(backend && backend.mode === "online" && backend.client);
+  }
+
+  // Quais abas cada perfil enxerga
+  function abasPermitidas() {
+    if (!loginLigado()) return ["totem", "staff", "garcom"];   // como era antes
+    const p = usuario && usuario.papel;
+    if (p === PAPEL.ADM) return ["totem", "staff", "garcom"];
+    if (p === PAPEL.ATENDENTE) return ["staff"];
+    if (p === PAPEL.GARCOM) return ["garcom"];
+    return ["totem"];   // totem (ou sem perfil definido): só a fila
+  }
+  function podeVer(v) { return abasPermitidas().indexOf(v) >= 0; }
+  // Em qual aba cada perfil começa: quem trabalha cai direto no seu posto
+  function abaInicial() {
+    const p = usuario && usuario.papel;
+    if (p === PAPEL.ADM) return "staff";
+    if (p === PAPEL.ATENDENTE) return "staff";
+    if (p === PAPEL.GARCOM) return "garcom";
+    return "totem";
+  }
+  function ehAdm() { return !loginLigado() || (usuario && usuario.papel === PAPEL.ADM); }
+
+  // Este aparelho foi marcado como o totem do salão (não pede senha)
+  function modoTotem() {
+    try { return localStorage.getItem(LS_TOTEM) === "1"; } catch (e) { return false; }
+  }
+
+  async function lerPapel(client, user) {
+    try {
+      const { data, error } = await client.from("fila_usuarios")
+        .select("papel,nome").eq("user_id", user.id).maybeSingle();
+      if (error) throw error;
+      return {
+        email: user.email,
+        nome: (data && data.nome) || user.email,
+        // sem linha na tabela de usuários, entra com o perfil mais restrito
+        papel: (data && data.papel) || PAPEL.TOTEM,
+      };
+    } catch (e) {
+      console.warn("Não deu para ler o perfil do usuário:", e);
+      return { email: user.email, nome: user.email, papel: PAPEL.TOTEM };
+    }
+  }
+
+  // Decide entre mostrar a tela de login ou o app.
+  // A tela de login é uma camada opaca POR CIMA do app — de propósito: assim,
+  // se um aparelho ficar com a tela nova e o programa antigo, ninguém vê uma
+  // página em branco; no pior caso vê o app, nunca o vazio.
+  async function iniciarSessao() {
+    const tela = $("#loginScreen");
+    if (!loginLigado()) { tela.hidden = true; return true; }
+    if (modoTotem()) {
+      usuario = { email: "", nome: "Totem", papel: PAPEL.TOTEM };
+      tela.hidden = true;
+      return true;
+    }
+    let sess = null;
+    try {
+      const { data } = await backend.client.auth.getSession();
+      sess = data && data.session;
+    } catch (e) { console.warn("Sessão:", e); }
+    if (!sess || !sess.user) {
+      usuario = null;
+      $("#loginSub").textContent = CFG.restaurante || "";
+      tela.hidden = false;
+      setTimeout(() => $("#loginEmail").focus(), 80);
+      return false;
+    }
+    usuario = await lerPapel(backend.client, sess.user);
+    tela.hidden = true;
+    return true;
+  }
+
+  // O Supabase só aceita E-MAIL como identificação, mas quem trabalha no salão
+  // digita só "atendente", "garcom" ou "adm". Aqui montamos o e-mail interno.
+  // (quem quiser pode digitar o e-mail completo — se tiver "@", vai como está)
+  function emailDoUsuario(txt) {
+    const t = String(txt || "").trim();
+    if (t.indexOf("@") >= 0) return t.toLowerCase();
+    const limpo = t.toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")   // garçom -> garcom
+      .replace(/[^a-z0-9._-]/g, "");
+    return limpo + "@" + (CFG.dominioLogin || "filafacil.local");
+  }
+
+  // O Supabase exige senha de 6+ caracteres, mas a equipe usa 4 dígitos.
+  // O app completa com um final fixo — por isso a senha cadastrada no painel
+  // do Supabase é a senha curta MAIS este final (está explicado no README).
+  function senhaCompleta(senha) {
+    const s = String(senha || "");
+    const suf = String(CFG.sufixoSenha || "");
+    return (s.length >= 6 && !suf) ? s : s + suf;
+  }
+
+  async function entrar(usuarioTxt, senha) {
+    const { data, error } = await backend.client.auth.signInWithPassword({
+      email: emailDoUsuario(usuarioTxt), password: senhaCompleta(senha),
+    });
+    if (error) throw error;
+    usuario = await lerPapel(backend.client, data.user);
+    return usuario;
+  }
+
+  async function sair() {
+    try { localStorage.removeItem(LS_TOTEM); } catch (e) { /* ignora */ }
+    try {
+      if (backend && backend.client) await backend.client.auth.signOut();
+    } catch (e) { console.warn("Sair:", e); }
+    usuario = null;
+    location.reload();
+  }
+
+  // Mostra só as abas do perfil e leva para a primeira permitida
+  function aplicarPermissoes() {
+    const ligado = loginLigado();
+    const podeGarcom = CFG.garcomAtivo !== false && podeVer("garcom");
+    const map = { totem: "#tabTotem", staff: "#tabStaff", garcom: "#tabGarcom" };
+    Object.keys(map).forEach((v) => {
+      const b = $(map[v]);
+      if (b) b.hidden = (v === "garcom") ? !podeGarcom : !podeVer(v);
+    });
+    // com um perfil só, nem faz sentido mostrar a barra de abas
+    const sw = document.querySelector(".viewswitch");
+    if (sw) sw.hidden = abasPermitidas().filter((v) => v !== "garcom" || podeGarcom).length < 2;
+
+    const sb = $("#sairBtn");
+    if (sb) sb.hidden = !ligado;
+    const cb = $("#cfgBtn");
+    if (cb) cb.hidden = !ehAdm();   // configurações são do administrador
+
+    if (ligado && usuario) {
+      $("#brandSub").textContent = (CFG.restaurante || "") +
+        (usuario.papel === PAPEL.TOTEM ? "" : " • " + rotuloPapel(usuario.papel));
+    }
+  }
+  function rotuloPapel(p) {
+    return p === PAPEL.ADM ? "Administrador"
+      : p === PAPEL.ATENDENTE ? "Atendente"
+      : p === PAPEL.GARCOM ? "Garçom" : "Totem";
+  }
+
+  function wireLogin() {
+    const form = $("#loginForm");
+    if (!form || form.dataset.pronto === "1") return;
+    form.dataset.pronto = "1";
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = $("#loginBtn"), msg = $("#loginMsg");
+      if (btn.disabled) return;
+      btn.disabled = true;
+      msg.textContent = "Entrando…"; msg.className = "form-msg";
+      try {
+        await entrar($("#loginEmail").value, $("#loginSenha").value);
+        $("#loginSenha").value = "";
+        msg.textContent = "";
+        $("#loginScreen").hidden = true;
+
+        aplicarPermissoes();
+        setView(abaInicial());
+        await refresh();
+      } catch (err) {
+        console.warn("Login:", err);
+        const m = String((err && err.message) || "");
+        msg.textContent = /invalid login|credentials/i.test(m)
+          ? "E-mail ou senha incorretos."
+          : (/network|fetch/i.test(m) ? "Sem internet para entrar. Verifique a conexão." : "Não deu para entrar. Tente de novo.");
+        msg.className = "form-msg err";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $("#loginTotemBtn").addEventListener("click", () => {
+      if (!confirm("Deixar este aparelho como TOTEM do salão?\n\nEle vai mostrar só a fila, sem pedir senha.")) return;
+      try { localStorage.setItem(LS_TOTEM, "1"); } catch (e) { /* ignora */ }
+      location.reload();
+    });
+
+    const sb = $("#sairBtn");
+    if (sb) sb.addEventListener("click", () => {
+      if (confirm("Sair da conta neste aparelho?")) sair();
+    });
+  }
+
+  // ==========================================================
   //  VISTAS (Totem / Atendente) + PIN
   // ==========================================================
   const appEl = $("#app");
@@ -1230,14 +1428,19 @@
   let pinAlvo = "staff";
 
   function setView(v) {
-    if (v === "staff" && sessionStorage.getItem(SESSION_PIN) !== "1") {
-      openPin("staff");
-      return;
-    }
-    // o garçom só precisa de PIN se o dono tiver definido um
-    if (v === "garcom" && String(CFG.pinGarcom || "") && sessionStorage.getItem(SESSION_PIN_G) !== "1") {
-      openPin("garcom");
-      return;
+    // com login ligado, quem manda é o perfil — o PIN deixa de ser necessário
+    if (loginLigado()) {
+      if (!podeVer(v)) return;
+    } else {
+      if (v === "staff" && sessionStorage.getItem(SESSION_PIN) !== "1") {
+        openPin("staff");
+        return;
+      }
+      // o garçom só precisa de PIN se o dono tiver definido um
+      if (v === "garcom" && String(CFG.pinGarcom || "") && sessionStorage.getItem(SESSION_PIN_G) !== "1") {
+        openPin("garcom");
+        return;
+      }
     }
     appEl.setAttribute("data-view", v);
     $("#tabTotem").classList.toggle("is-active", v === "totem");
@@ -1757,6 +1960,10 @@
 
     // configurações (engrenagem) — pede senha TODA vez
     $("#cfgBtn").addEventListener("click", () => {
+      // Com login ligado, quem chegou aqui já é o administrador — e a senha das
+      // configurações fica escrita no config.js (que é público). Então não faz
+      // sentido pedi-la: o login é a garantia.
+      if (loginLigado()) { openCfg(); return; }
       $("#cfgPinInput").value = "";
       $("#cfgPinMsg").textContent = "";
       $("#cfgPinModal").hidden = false;
@@ -1776,6 +1983,8 @@
 
     // atalhos dentro das configurações
     $("#openRelBtn").addEventListener("click", () => { $("#cfgModal").hidden = true; openRelatorio(); });
+    // o relatório também tem botão próprio no cabeçalho (a atendente usa sem abrir as configurações)
+    $("#relBtn").addEventListener("click", openRelatorio);
     // QR da página do cliente: pelo botão do cabeçalho ou de dentro das configurações
     function abrirQrPublico() {
       const url = publicUrl();
@@ -2246,6 +2455,7 @@
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
     "sentouModal", "cfgPerguntarMesa", "qrBtn", "editModal",
+    "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";
 
@@ -2297,6 +2507,15 @@
     subscribeConfig();
     wireUI();
     wirePWA();
+
+    // login (quando ligado): sem sessão, para por aqui e mostra a tela de entrar
+    const dentro = await iniciarSessao();
+    wireLogin();
+    if (!dentro) return;
+    aplicarPermissoes();
+    // abre já na aba de trabalho do perfil (o ADM começa na da atendente)
+    if (loginLigado()) setView(abaInicial());
+
     await refresh();
 
     setInterval(tickTimes, 1000);          // tempos ao vivo

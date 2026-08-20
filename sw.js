@@ -1,7 +1,7 @@
 ﻿/* Service Worker â€” Fila FÃ¡cil (Quinta do Aveiro)
    Cacheia o "app shell" para carregar rÃ¡pido e abrir offline.
    Os DADOS da fila vÃªm sempre da rede (Supabase) â€” nunca sÃ£o cacheados. */
-const CACHE = "fila-qa-v10";
+const CACHE = "fila-qa-v11";
 const SHELL = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const SHELL = [
   "./fila.js",
   "./qr.js",
   "./config.js",
+  "./config-publico.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/logo-simbolo-branco.png",

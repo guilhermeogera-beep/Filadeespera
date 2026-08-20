@@ -85,6 +85,10 @@ window.FILA_CONFIG = {
   msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Por favor, compareça à recepção em até {prazo} minutos para não perder a vez. Obrigado!",
   msgLink: "Olá {nome}! Você entrou na fila da {restaurante} 🍽️ Sua posição no momento: {posicao}. Acompanhe a fila em tempo real por aqui: {link}",
 
+  // --- Aba do GARÇOM (lança as mesas que vagaram) ---
+  garcomAtivo: true,      // mostra a aba "Garçom" e o painel de mesas livres
+  pinGarcom: "",          // PIN da aba do garçom (vazio = abre sem senha)
+
   // --- Aviso de "pedido pronto" (botão na aba da atendente) ---
   avisoPedido: true,      // mostra o botão "🍽 Pedido pronto" junto de Chamar/Sentou/Saiu
   msgPedido: "Olá {nome}! Seu pedido na {restaurante} está pronto 🍽️ Pode retirar no balcão quando quiser. Bom apetite!",

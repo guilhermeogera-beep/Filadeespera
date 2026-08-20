@@ -1,7 +1,7 @@
 /* Service Worker — Fila Fácil (Quinta do Aveiro)
    Cacheia o "app shell" para carregar rápido e abrir offline.
    Os DADOS da fila vêm sempre da rede (Supabase) — nunca são cacheados. */
-const CACHE = "fila-qa-v5";
+const CACHE = "fila-qa-v6";
 const SHELL = [
   "./",
   "./index.html",

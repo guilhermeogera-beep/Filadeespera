@@ -16,6 +16,10 @@
   const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em", "sem_area_pet", "pedido_em"];
   const LS_COLS = "fila_cols_ausentes";
   const LS_PIN = "fila_pin_atendente";
+  const LS_PIN_G = "fila_pin_garcom";
+  const LS_MESAS = "fila_mesas_v1";       // mesas livres no modo local
+  const SESSION_PIN_G = "fila_garcom_ok";
+  const T_MESAS = "mesas_livres";         // tabela das mesas livres na nuvem
 
   // A tela ao vivo precisa da fila + um pouco de histórico (média e alternância).
   // Baixar a tabela INTEIRA é perigoso: o Supabase corta a resposta no "Max rows"
@@ -34,6 +38,10 @@
   let pessoas = 2;          // stepper do formulário
   let mesa = 2;             // stepper de liberar mesa
   let pendingCall = null;   // linha aguardando confirmação de chamada
+  let mesasLivres = [];     // mesas que o garçom liberou e ainda não foram usadas
+  let mesaSelecionada = null; // mesa que a atendente escolheu para a próxima chamada
+  let lugaresNovaMesa = 2;  // stepper do pop-up do garçom
+  let semTabelaMesas = false; // true se a tabela `mesas_livres` ainda não existe no banco
 
   // A mesa que a atendente está liberando é da área pet?
   function mesaAceitaPet() {
@@ -132,10 +140,20 @@
       localStorage.setItem(LS_KEY, JSON.stringify(data));
       if (bc) bc.postMessage("changed");
     }
+    function readMesas() {
+      try { return JSON.parse(localStorage.getItem(LS_MESAS)) || []; }
+      catch (e) { return []; }
+    }
+    function writeMesas(data) {
+      localStorage.setItem(LS_MESAS, JSON.stringify(data));
+      if (bc) bc.postMessage("changed");
+    }
     function notify() { listeners.forEach((fn) => fn()); }
 
     if (bc) bc.onmessage = () => notify();
-    window.addEventListener("storage", (e) => { if (e.key === LS_KEY) notify(); });
+    window.addEventListener("storage", (e) => {
+      if (e.key === LS_KEY || e.key === LS_MESAS) notify();
+    });
 
     return {
       mode: "local",
@@ -188,6 +206,21 @@
         const set = new Set(ids);
         write(read().filter((r) => !set.has(r.id)));
       },
+
+      // ---- mesas livres (lançadas pelo garçom) ----
+      async listMesas() {
+        // guarda só as últimas 12h para a lista não crescer sem fim
+        const lim = Date.now() - 12 * 3600 * 1000;
+        return readMesas().filter((m) => new Date(m.criado_em).getTime() > lim);
+      },
+      async addMesa(m) { const d = readMesas(); d.push(m); writeMesas(d); return m; },
+      async updateMesa(id, patch) {
+        const d = readMesas();
+        const i = d.findIndex((m) => m.id === id);
+        if (i >= 0) { d[i] = Object.assign({}, d[i], patch); writeMesas(d); }
+      },
+      async removeMesa(id) { writeMesas(readMesas().filter((m) => m.id !== id)); },
+
       onChange(cb) { listeners.push(cb); },
     };
   }
@@ -284,10 +317,37 @@
           if (error) throw error;
         }
       },
+      // ---- mesas livres (lançadas pelo garçom) ----
+      async listMesas() {
+        const desde = new Date(Date.now() - 12 * 3600 * 1000).toISOString();
+        const { data, error } = await client.from(T_MESAS).select("*")
+          .gte("criado_em", desde).order("criado_em", { ascending: true }).limit(PAGINA);
+        if (error) throw error;
+        return data || [];
+      },
+      async addMesa(m) {
+        const { data, error } = await client.from(T_MESAS).insert(m).select().single();
+        if (error) throw error;
+        return data;
+      },
+      async updateMesa(id, patch) {
+        const { error } = await client.from(T_MESAS).update(patch).eq("id", id);
+        if (error) throw error;
+      },
+      async removeMesa(id) {
+        const { error } = await client.from(T_MESAS).delete().eq("id", id);
+        if (error) throw error;
+      },
+
       onChange(cb) {
         client
           .channel("fila-rt")
           .on("postgres_changes", { event: "*", schema: "public", table: T }, () => cb())
+          .subscribe();
+        // as mesas livres têm tabela própria: canal separado
+        client
+          .channel("mesas-rt")
+          .on("postgres_changes", { event: "*", schema: "public", table: T_MESAS }, () => cb())
           .subscribe();
       },
     };
@@ -400,7 +460,7 @@
       pessoas: Number(pessoas),
       preferencial: !!preferencial,
       pet: !!pet,
-      sem_area_pet: !!semAreaPet,
+      sem_area_pet: !pet && !!semAreaPet,   // nunca os dois juntos
       comanda: (comanda || "").trim() || null,
       pager: (pager || "").trim() || null,
       status: STATUS.AGUARDANDO,
@@ -559,6 +619,7 @@
     $("#edComandaField").hidden = CFG.campoComanda === false;
     $("#edPagerField").hidden = CFG.campoPager === false;
     $("#edMsg").textContent = "";
+    sincPetEdit();   // um tranca o outro, conforme o que já estiver marcado
     $("#editModal").hidden = false;
   }
 
@@ -576,7 +637,7 @@
       comanda: $("#edComanda").value.trim() || null,
       pager: $("#edPager").value.trim() || null,
       pet: $("#edPet").checked,
-      sem_area_pet: $("#edSemPet").checked,
+      sem_area_pet: !$("#edPet").checked && $("#edSemPet").checked,   // nunca os dois juntos
     };
     const btn = $("#edSave");
     btn.disabled = true;
@@ -616,12 +677,82 @@
   async function refresh() {
     try {
       rows = await backend.list();
+      await carregarMesas();
       render();
       checkAutoClose();
     } catch (e) {
       console.error("Erro ao carregar a fila:", e);
       avisoStaff("⚠ Sem ligação com o servidor — o que está na tela pode estar desatualizado.");
     }
+  }
+
+  // ==========================================================
+  //  MESAS LIVRES (o garçom lança, a atendente usa)
+  // ==========================================================
+  const MESAS = { LIVRE: "livre", USADA: "usada" };
+
+  // As mesas ficam numa tabela própria; se ela ainda não existe no banco,
+  // o recurso simplesmente não aparece (o resto do app continua normal).
+  async function carregarMesas() {
+    if (CFG.garcomAtivo === false) { mesasLivres = []; return; }
+    try {
+      const todas = await backend.listMesas();
+      semTabelaMesas = false;
+      mesasLivres = todas.filter((m) => m.status === MESAS.LIVRE)
+        .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+    } catch (e) {
+      semTabelaMesas = true;
+      mesasLivres = [];
+      console.warn("Mesas livres: tabela indisponível (rode o SQL do README).", e);
+    }
+    // a mesa que estava escolhida pode ter sido usada por outro aparelho
+    if (mesaSelecionada && !mesasLivres.some((m) => m.id === mesaSelecionada)) mesaSelecionada = null;
+  }
+
+  async function lancarMesa({ lugares, pet, identificacao }) {
+    const nova = {
+      id: uuid(),
+      lugares: Number(lugares),
+      pet: !!pet,
+      identificacao: (identificacao || "").trim() || null,
+      status: MESAS.LIVRE,
+      criado_em: new Date().toISOString(),
+      usada_em: null,
+    };
+    const salva = await backend.addMesa(nova);
+    await refresh();
+    return salva || nova;
+  }
+
+  async function usarMesa(id) {
+    await backend.updateMesa(id, { status: MESAS.USADA, usada_em: new Date().toISOString() });
+    if (mesaSelecionada === id) mesaSelecionada = null;
+    await refresh();
+  }
+
+  async function apagarMesa(id) {
+    await backend.removeMesa(id);
+    if (mesaSelecionada === id) mesaSelecionada = null;
+    await refresh();
+  }
+
+  // A atendente toca numa mesa: os campos de "liberar mesa" já ficam prontos
+  function selecionarMesa(id) {
+    const m = mesasLivres.find((x) => x.id === id);
+    if (!m) return;
+    mesaSelecionada = (mesaSelecionada === id) ? null : id;
+    if (mesaSelecionada) {
+      mesa = Math.max(MIN_P, Math.min(Number(CFG.maxPessoas) || MAX_P, Number(m.lugares) || 2));
+      $("#fMesa").textContent = mesa;
+      const alvo = $(`input[name="mesapet"][value="${m.pet ? "sim" : "nao"}"]`);
+      if (alvo) alvo.checked = true;
+      avisoStaff(`Mesa ${descMesa(m)} escolhida — toque em "Chamar próximo".`, true);
+    }
+    render();
+  }
+
+  function descMesa(m) {
+    return `${m.identificacao ? "“" + m.identificacao + "” • " : ""}${m.lugares} ${m.lugares === 1 ? "lugar" : "lugares"}${m.pet ? " 🐾" : ""}`;
   }
 
   // ==========================================================
@@ -771,6 +902,12 @@
   function updateAddBtn() {
     const btn = $("#openFormBtn");
     if (!btn) return;
+    // na aba do garçom o botão grande serve para lançar mesa livre
+    if (isGarcom()) {
+      btn.disabled = false;
+      btn.textContent = "🍽 Lançar mesa livre";
+      return;
+    }
     if (!isStaff() && CFG.filaFechada === true) {
       btn.disabled = true;
       btn.textContent = "🔒 Fila fechada";
@@ -820,6 +957,8 @@
         </div>` : ""}
       </div>`).join("");
 
+    renderMesas();
+
     // -------- a fila: tudo junto ou separado --------
     // a atendente vê SEMPRE separado (é assim que ela trabalha); o totem segue a configuração
     const juntas = !staff && CFG.filasJuntas !== false;
@@ -864,9 +1003,45 @@
       fb.classList.toggle("is-closed", fechada);
       fb.hidden = CFG.mostrarBtnFila === false;
     }
+    // aba do garçom: some quando o recurso está desligado
+    const tg = $("#tabGarcom");
+    if (tg) tg.hidden = CFG.garcomAtivo === false;
 
     tickTimes();
     maybeBeep(c);
+  }
+
+  // Painel das mesas livres: a atendente escolhe, o garçom acompanha o que lançou
+  function renderMesas() {
+    const card = $("#mesasCard");
+    if (!card) return;
+    const ligado = CFG.garcomAtivo !== false;
+    const vista = appEl.getAttribute("data-view");
+    card.hidden = !ligado || (vista !== "staff" && vista !== "garcom");
+    if (card.hidden) return;
+
+    const staff = vista === "staff";
+    $("#mesasCount").textContent = mesasLivres.length;
+    $("#mesasList").innerHTML = mesasLivres.map((m) => `
+      <div class="mesa-item ${m.pet ? "is-pet" : ""} ${mesaSelecionada === m.id ? "is-sel" : ""}"
+           ${staff ? `data-selmesa="${m.id}" role="button" tabindex="0"` : ""}>
+        <div class="mesa-lug">${m.lugares}<small>${m.lugares === 1 ? "lugar" : "lugares"}</small></div>
+        <div class="mesa-info">
+          ${m.identificacao ? `<b class="mesa-nome">${esc(m.identificacao)}</b>` : ""}
+          <span class="mesa-tags">${m.pet ? `<span class="mesa-tag pet">🐾 área pet</span>` : `<span class="mesa-tag">sem pet</span>`}</span>
+          <span class="mesa-hora">livre há <b data-since="${m.criado_em}">agora</b></span>
+        </div>
+        <div class="mesa-acoes">
+          ${staff ? `<button class="btn btn-sm btn-primary" data-usarmesa="${m.id}">✓ Usei</button>` : ""}
+          <button class="btn btn-sm btn-danger" data-apagarmesa="${m.id}" title="Cancelar este lançamento">✕</button>
+        </div>
+      </div>`).join("");
+
+    const vazio = $("#mesasEmpty");
+    vazio.hidden = mesasLivres.length > 0;
+    vazio.textContent = semTabelaMesas
+      ? "⚠ O banco ainda não tem a tabela das mesas — rode o SQL do README no Supabase."
+      : (staff ? "Nenhuma mesa livre. O garçom avisa por aqui quando liberar." : "Nenhuma mesa livre. Toque no botão abaixo para lançar.");
   }
 
   // Atualiza os "tempos" ao vivo (a cada segundo, sem redesenhar tudo)
@@ -933,15 +1108,25 @@
   // ==========================================================
   const appEl = $("#app");
   function isStaff() { return appEl.getAttribute("data-view") === "staff"; }
+  function isGarcom() { return appEl.getAttribute("data-view") === "garcom"; }
+
+  // qual PIN a aba pediu (para o pop-up saber o que conferir)
+  let pinAlvo = "staff";
 
   function setView(v) {
     if (v === "staff" && sessionStorage.getItem(SESSION_PIN) !== "1") {
-      openPin();
+      openPin("staff");
+      return;
+    }
+    // o garçom só precisa de PIN se o dono tiver definido um
+    if (v === "garcom" && String(CFG.pinGarcom || "") && sessionStorage.getItem(SESSION_PIN_G) !== "1") {
+      openPin("garcom");
       return;
     }
     appEl.setAttribute("data-view", v);
     $("#tabTotem").classList.toggle("is-active", v === "totem");
     $("#tabStaff").classList.toggle("is-active", v === "staff");
+    $("#tabGarcom").classList.toggle("is-active", v === "garcom");
     $("#staffBar").hidden = v !== "staff";
     const rotulo = v === "staff" ? "Adicionar cliente" : "Entrar na fila";
     $("#formTitle").textContent = rotulo;
@@ -949,7 +1134,9 @@
     render();
   }
 
-  function openPin() {
+  function openPin(alvo) {
+    pinAlvo = alvo || "staff";
+    $("#pinTitulo").textContent = pinAlvo === "garcom" ? "Área do garçom" : "Área da atendente";
     $("#pinMsg").textContent = "";
     $("#pinInput").value = "";
     $("#pinModal").hidden = false;
@@ -977,6 +1164,24 @@
   // ==========================================================
   //  FORMULÁRIO DE ENTRADA
   // ==========================================================
+  // "Estou com pet" e "não sentar na área pet" se contradizem: marcar um
+  // desmarca e tranca o outro (vale para o formulário e para a edição).
+  function exclusaoPet(selPet, selSemPet) {
+    const pet = $(selPet), sem = $(selSemPet);
+    if (!pet || !sem) return function () {};
+    const trancar = (cx, travado) => {
+      cx.disabled = travado;
+      const linha = cx.closest(".check-row");
+      if (linha) linha.classList.toggle("is-travado", travado);
+    };
+    const sincronizar = () => { trancar(sem, pet.checked); trancar(pet, sem.checked); };
+    pet.addEventListener("change", () => { if (pet.checked) sem.checked = false; sincronizar(); });
+    sem.addEventListener("change", () => { if (sem.checked) pet.checked = false; sincronizar(); });
+    return sincronizar;
+  }
+  let sincPetForm = function () {};
+  let sincPetEdit = function () {};
+
   // Ajusta o formulário conforme as configurações (telefone, pet, termos)
   function prepararFormulario() {
     const staff = isStaff();
@@ -1008,6 +1213,18 @@
     }
   }
 
+  // pop-up do garçom para lançar uma mesa livre
+  function abrirMesaModal() {
+    lugaresNovaMesa = 2;
+    $("#mLugares").textContent = lugaresNovaMesa;
+    const nao = $('input[name="mesapetnova"][value="nao"]');
+    if (nao) nao.checked = true;
+    $("#mIdent").value = "";
+    $("#mMsg").textContent = "";
+    $("#mPetField").hidden = CFG.petAtivo === false;
+    $("#mesaModal").hidden = false;
+  }
+
   function abrirFormulario() {
     $("#joinForm").reset();
     pessoas = 2; $("#fPessoas").textContent = pessoas;
@@ -1018,6 +1235,7 @@
     $("#fComanda").value = "";
     $("#fPager").value = "";
     $("#formMsg").textContent = "";
+    sincPetForm();   // "com pet" x "sem área pet" recomeçam destravados
     prepararFormulario();
     $("#formModal").hidden = false;
     setTimeout(() => $("#fNome").focus(), 60);
@@ -1062,13 +1280,66 @@
     // troca de vista
     $("#tabTotem").addEventListener("click", () => setView("totem"));
     $("#tabStaff").addEventListener("click", () => setView("staff"));
+    $("#tabGarcom").addEventListener("click", () => setView("garcom"));
+
+    // ---- mesas livres ----
+    // stepper de lugares (pop-up do garçom)
+    $$(".step-btn[data-mesastep]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const max = Number(CFG.maxPessoas) || MAX_P;
+        lugaresNovaMesa = Math.min(max, Math.max(MIN_P, lugaresNovaMesa + Number(b.dataset.mesastep)));
+        $("#mLugares").textContent = lugaresNovaMesa;
+      })
+    );
+    $("#mSalvar").addEventListener("click", async () => {
+      const btn = $("#mSalvar"), msg = $("#mMsg");
+      if (btn.disabled) return;
+      btn.disabled = true;
+      msg.textContent = "Salvando…"; msg.className = "form-msg";
+      try {
+        const pet = ($('input[name="mesapetnova"]:checked') || {}).value === "sim";
+        await lancarMesa({ lugares: lugaresNovaMesa, pet, identificacao: $("#mIdent").value });
+        $("#mesaModal").hidden = true;
+        msg.textContent = "";
+        const m = $("#mesasMsg");
+        if (m) { m.textContent = "✅ Mesa liberada — a recepção já está vendo."; m.className = "form-msg ok"; }
+      } catch (e) {
+        console.error("Erro ao lançar mesa:", e);
+        msg.textContent = semTabelaMesas
+          ? "O banco ainda não tem a tabela das mesas — rode o SQL do README."
+          : "Não deu para salvar — verifique a internet e tente de novo.";
+        msg.className = "form-msg err";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ações nos cartões de mesa (delegação)
+    document.addEventListener("click", async (e) => {
+      const t = e.target.closest("[data-usarmesa],[data-apagarmesa],[data-selmesa]");
+      if (!t) return;
+      try {
+        if (t.dataset.usarmesa) { e.stopPropagation(); await usarMesa(t.dataset.usarmesa); }
+        else if (t.dataset.apagarmesa) {
+          e.stopPropagation();
+          if (confirm("Tirar esta mesa da lista?")) await apagarMesa(t.dataset.apagarmesa);
+        }
+        else if (t.dataset.selmesa) selecionarMesa(t.dataset.selmesa);
+      } catch (err) {
+        console.error("Ação na mesa falhou:", err);
+        const m = $("#mesasMsg");
+        if (m) { m.textContent = "⚠ Não deu para salvar — verifique a internet."; m.className = "form-msg err"; }
+      }
+    });
 
     // PIN
     $("#pinOk").addEventListener("click", () => {
-      if ($("#pinInput").value === String(CFG.pinAtendente || "4321")) {
-        sessionStorage.setItem(SESSION_PIN, "1");
+      const garcom = pinAlvo === "garcom";
+      const certo = garcom ? String(CFG.pinGarcom || "") : String(CFG.pinAtendente || "4321");
+      if ($("#pinInput").value === certo) {
+        sessionStorage.setItem(garcom ? SESSION_PIN_G : SESSION_PIN, "1");
         closePin();
-        setView("staff");
+        setView(garcom ? "garcom" : "staff");
       } else {
         $("#pinMsg").textContent = "PIN incorreto.";
         $("#pinMsg").className = "form-msg err";
@@ -1096,7 +1367,10 @@
     );
 
     // abrir o formulário em pop-up
-    $("#openFormBtn").addEventListener("click", abrirFormulario);
+    $("#openFormBtn").addEventListener("click", () => {
+      if (isGarcom()) abrirMesaModal();
+      else abrirFormulario();
+    });
 
     // regras da fila (termos)
     $("#verTermosBtn").addEventListener("click", openTermos);
@@ -1205,6 +1479,16 @@
       if (cmsg) cmsg.textContent = "";
       $("#callModal").hidden = true;
       pendingCall = null;
+      // se a chamada saiu de uma mesa lançada pelo garçom, ela já sai da lista
+      // (o cartão sumindo do painel é o aviso; só falamos algo se der errado)
+      if (mesaSelecionada) {
+        try {
+          await usarMesa(mesaSelecionada);
+        } catch (e) {
+          console.warn("Não deu para baixar a mesa:", e);
+          avisoStaff("Cliente chamado, mas a mesa continua na lista — baixe no ✓ Usei.");
+        }
+      }
       // só depois de gravado, abre o WhatsApp já com a mensagem pronta
       if (CFG.whatsAtivo !== false && CFG.whatsAuto && p.telefone) {
         const link = waLink(p);
@@ -1268,6 +1552,10 @@
         if (abertos.length) closeModal(abertos[abertos.length - 1]);
       }
     });
+
+    // "com pet" e "sem área pet" não podem estar marcados juntos
+    sincPetForm = exclusaoPet("#fPet", "#fSemPet");
+    sincPetEdit = exclusaoPet("#edPet", "#edSemPet");
 
     // editar cliente
     $("#edSave").addEventListener("click", salvarEdicao);
@@ -1539,17 +1827,27 @@
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "filasJuntas",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo",
-    "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo",
+    "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo",
   ];
 
   // O PIN da atendente fica guardado só NESTE aparelho (não sobe para a nuvem)
   function carregarPinLocal() {
-    try { const p = localStorage.getItem(LS_PIN); if (p) CFG.pinAtendente = p; } catch (e) { /* ignora */ }
+    try {
+      const p = localStorage.getItem(LS_PIN); if (p) CFG.pinAtendente = p;
+      const g = localStorage.getItem(LS_PIN_G); if (g !== null) CFG.pinGarcom = g;
+    } catch (e) { /* ignora */ }
   }
   function salvarPinLocal(novo) {
     if (!novo || novo === CFG.pinAtendente) return;
     CFG.pinAtendente = novo;
     try { localStorage.setItem(LS_PIN, novo); } catch (e) { /* ignora */ }
+  }
+  // o PIN do garçom pode ficar VAZIO de propósito (aba sem senha)
+  function salvarPinGarcomLocal(novo) {
+    if (novo === CFG.pinGarcom) return;
+    CFG.pinGarcom = novo;
+    try { localStorage.setItem(LS_PIN_G, novo); } catch (e) { /* ignora */ }
+    if (!novo) sessionStorage.removeItem(SESSION_PIN_G);
   }
 
   function settingsSnapshot() {
@@ -1675,6 +1973,8 @@
 
     $("#cfgRest").value = CFG.restaurante || "";
     $("#cfgPinAtend").value = CFG.pinAtendente || "";
+    $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
+    $("#cfgPinGarcom").value = CFG.pinGarcom || "";
 
     // aviso caso o banco ainda não tenha as colunas novas
     const msg = $("#cfgMsgStatus");
@@ -1724,10 +2024,13 @@
       avisoPedido: $("#cfgAvisoPedido").value === "sim",
       msgPedido: $("#cfgMsgPedido").value.trim(),
 
+      garcomAtivo: $("#cfgGarcomOn").value === "sim",
+
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
     };
-    // o PIN não vai para a nuvem: fica só neste aparelho
+    // os PINs não vão para a nuvem: ficam só neste aparelho
     salvarPinLocal($("#cfgPinAtend").value.trim());
+    salvarPinGarcomLocal($("#cfgPinGarcom").value.trim());
     const btn = $("#cfgSave");
     btn.disabled = true;
     $("#cfgMsgStatus").textContent = "Salvando…";

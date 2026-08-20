@@ -35,6 +35,32 @@ alter table public.fila_espera add column if not exists chamadas_perdidas int no
 
 -- hora real de chegada de quem já está na fila (quem perde a vez tem o criado_em reescrito)
 update public.fila_espera set entrou_em = criado_em where entrou_em is null;
+
+-- MESAS LIVRES: o garçom avisa quais mesas vagaram e a recepção usa na chamada
+create table if not exists public.mesas_livres (
+  id uuid primary key default gen_random_uuid(),
+  lugares int not null default 2,
+  pet boolean not null default false,          -- mesa fica na área que aceita animais
+  identificacao text,                          -- nº ou nome da mesa (opcional)
+  status text not null default 'livre',        -- livre | usada
+  criado_em timestamptz not null default now(),
+  usada_em timestamptz
+);
+alter table public.mesas_livres enable row level security;
+drop policy if exists "mesas_ler"       on public.mesas_livres;
+drop policy if exists "mesas_inserir"   on public.mesas_livres;
+drop policy if exists "mesas_atualizar" on public.mesas_livres;
+drop policy if exists "mesas_apagar"    on public.mesas_livres;
+create policy "mesas_ler"       on public.mesas_livres for select using (true);
+create policy "mesas_inserir"   on public.mesas_livres for insert with check (true);
+create policy "mesas_atualizar" on public.mesas_livres for update using (true) with check (true);
+create policy "mesas_apagar"    on public.mesas_livres for delete using (true);
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables
+                 where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'mesas_livres')
+  then alter publication supabase_realtime add table public.mesas_livres; end if;
+end $$;
 ```
 
 ---

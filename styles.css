@@ -407,9 +407,13 @@ button{font-family:inherit}
 #app[data-view="publico"] .content{padding-bottom:16px}
 
 /* ---------------- VISIBILIDADE POR MODO ---------------- */
-#app[data-view="totem"] .staff-only{display:none !important}
-#app[data-view="publico"] .staff-only{display:none !important}
-#app[data-view="staff"] .totem-only{display:none !important}
+/* visibilidade por aba: totem, atendente (staff), garçom e página pública */
+#app:not([data-view="staff"]) .staff-only{display:none !important}
+#app:not([data-view="totem"]) .totem-only{display:none !important}
+#app:not([data-view="garcom"]) .garcom-only{display:none !important}
+/* o painel de mesas livres aparece para a atendente E para o garçom */
+#app[data-view="totem"] .salao-only,
+#app[data-view="publico"] .salao-only{display:none !important}
 
 /* ---------------- ÁREA PET (mesa que aceita animais) ---------------- */
 /* selo de quem pediu para NÃO sentar perto de animais */
@@ -445,3 +449,38 @@ button{font-family:inherit}
 /* pop-up da página do cliente: 3 botões podem não caber numa linha no celular */
 .modal-actions-wrap{flex-wrap:wrap}
 .modal-actions-wrap .btn{flex:1 1 auto;min-height:44px;text-decoration:none}
+
+/* uma opção de pet trava a outra (não dá para estar com pet e recusar a área pet) */
+.check-row.is-travado{opacity:.42;cursor:not-allowed}
+.check-row.is-travado input{cursor:not-allowed}
+
+/* ---------------- MESAS LIVRES (garçom → atendente) ---------------- */
+.mesas-card{border:2px dashed var(--meso);background:#fbfdfd}
+.mesas-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.mesas-head .card-title{margin:0}
+.mesas-count{display:inline-block;background:var(--meso);color:#fff;border-radius:999px;
+  padding:1px 11px;font-size:.9rem;font-weight:800;vertical-align:middle;margin-left:4px}
+.mesas-list{display:flex;flex-wrap:wrap;gap:12px}
+.mesa-item{
+  display:flex;align-items:center;gap:12px;padding:10px 12px;border:1.5px solid var(--line);
+  border-radius:14px;background:#fff;flex:1 1 240px;max-width:340px;transition:.15s;
+}
+#app[data-view="staff"] .mesa-item{cursor:pointer}
+#app[data-view="staff"] .mesa-item:hover{border-color:var(--meso);background:var(--meso-soft)}
+.mesa-item.is-sel{border-color:var(--meso);background:var(--meso-soft);box-shadow:0 0 0 3px rgba(63,92,99,.18)}
+.mesa-item.is-pet .mesa-lug{background:#0f9d6c}
+.mesa-lug{
+  width:52px;height:52px;flex:0 0 auto;border-radius:12px;background:var(--meso);color:#fff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;
+  font-weight:800;font-size:1.4rem;
+}
+.mesa-lug small{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;opacity:.85;margin-top:2px}
+.mesa-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mesa-nome{font-size:1rem}
+.mesa-tags{display:flex;gap:6px;flex-wrap:wrap}
+.mesa-tag{font-size:.7rem;font-weight:800;padding:2px 8px;border-radius:999px;background:#e8eef4;color:#41505f;text-transform:uppercase;letter-spacing:.03em}
+.mesa-tag.pet{background:#d9f5e9;color:#0b6b48}
+.mesa-hora{color:var(--muted);font-size:.8rem}
+.mesa-acoes{display:flex;gap:6px;align-items:center}
+.mesa-acoes .btn{min-height:40px;padding:8px 11px}
+.mesas-empty{color:var(--muted);padding:12px 0;font-size:.95rem;font-style:italic;text-align:center}

@@ -25,6 +25,7 @@
       <div class="viewswitch" role="tablist" aria-label="Modo de visualização">
         <button id="tabTotem" class="vs-btn is-active" role="tab">Totem</button>
         <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
+        <button id="tabGarcom" class="vs-btn" role="tab">Garçom</button>
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
       <button id="qrBtn" class="icon-btn-h staff-only" title="QR Code da página do cliente" aria-label="QR Code da página do cliente">📱</button>
@@ -44,6 +45,17 @@
     <section id="callPanel" class="call-panel" aria-live="polite">
       <div class="call-empty" id="callEmpty">Nenhuma mesa sendo chamada no momento</div>
       <div class="call-list" id="callList"></div>
+    </section>
+
+    <!-- ============ MESAS LIVRES (lançadas pelo garçom; atendente e garçom veem) ============ -->
+    <section class="card mesas-card salao-only" id="mesasCard" hidden>
+      <div class="mesas-head">
+        <h2 class="card-title">🍽 Mesas livres <span class="mesas-count" id="mesasCount">0</span></h2>
+        <small class="hint staff-only">Toque numa mesa para usá-la na chamada.</small>
+      </div>
+      <div class="mesas-list" id="mesasList"></div>
+      <div class="mesas-empty" id="mesasEmpty">Nenhuma mesa livre no momento.</div>
+      <p class="form-msg" id="mesasMsg" role="status"></p>
     </section>
 
     <!-- ============ CONTROLES DA ATENDENTE (antes da fila; só na aba atendente) ============ -->
@@ -256,7 +268,7 @@
   <div class="modal" id="pinModal" hidden>
     <div class="modal-box">
       <button class="modal-x" data-close aria-label="Fechar">×</button>
-      <h3>Área da atendente</h3>
+      <h3 id="pinTitulo">Área da atendente</h3>
       <p>Digite o PIN para liberar os controles.</p>
       <input id="pinInput" type="password" inputmode="numeric" maxlength="8" class="pin-input" placeholder="PIN" />
       <p class="form-msg" id="pinMsg"></p>
@@ -295,6 +307,46 @@
       <div class="modal-actions">
         <button class="btn btn-ghost btn-neutral" id="callCancel">Cancelar</button>
         <button class="btn btn-accent" id="callConfirm">🔔 Confirmar chamada</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: LANÇAR MESA LIVRE (garçom) ============ -->
+  <div class="modal" id="mesaModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>🍽 Lançar mesa livre</h3>
+      <div class="join-form">
+        <div class="field">
+          <span>Quantos lugares tem a mesa?</span>
+          <div class="stepper">
+            <button type="button" class="step-btn" data-mesastep="-1" aria-label="Menos">−</button>
+            <output id="mLugares" class="step-val">2</output>
+            <button type="button" class="step-btn" data-mesastep="1" aria-label="Mais">+</button>
+          </div>
+        </div>
+
+        <div class="field" id="mPetField">
+          <span>É mesa da área pet?</span>
+          <div class="segmented">
+            <label class="seg">
+              <input type="radio" name="mesapetnova" value="nao" checked />
+              <span>Não</span>
+            </label>
+            <label class="seg seg-pet">
+              <input type="radio" name="mesapetnova" value="sim" />
+              <span>🐾 Sim</span>
+            </label>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>Número ou nome da mesa <small>(opcional)</small></span>
+          <input id="mIdent" type="text" maxlength="14" placeholder="ex.: 12, varanda, deck" />
+        </label>
+
+        <button type="button" class="btn btn-primary btn-big" id="mSalvar">🍽 Liberar esta mesa</button>
+        <p class="form-msg" id="mMsg" role="status"></p>
       </div>
     </div>
   </div>
@@ -618,6 +670,21 @@
           <span>PIN da atendente</span>
           <input id="cfgPinAtend" type="text" inputmode="numeric" maxlength="8" />
           <small class="hint">Fica guardado só <b>neste aparelho</b> (por segurança, não é enviado para a nuvem).</small>
+        </label>
+
+        <label class="field">
+          <span>Aba do garçom (lançar mesas livres)</span>
+          <select id="cfgGarcomOn">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar</option>
+          </select>
+          <small class="hint">O garçom avisa quais mesas vagaram; a atendente vê o resumo e chama o próximo.</small>
+        </label>
+
+        <label class="field">
+          <span>PIN do garçom</span>
+          <input id="cfgPinGarcom" type="text" inputmode="numeric" maxlength="8" placeholder="deixe vazio para não pedir" />
+          <small class="hint">Guardado só neste aparelho. Vazio = a aba abre sem senha.</small>
         </label>
 
         <p class="form-msg" id="cfgMsgStatus"></p>

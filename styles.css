@@ -441,3 +441,7 @@ button{font-family:inherit}
 .ci-actions .ci-edit{background:rgba(0,0,0,.18);color:inherit}
 .ci-actions .ci-edit:hover{background:rgba(0,0,0,.30)}
 .ci-actions .btn-pedido{text-shadow:none}
+
+/* pop-up da página do cliente: 3 botões podem não caber numa linha no celular */
+.modal-actions-wrap{flex-wrap:wrap}
+.modal-actions-wrap .btn{flex:1 1 auto;min-height:44px;text-decoration:none}

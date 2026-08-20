@@ -15,7 +15,7 @@
   <!-- ================= TOPO ================= -->
   <header class="topbar">
     <div class="brand">
-      <img class="brand-logo" src="./icons/logo-branco.png" alt="Quinta do Aveiro" />
+      <img class="brand-logo" src="./icons/logo-simbolo-branco.png" alt="Quinta do Aveiro" />
       <div class="brand-txt">
         <strong id="brandName">Fila Fácil</strong>
         <span class="brand-sub" id="brandSub">Quinta do Aveiro</span>
@@ -692,9 +692,10 @@
       <p>Tela só de leitura com a fila e as mesas sendo chamadas. Imprima este QR Code e deixe no balcão, se quiser.</p>
       <div class="qr-box qr-box-lg" id="publicQr"></div>
       <p class="public-url" id="publicUrl"></p>
-      <div class="modal-actions">
+      <div class="modal-actions modal-actions-wrap">
+        <button class="btn btn-ghost btn-neutral" data-close>Fechar</button>
         <button class="btn btn-ghost btn-neutral" id="publicCopy">🔗 Copiar link</button>
-        <button class="btn btn-primary" data-close>Fechar</button>
+        <a class="btn btn-primary" id="publicOpen" href="./fila.html" target="_blank" rel="noopener">↗ Abrir a página</a>
       </div>
     </div>
   </div>

@@ -1302,6 +1302,7 @@
       const url = publicUrl();
       drawQR($("#publicQr"), url);
       $("#publicUrl").textContent = url;
+      $("#publicOpen").href = url;   // ver a página do cliente numa aba nova
       $("#publicModal").hidden = false;
     }
     $("#openPublicBtn").addEventListener("click", abrirQrPublico);

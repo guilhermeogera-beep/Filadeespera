@@ -230,6 +230,15 @@
   // ==========================================================
   //  BACKEND: SUPABASE  (tempo real entre aparelhos)
   // ==========================================================
+  // Com o banco fechado, quem NÃO está logado só enxerga a "vitrine"
+  // (view fila_publica): a fila sem telefone, sem comanda e só com o
+  // primeiro nome. A equipe logada continua vendo a tabela inteira.
+  const T_PUBLICA = "fila_publica";
+  const COLS_PUBLICA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
+  function temSessaoEquipe() {
+    return !!(usuario && usuario.papel && usuario.papel !== PAPEL.TOTEM);
+  }
+
   function SupabaseBackend(url, key) {
     const client = window.supabase.createClient(url, key, {
       realtime: { params: { eventsPerSecond: 5 } },
@@ -262,12 +271,16 @@
       // Duas consultas curtas em vez de baixar a tabela toda: quem está na fila
       // (sempre) + o histórico recente (para a média e a alternância).
       async list() {
-        const ativos = await client.from(T).select("*")
+        // logado = tabela inteira; totem/sem login = só a vitrine
+        const equipe = temSessaoEquipe();
+        const tab = equipe ? T : T_PUBLICA;
+        const cols = equipe ? "*" : COLS_PUBLICA;
+        const ativos = await client.from(tab).select(cols)
           .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO])
           .order("criado_em", { ascending: true }).limit(PAGINA);
         if (ativos.error) throw ativos.error;
         const desde = new Date(Date.now() - JANELA_HIST_MS).toISOString();
-        const hist = await client.from(T).select("*")
+        const hist = await client.from(tab).select(cols)
           .gte("criado_em", desde)
           .order("criado_em", { ascending: false }).limit(PAGINA); // do mais novo para o mais velho
         if (hist.error) throw hist.error;
@@ -298,6 +311,12 @@
         return (data && data[0]) || null;
       },
       async add(entry) {
+        // O totem só tem permissão de INSERIR — pedir a linha de volta
+        // (.select()) exigiria permissão de leitura e daria erro.
+        if (!temSessaoEquipe()) {
+          await comFallback((corpo) => client.from(T).insert(corpo), entry);
+          return entry;
+        }
         const res = await comFallback((corpo) => client.from(T).insert(corpo).select().single(), entry);
         return res.data;
       },
@@ -348,9 +367,16 @@
       },
 
       onChange(cb) {
+        // A equipe escuta a fila direto. O totem não tem permissão para isso
+        // (nem para escutar), então acompanha o "sino": uma tabelinha que só
+        // guarda a hora da última mudança e avisa que é hora de recarregar.
         client
           .channel("fila-rt")
           .on("postgres_changes", { event: "*", schema: "public", table: T }, () => cb())
+          .subscribe();
+        client
+          .channel("sino-rt")
+          .on("postgres_changes", { event: "*", schema: "public", table: "fila_sinal" }, () => cb())
           .subscribe();
         // as mesas livres têm tabela própria: canal separado
         client
@@ -551,6 +577,8 @@
   let _autoFechando = false;
   async function checkAutoClose() {
     if (CFG.autoFecharAtiva !== true || _autoFechando) return;
+    // quem fecha a fila é a recepção: o totem não tem permissão de gravar
+    if (loginLigado() && !ehRecepcao()) return;
     const lim = Number(CFG.autoFecharQtd) || 0;
     if (lim < 1) return;
     // o limite é em PESSOAS aguardando (soma o tamanho dos grupos), como diz a engrenagem
@@ -784,7 +812,8 @@
   // As mesas ficam numa tabela própria; se ela ainda não existe no banco,
   // o recurso simplesmente não aparece (o resto do app continua normal).
   async function carregarMesas() {
-    if (CFG.garcomAtivo === false) { mesasLivres = []; return; }
+    // as mesas livres são assunto interno: o totem nem consulta
+    if (CFG.garcomAtivo === false || (loginLigado() && !temSessaoEquipe())) { mesasLivres = []; return; }
     try {
       const todas = await backend.listMesas();
       semTabelaMesas = false;
@@ -1340,6 +1369,11 @@
     return "totem";
   }
   function ehAdm() { return !loginLigado() || (usuario && usuario.papel === PAPEL.ADM); }
+  // recepção = quem pode mexer na fila (administrador ou atendente)
+  function ehRecepcao() {
+    return !loginLigado() ||
+      (usuario && (usuario.papel === PAPEL.ADM || usuario.papel === PAPEL.ATENDENTE));
+  }
 
   // Este aparelho foi marcado como o totem do salão (não pede senha)
   function modoTotem() {

@@ -9,7 +9,7 @@
   const CFG = window.FILA_CONFIG || {};
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado" };
   const LS_KEY = "fila_espera_v1";
-  const T = "fila_espera";
+  const T = "fila_publica";   // a "vitrine": fila sem telefone e só com o primeiro nome
 
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -18,10 +18,9 @@
   // código do cliente que abriu o link (?id=...) — para destacar "você"
   const meuId = new URLSearchParams(location.search).get("id") || "";
 
-  // Esta página mostra SÓ a situação de quem abriu o link. Por isso a fila dos
-  // outros vem sem NOME e sem telefone: só o suficiente para calcular a posição.
-  // O nome de quem abriu vem numa consulta à parte, só do registro dele.
-  const COLS_FILA = "id,pessoas,preferencial,status,criado_em,chamado_em";
+  // A vitrine (view) já entrega só o primeiro nome e nada de telefone,
+  // comanda ou pager — a proteção está no banco, não só nesta tela.
+  const COLS_FILA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
 
   // Só estas configurações interessam a quem acompanha a fila. Copiar `dados`
   // inteiro traria junto qualquer ajuste interno guardado na configuração.
@@ -68,7 +67,8 @@
       try { rows = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { rows = []; }
       return;
     }
-    // 1) a fila SEM NOMES: só para saber quantos estão na frente e a média
+    // Lê a "vitrine" (view fila_publica): a fila já vem sem telefone, sem
+    // comanda e só com o primeiro nome — nem o banco entrega mais que isso.
     const ativos = await client.from(T).select(COLS_FILA)
       .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO])
       .order("criado_em", { ascending: true }).limit(PAGINA);
@@ -81,12 +81,6 @@
 
     const mapa = new Map();
     (ativos.data || []).concat(hist.data || []).forEach((r) => mapa.set(r.id, r));
-
-    // 2) só o registro de quem abriu o link traz o nome — e mais nada de ninguém
-    if (meuId) {
-      const eu = await client.from(T).select(COLS_FILA + ",nome").eq("id", meuId).limit(1);
-      if (!eu.error && eu.data && eu.data[0]) mapa.set(eu.data[0].id, eu.data[0]);
-    }
     rows = Array.from(mapa.values()).sort(byCreatedAsc);
   }
 
@@ -199,8 +193,10 @@
       client = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {
         realtime: { params: { eventsPerSecond: 5 } },
       });
+      // a vitrine é uma view e views não avisam ninguém: escutamos o "sino",
+      // uma tabelinha que guarda só a hora da última mudança na fila
       client.channel("fila-pub-rt")
-        .on("postgres_changes", { event: "*", schema: "public", table: T }, atualizar)
+        .on("postgres_changes", { event: "*", schema: "public", table: "fila_sinal" }, atualizar)
         .subscribe();
       client.channel("fila-pub-cfg")
         .on("postgres_changes", { event: "*", schema: "public", table: "fila_config" }, async () => {

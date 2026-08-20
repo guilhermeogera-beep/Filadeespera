@@ -40,6 +40,7 @@ alter table public.fila_espera add column if not exists pet               boolea
 alter table public.fila_espera add column if not exists sem_area_pet      boolean not null default false;
 alter table public.fila_espera add column if not exists comanda           text;
 alter table public.fila_espera add column if not exists pager             text;
+alter table public.fila_espera add column if not exists mesa_numero       text;
 alter table public.fila_espera add column if not exists chamadas_perdidas int not null default 0;
 
 -- Quem já estava na fila não tinha "entrou_em": copia da data de criação.
@@ -182,11 +183,11 @@ from (
   select 'tabela mesas_livres',
          to_regclass('public.mesas_livres') is not null
   union all
-  select 'colunas novas da fila (9)',
+  select 'colunas novas da fila (10)',
          (select count(*) from information_schema.columns
            where table_schema = 'public' and table_name = 'fila_espera'
-             and column_name in ('entrou_em','sentou_em','termos_em','pedido_em',
-                                 'pet','sem_area_pet','comanda','pager','chamadas_perdidas')) = 9
+             and column_name in ('entrou_em','sentou_em','termos_em','pedido_em','mesa_numero',
+                                 'pet','sem_area_pet','comanda','pager','chamadas_perdidas')) = 10
   union all
   select 'colunas das mesas (8)',
          (select count(*) from information_schema.columns

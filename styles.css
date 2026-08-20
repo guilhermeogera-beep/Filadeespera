@@ -503,3 +503,4 @@ button{font-family:inherit}
 .num-chip button:hover{background:rgba(0,0,0,.40)}
 .num-mais{font-weight:800;color:var(--muted)}
 .mesa-obs{color:var(--muted);font-size:.85rem;font-style:italic}
+.q-chip.chip-mesa{background:var(--meso-soft);color:#2c4349}

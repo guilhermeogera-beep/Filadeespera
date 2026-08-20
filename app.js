@@ -605,6 +605,56 @@
   }
 
   // ==========================================================
+  //  "SENTOU" — em qual mesa o cliente ficou
+  // ==========================================================
+  let sentandoId = null;
+
+  // Abre o pop-up perguntando a mesa. Se a engrenagem estiver em "não perguntar",
+  // marca como sentado direto (como era antes).
+  async function pedirMesaSentou(id) {
+    const modo = CFG.perguntarMesa || "opcional";
+    if (modo === "nao") { await seatPerson(id); return; }
+    const r = rows.find((x) => x.id === id);
+    if (!r) return;
+    sentandoId = id;
+    $("#sentouQuem").innerHTML = `<b>${esc(r.nome)}</b> — ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}`;
+    // se a chamada saiu de uma mesa lançada pelo garçom, o número já vem pronto
+    $("#sentouMesa").value = r.mesa_numero || "";
+    $("#sentouLabel").innerHTML = modo === "obrigatorio"
+      ? 'Em qual mesa? <b class="req">*</b>'
+      : "Em qual mesa? <small>(opcional)</small>";
+    $("#sentouMsg").textContent = "";
+    $("#sentouModal").hidden = false;
+    setTimeout(() => $("#sentouMesa").focus(), 60);
+  }
+
+  async function confirmarSentou() {
+    if (!sentandoId) return;
+    const btn = $("#sentouOk"), msg = $("#sentouMsg");
+    const numero = $("#sentouMesa").value.trim();
+    if ((CFG.perguntarMesa || "opcional") === "obrigatorio" && !numero) {
+      msg.textContent = "Informe o número da mesa.";
+      msg.className = "form-msg err";
+      $("#sentouMesa").focus();
+      return;
+    }
+    btn.disabled = true;
+    msg.textContent = "Salvando…"; msg.className = "form-msg";
+    try {
+      await seatPerson(sentandoId, numero);
+      $("#sentouModal").hidden = true;
+      sentandoId = null;
+      msg.textContent = "";
+    } catch (e) {
+      console.error("Erro ao marcar sentou:", e);
+      msg.textContent = "Não deu para salvar — verifique a internet e tente de novo.";
+      msg.className = "form-msg err";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ==========================================================
   //  EDITAR UM CLIENTE (só a atendente)
   // ==========================================================
   let editandoId = null;
@@ -847,6 +897,7 @@
   function callChipsHTML(r, staff) {
     const partes = [];
     if (r.pet) partes.push("🐾 pet");
+    if (staff && r.mesa_numero) partes.push("🪑 mesa " + esc(r.mesa_numero));
     if (staff && r.comanda) partes.push("🧾 " + esc(r.comanda));
     if (staff && r.pager) partes.push("🔔 " + esc(r.pager));
     return partes.length ? `<span class="ci-chips">${partes.join(" ")}</span>` : "";
@@ -857,6 +908,7 @@
     let h = "";
     if (r.pet) h += `<span class="q-chip chip-pet">🐾 pet</span>`;
     if (r.sem_area_pet) h += `<span class="q-chip chip-sempet">🚫 sem área pet</span>`;
+    if (staff && r.mesa_numero) h += `<span class="q-chip chip-mesa">🪑 mesa ${esc(r.mesa_numero)}</span>`;
     if (staff && r.comanda) h += `<span class="q-chip">🧾 ${esc(r.comanda)}</span>`;
     if (staff && r.pager) h += `<span class="q-chip">🔔 ${esc(r.pager)}</span>`;
     return h;
@@ -1241,14 +1293,39 @@
     setTimeout(() => $("#mNumero").focus(), 60);
   }
 
-  // Números já adicionados (quando o garçom junta duas ou mais mesas)
+  // Números já adicionados. Com dois ou mais, o garçom escolhe se são mesas
+  // separadas (o normal) ou se ele juntou tudo numa mesa só.
   function renderNumChips() {
     const box = $("#mNumChips");
     if (!box) return;
+    const juntas = modoMesasJuntas();
     box.innerHTML = numerosNovaMesa.map((n, i) => `
       <span class="num-chip">${esc(n)}<button type="button" data-tiranum="${i}" aria-label="Tirar">✕</button></span>`)
-      .join('<span class="num-mais">+</span>');
+      .join(juntas ? '<span class="num-mais">+</span>' : '<span class="num-mais">·</span>');
     box.hidden = !numerosNovaMesa.length;
+
+    // o seletor "separadas x juntas" só faz sentido com 2+ mesas
+    const campo = $("#mModoField");
+    if (campo) campo.hidden = numerosNovaMesa.length < 2;
+    const qtd = numerosNovaMesa.length;
+    const lug = lugaresNovaMesa;
+    const sep = $("#mModoSep"), jun = $("#mModoJun");
+    if (sep) sep.textContent = `${qtd} mesas separadas, de ${lug} ${lug === 1 ? "lugar" : "lugares"} cada`;
+    if (jun) jun.textContent = `Uma mesa só, com ${lug} ${lug === 1 ? "lugar" : "lugares"} no total`;
+
+    const hint = $("#mNumHint");
+    if (hint) {
+      hint.innerHTML = qtd < 2
+        ? "Vagou mais de uma? Toque no <b>+</b> para lançar várias de uma vez."
+        : (juntas
+          ? "Como você juntou as mesas, os lugares acima devem ser o <b>total</b> da mesa grande."
+          : `Vai entrar <b>${qtd} mesas</b> na lista, uma para cada número.`);
+    }
+  }
+
+  function modoMesasJuntas() {
+    const r = $('input[name="mesamodo"]:checked');
+    return !!r && r.value === "juntas" && numerosNovaMesa.length > 1;
   }
 
   // Guarda o que está digitado no campo de número (chamado ao adicionar e ao salvar)
@@ -1527,10 +1604,14 @@
       if (cmsg) { cmsg.textContent = "Salvando…"; cmsg.className = "form-msg"; }
       try {
         // GRAVA PRIMEIRO: nunca avisar o cliente de uma mesa que não foi registrada
+        // se a chamada saiu de uma mesa do garçom, já guarda o número dela:
+        // na hora do "Sentou" o campo vem preenchido sozinho
+        const mesaEscolhida = mesasLivres.find((m) => m.id === mesaSelecionada);
         await callPerson(p.id, {
           pet: $("#callPet").checked,
           comanda: $("#callComanda").value.trim() || null,
           pager: $("#callPager").value.trim() || null,
+          mesa_numero: (mesaEscolhida && (mesaEscolhida.numeros || mesaEscolhida.identificacao)) || p.mesa_numero || null,
         });
       } catch (e) {
         console.error("Erro ao gravar a chamada:", e);
@@ -1578,14 +1659,15 @@
         return;
       }
       if (t.dataset.edit) { openEdit(t.dataset.edit); return; }
+      // "Sentou" pode perguntar em qual mesa (o pop-up é que grava)
+      if (t.dataset.seat) { await pedirMesaSentou(t.dataset.seat); return; }
       // "pedido pronto" é um link: o WhatsApp abre sozinho, só registramos a hora
       if (t.dataset.pedido) { marcarPedido(t.dataset.pedido); return; }
 
       if (t.disabled) return;
       t.disabled = true;   // evita toque duplo enquanto grava
       try {
-        if (t.dataset.seat) await seatPerson(t.dataset.seat);
-        else if (t.dataset.drop) { if (confirm("Remover este cliente da fila?")) await dropPerson(t.dataset.drop); }
+        if (t.dataset.drop) { if (confirm("Remover este cliente da fila?")) await dropPerson(t.dataset.drop); }
         else if (t.dataset.back) await backToQueue(t.dataset.back);
         else if (t.dataset.discard) { if (confirm("Remover esta chamada?")) await dropPerson(t.dataset.discard); }
         else if (t.dataset.toend) {
@@ -1623,6 +1705,10 @@
     // "com pet" e "sem área pet" não podem estar marcados juntos
     sincPetForm = exclusaoPet("#fPet", "#fSemPet");
     sincPetEdit = exclusaoPet("#edPet", "#edSemPet");
+
+    // em qual mesa o cliente sentou
+    $("#sentouOk").addEventListener("click", confirmarSentou);
+    $("#sentouMesa").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#sentouOk").click(); });
 
     // editar cliente
     $("#edSave").addEventListener("click", salvarEdicao);
@@ -1741,6 +1827,7 @@
         <td>${r.pessoas}</td>
         <td>${r.preferencial ? "★ Pref." : "Normal"}${isMesona(r) ? " / 🍽 grande" : ""}</td>
         <td>${r.pet ? "🐾 sim" : (r.sem_area_pet ? "🚫 sem área pet" : "não")}</td>
+        <td>${esc(r.mesa_numero || "—")}</td>
         <td>${esc(r.comanda || "—")}</td>
         <td>${esc(r.pager || "—")}</td>
         <td>${fmtDataHora(entradaEm(r))}</td>
@@ -1787,13 +1874,13 @@
     }
     const min = (ms) => (ms == null ? "" : String(Math.round(ms / 60000)).replace(".", ","));
     const cab = ["Nome", "Telefone", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
-      "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera ate chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situacao"];
+      "Mesa", "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera ate chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situacao"];
     const linhas = relCache.map((r) => [
       r.nome, r.telefone || "", r.pessoas,
       r.preferencial ? "Preferencial" : "Normal",
       isMesona(r) ? "Sim" : "Nao",
       r.pet ? "Sim" : (r.sem_area_pet ? "Nao - sem area pet" : "Nao"),
-      r.comanda || "", r.pager || "",
+      r.comanda || "", r.pager || "", r.mesa_numero || "",
       fmtDataHora(entradaEm(r)),
       r.chamado_em ? fmtDataHora(r.chamado_em) : "",
       r.sentou_em ? fmtDataHora(r.sentou_em) : "",
@@ -1894,7 +1981,7 @@
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "filasJuntas",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo",
-    "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo",
+    "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa",
   ];
 
   // O PIN da atendente fica guardado só NESTE aparelho (não sobe para a nuvem)
@@ -2040,6 +2127,7 @@
 
     $("#cfgRest").value = CFG.restaurante || "";
     $("#cfgPinAtend").value = CFG.pinAtendente || "";
+    $("#cfgPerguntarMesa").value = CFG.perguntarMesa || "opcional";
     $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
     $("#cfgPinGarcom").value = CFG.pinGarcom || "";
 
@@ -2092,6 +2180,7 @@
       msgPedido: $("#cfgMsgPedido").value.trim(),
 
       garcomAtivo: $("#cfgGarcomOn").value === "sim",
+      perguntarMesa: $("#cfgPerguntarMesa").value,
 
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
     };

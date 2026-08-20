@@ -363,11 +363,25 @@
           <span>Número da mesa</span>
           <div class="num-row">
             <input id="mNumero" type="text" maxlength="8" inputmode="numeric" placeholder="ex.: 12" />
-            <button type="button" class="btn btn-neutral num-add" id="mAddNum" title="Juntar outra mesa">+</button>
+            <button type="button" class="btn btn-neutral num-add" id="mAddNum" title="Lançar outra mesa junto">+</button>
           </div>
           <div class="num-chips" id="mNumChips"></div>
-          <small class="hint">Juntou mesas? Toque no <b>+</b> para somar a próxima (ex.: 12 + 13).
-            Lembre de ajustar os lugares acima para o total.</small>
+          <small class="hint" id="mNumHint">Vagou mais de uma? Toque no <b>+</b> para lançar várias de uma vez.</small>
+        </div>
+
+        <!-- só aparece quando há 2 ou mais números -->
+        <div class="field" id="mModoField" hidden>
+          <span>Como lançar essas mesas?</span>
+          <div class="segmented segmented-col">
+            <label class="seg">
+              <input type="radio" name="mesamodo" value="separadas" checked />
+              <span id="mModoSep">Mesas separadas</span>
+            </label>
+            <label class="seg">
+              <input type="radio" name="mesamodo" value="juntas" />
+              <span id="mModoJun">Juntei tudo numa mesa só</span>
+            </label>
+          </div>
         </div>
 
         <label class="field">
@@ -767,7 +781,7 @@
           <thead>
             <tr>
               <th>Nome</th><th>Telefone</th><th>Pessoas</th><th>Tipo</th><th>Pet</th>
-              <th>Comanda</th><th>Pager</th><th>Entrou</th><th>Chamado</th><th>Sentou</th><th>Pedido avisado</th>
+              <th>Mesa</th><th>Comanda</th><th>Pager</th><th>Entrou</th><th>Chamado</th><th>Sentou</th><th>Pedido avisado</th>
               <th>Espera até chamar</th><th>Tempo total</th><th>Perdeu a vez</th><th>Situação</th>
             </tr>
           </thead>

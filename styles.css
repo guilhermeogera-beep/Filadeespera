@@ -568,3 +568,35 @@ button{font-family:inherit}
 .sem-codigo p:last-child{margin-bottom:0}
 .resumo-card{display:flex;flex-direction:column;gap:12px}
 .resumo-card .queue-stats{justify-content:center}
+
+/* ---- mesas livres dentro do pop-up "cliente sentou" ------------------
+   A atendente toca na mesa em vez de decorar o número e digitar depois. */
+#sentouMesasBox{margin:0 0 14px}
+.sentou-mesas-tit{
+  display:block;font-size:.85rem;font-weight:600;color:var(--muted);
+  margin:0 0 8px;
+}
+.sentou-mesas{
+  display:flex;flex-wrap:wrap;gap:8px;
+  /* numa noite cheia a lista não pode empurrar os botões para fora da tela */
+  max-height:210px;overflow-y:auto;
+}
+.sm-mesa{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  min-width:104px;padding:10px 12px;cursor:pointer;text-align:left;
+  background:var(--card);color:var(--ink);
+  border:2px solid var(--line);border-radius:12px;
+  font-family:inherit;line-height:1.2;
+}
+.sm-mesa:hover{border-color:var(--ink)}
+.sm-num{font-size:1.05rem;font-weight:700}
+.sm-lug{font-size:.82rem;color:var(--muted)}
+.sm-pet{font-size:.78rem;color:var(--meso);font-weight:600}
+/* mesa menor que o grupo: continua clicável, mas avisa que aperta */
+.sm-mesa.is-aperta{opacity:.55}
+.sm-mesa.is-aperta .sm-lug{color:var(--danger)}
+/* a que ela escolheu */
+.sm-mesa.is-sel{
+  border-color:var(--ink);background:var(--ink);color:#fff;
+}
+.sm-mesa.is-sel .sm-lug,.sm-mesa.is-sel .sm-pet{color:#fff}

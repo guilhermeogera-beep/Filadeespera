@@ -13,7 +13,7 @@
 
   // Colunas que podem ainda não existir no banco do cliente.
   // Se faltarem, o app continua funcionando sem elas (e avisa nas configurações).
-  const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em", "sem_area_pet", "pedido_em", "mesa_numero", "email"];
+  const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em", "sem_area_pet", "pedido_em", "mesa_numero", "email", "aniversario"];
   const LS_COLS = "fila_cols_ausentes";
   const LS_PIN = "fila_pin_atendente";
   const LS_PIN_G = "fila_pin_garcom";
@@ -485,13 +485,14 @@
       !cabeNaMesa(r, mesaAceitaPet)).length;
   }
 
-  async function addPerson({ nome, telefone, email, pessoas, preferencial, pet, semAreaPet, comanda, pager, aceitouTermos }) {
+  async function addPerson({ nome, telefone, email, aniversario, pessoas, preferencial, pet, semAreaPet, comanda, pager, aceitouTermos }) {
     const agora = new Date().toISOString();
     const entry = {
       id: uuid(),
       nome: nome.trim(),
       telefone: (telefone || "").trim(),
       email: (email || "").trim().toLowerCase() || null,
+      aniversario: normalizaAniversario(aniversario) || null,
       pessoas: Number(pessoas),
       preferencial: !!preferencial,
       pet: !!pet,
@@ -649,9 +650,36 @@
     $("#sentouLabel").innerHTML = modo === "obrigatorio"
       ? 'Em qual mesa? <b class="req">*</b>'
       : "Em qual mesa? <small>(opcional)</small>";
+    desenharMesasDoSentou(r);
     $("#sentouMsg").textContent = "";
     $("#sentouModal").hidden = false;
     setTimeout(() => $("#sentouMesa").focus(), 60);
+  }
+
+  // Mostra as mesas que o garçom liberou como botões, para a atendente tocar
+  // em vez de decorar o número e digitar depois — é aí que nasce o erro.
+  // As que comportam o grupo vêm primeiro e ficam destacadas.
+  function desenharMesasDoSentou(r) {
+    const box = $("#sentouMesasBox"), lista = $("#sentouMesas");
+    if (!mesasLivres.length) { box.hidden = true; lista.innerHTML = ""; return; }
+    const cabe = (m) => Number(m.lugares) >= Number(r.pessoas);
+    const ordenadas = mesasLivres.slice().sort((a, b) => {
+      if (cabe(a) !== cabe(b)) return cabe(a) ? -1 : 1;    // as que servem primeiro
+      return Number(a.lugares) - Number(b.lugares);        // e a menor que serve, antes
+    });
+    const escolhida = $("#sentouMesa").value.trim().toLowerCase();
+    lista.innerHTML = ordenadas.map((m) => {
+      const num = String(m.numeros || m.identificacao || "").trim();
+      const rotulo = num ? "Mesa " + esc(num) : "sem número";
+      const sel = num && num.toLowerCase() === escolhida ? " is-sel" : "";
+      return `<button type="button" class="sm-mesa${cabe(m) ? "" : " is-aperta"}${sel}"
+        data-sentoumesa="${esc(num)}" data-mesaid="${m.id}">
+        <b class="sm-num">${rotulo}</b>
+        <span class="sm-lug">${m.lugares} ${Number(m.lugares) === 1 ? "lugar" : "lugares"}</span>
+        ${m.pet ? `<span class="sm-pet">🐾 área pet</span>` : ""}
+      </button>`;
+    }).join("");
+    box.hidden = false;
   }
 
   // Procura, entre as mesas livres, uma que combine com o que foi digitado.
@@ -713,6 +741,8 @@
     $("#edTel").value = r.telefone || "";
     $("#edEmail").value = r.email || "";
     $("#edEmailField").hidden = (CFG.campoEmail || "nao") === "nao";
+    $("#edAniversario").value = r.aniversario || "";
+    $("#edAniversarioField").hidden = (CFG.campoAniversario || "nao") === "nao";
     $("#edPessoas").value = Number(r.pessoas) || 1;
     $("#edPessoas").max = Number(CFG.maxPessoas) || MAX_P;
     $("#edTipo").value = r.preferencial ? "preferencial" : "normal";
@@ -740,6 +770,7 @@
       nome,
       telefone: $("#edTel").value.trim(),
       email: $("#edEmail").value.trim().toLowerCase() || null,
+      aniversario: normalizaAniversario($("#edAniversario").value) || null,
       pessoas: Math.max(MIN_P, Math.min(max, parseInt($("#edPessoas").value, 10) || 1)),
       preferencial: $("#edTipo").value === "preferencial",
       comanda: $("#edComanda").value.trim() || null,
@@ -1023,6 +1054,27 @@
   const soDigitos = (s) => String(s == null ? "" : s).replace(/\D/g, "");
   // conferência simples de e-mail: tem @, tem ponto depois, sem espaços
   const emailValido = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s || "").trim());
+
+  // aniversário: guardamos só o dia e o mês, sempre como "dd/mm".
+  // Aceita 7/3, 0703, 07/03/1990 — e devolve "" se a data não existir.
+  function normalizaAniversario(s) {
+    const txt = String(s == null ? "" : s).trim();
+    if (!txt) return "";
+    let dia, mes;
+    const partes = txt.split(/[^0-9]+/).filter(Boolean);
+    if (partes.length >= 2) {            // veio com separador: 7/3, 07-03, 7.3.1990
+      dia = +partes[0]; mes = +partes[1];
+    } else {                             // veio tudo junto: 703, 0703, 07031990
+      const d = partes[0] || "";
+      if (d.length < 3) return "";       // falta o mês
+      dia = d.length === 3 ? +d.slice(0, 1) : +d.slice(0, 2);
+      mes = d.length === 3 ? +d.slice(1)    : +d.slice(2, 4);
+    }
+    if (!(mes >= 1 && mes <= 12)) return "";
+    const limite = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1];
+    if (!(dia >= 1 && dia <= limite)) return "";
+    return String(dia).padStart(2, "0") + "/" + String(mes).padStart(2, "0");
+  }
 
   function combinaBusca(r) {
     const t = semAcento(busca).trim();
@@ -1649,6 +1701,13 @@
     $("#fEmailLabel").innerHTML = modoEmail === "obrigatorio"
       ? 'E-mail <b class="req">*</b>' : "E-mail <small>(opcional)</small>";
 
+    // aniversário: mesma lógica do e-mail, só dia e mês
+    const modoAniv = CFG.campoAniversario || "nao";
+    $("#fAniversarioField").hidden = modoAniv === "nao";
+    $("#fAniversario").required = modoAniv === "obrigatorio";
+    $("#fAniversarioLabel").innerHTML = modoAniv === "obrigatorio"
+      ? 'Aniversário <b class="req">*</b>' : "Aniversário <small>(opcional)</small>";
+
     const petLigado = CFG.petAtivo !== false;
     $("#petRow").hidden = !petLigado;
     // "não sentar na área pet" só faz sentido se existe área pet
@@ -1722,6 +1781,7 @@
     $("#fPet").checked = false;
     $("#fSemPet").checked = false;
     $("#fEmail").value = "";
+    $("#fAniversario").value = "";
     $("#fTermos").checked = false;
     $("#fComanda").value = "";
     $("#fPager").value = "";
@@ -1933,6 +1993,13 @@
         if (modoEmail === "obrigatorio" && !email) return erro("Digite o e-mail.");
         if (email && !emailValido(email)) return erro("E-mail inválido — confira se está completo (nome@email.com).");
       }
+      // aniversário: só cobra se estiver ligado na engrenagem
+      const anivTxt = $("#fAniversario").value.trim();
+      const modoAniv = CFG.campoAniversario || "nao";
+      if (modoAniv !== "nao") {
+        if (modoAniv === "obrigatorio" && !anivTxt) return erro("Digite a data de aniversário (dia e mês).");
+        if (anivTxt && !normalizaAniversario(anivTxt)) return erro("Aniversário inválido — digite o dia e o mês, como 07/03.");
+      }
       if (precisaTermos && !$("#fTermos").checked) return erro("É preciso aceitar as regras da fila para entrar.");
       if (!isStaff() && CFG.filaFechada === true) return erro("A fila está fechada no momento.");
 
@@ -1941,6 +2008,7 @@
         const pessoa = await addPerson({
           nome, telefone: tel, pessoas,
           email: modoEmail === "nao" ? "" : email,
+          aniversario: modoAniv === "nao" ? "" : anivTxt,
           preferencial: tipo === "preferencial",
           pet, semAreaPet,
           comanda: isStaff() && CFG.campoComanda !== false ? $("#fComanda").value : "",
@@ -2097,6 +2165,15 @@
 
     // em qual mesa o cliente sentou
     $("#sentouOk").addEventListener("click", confirmarSentou);
+    // tocar numa mesa livre preenche o número — sem ninguém decorar nada
+    $("#sentouMesas").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-sentoumesa]");
+      if (!b) return;
+      $("#sentouMesa").value = b.dataset.sentoumesa;
+      $$("#sentouMesas .sm-mesa").forEach((x) => x.classList.remove("is-sel"));
+      b.classList.add("is-sel");
+      $("#sentouMsg").textContent = "";
+    });
     $("#sentouMesa").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#sentouOk").click(); });
 
     // editar cliente
@@ -2228,6 +2305,7 @@
         <td>${esc(r.nome)}</td>
         <td>${esc(r.telefone || "—")}</td>
         <td>${esc(r.email || "—")}</td>
+        <td>${esc(r.aniversario || "—")}</td>
         <td>${r.pessoas}</td>
         <td>${r.preferencial ? "★ Pref." : "Normal"}${isMesona(r) ? " / 🍽 grande" : ""}</td>
         <td>${r.pet ? "🐾 sim" : (r.sem_area_pet ? "🚫 sem área pet" : "não")}</td>
@@ -2277,10 +2355,10 @@
       return;
     }
     const min = (ms) => (ms == null ? "" : String(Math.round(ms / 60000)).replace(".", ","));
-    const cab = ["Nome", "Telefone", "E-mail", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
+    const cab = ["Nome", "Telefone", "E-mail", "Aniversario", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
       "Mesa", "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera ate chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situacao"];
     const linhas = relCache.map((r) => [
-      r.nome, r.telefone || "", r.email || "", r.pessoas,
+      r.nome, r.telefone || "", r.email || "", r.aniversario || "", r.pessoas,
       r.preferencial ? "Preferencial" : "Normal",
       isMesona(r) ? "Sim" : "Nao",
       r.pet ? "Sim" : (r.sem_area_pet ? "Nao - sem area pet" : "Nao"),
@@ -2383,7 +2461,7 @@
     "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
-    "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
+    "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
     "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa",
   ];
@@ -2515,6 +2593,7 @@
     $("#cfgPetOn").value = CFG.petAtivo === false ? "nao" : "sim";
     $("#cfgSemPetOn").value = CFG.campoSemPet === false ? "nao" : "sim";
     $("#cfgCampoEmail").value = CFG.campoEmail || "nao";
+    $("#cfgCampoAniversario").value = CFG.campoAniversario || "nao";
     $("#cfgFilasJuntas").value = CFG.filasJuntas === false ? "separadas" : "juntas";
     $("#cfgMostrarHora").value = CFG.mostrarHoraEntrada === false ? "nao" : "sim";
     $("#cfgMostrarTempo").value = CFG.mostrarTempoEspera === false ? "nao" : "sim";
@@ -2573,6 +2652,7 @@
       petAtivo: $("#cfgPetOn").value === "sim",
       campoSemPet: $("#cfgSemPetOn").value === "sim",
       campoEmail: $("#cfgCampoEmail").value,
+      campoAniversario: $("#cfgCampoAniversario").value,
       filasJuntas: $("#cfgFilasJuntas").value === "juntas",
       mostrarHoraEntrada: $("#cfgMostrarHora").value === "sim",
       mostrarTempoEspera: $("#cfgMostrarTempo").value === "sim",

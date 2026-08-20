@@ -286,20 +286,8 @@
       <h3>Chamar cliente</h3>
       <div id="callModalBody" class="call-confirm"></div>
 
-      <!-- O pet NÃO se ajusta aqui: ele já decidiu quem podia ser chamado.
-           Para corrigir, use o ✏️ Editar na fila. -->
-      <div class="call-extra">
-        <div class="two-cols">
-          <label class="field" id="callComandaField">
-            <span>🧾 Comanda</span>
-            <input id="callComanda" type="text" maxlength="12" inputmode="numeric" placeholder="nº" />
-          </label>
-          <label class="field" id="callPagerField">
-            <span>🔔 Pager</span>
-            <input id="callPager" type="text" maxlength="12" inputmode="numeric" placeholder="nº" />
-          </label>
-        </div>
-      </div>
+      <!-- Aqui não se edita nada: pet, comanda e pager já foram informados ao
+           cadastrar (e o ✏️ Editar corrige). Este pop-up só confirma a chamada. -->
 
       <p class="form-msg" id="callMsg" role="status"></p>
       <div class="modal-actions">

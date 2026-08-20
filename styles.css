@@ -337,7 +337,6 @@ button{font-family:inherit}
 .call-confirm{font-size:1.05rem}
 .call-confirm .cc-name{font-size:1.6rem;font-weight:800;color:var(--brand-dark)}
 .call-confirm .cc-meta{color:var(--muted);margin-top:4px}
-.call-extra{display:flex;flex-direction:column;gap:12px;margin-top:16px;padding-top:16px;border-top:1.5px dashed var(--line)}
 .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .two-cols .field input{padding:12px}
 .two-cols .field[hidden]{display:none}

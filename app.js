@@ -584,9 +584,12 @@
         ? `<div class="cc-alerta">🚫 Este cliente pediu para <b>não sentar na área pet</b>.</div>`
         : `<div class="cc-alerta">🐾 Este cliente está <b>com pet</b> e a mesa não é da área pet.</div>`;
     }
-    const selos = petLigado
+    // tudo aqui é só para CONFERIR — o cadastro já foi feito na entrada
+    const selos = (petLigado
       ? (chosen.pet ? " • 🐾 com pet" : "") + (chosen.sem_area_pet ? " • 🚫 não quer área pet" : "")
-      : "";
+      : "") +
+      (CFG.campoComanda !== false && chosen.comanda ? " • 🧾 comanda " + esc(chosen.comanda) : "") +
+      (CFG.campoPager !== false && chosen.pager ? " • 🔔 pager " + esc(chosen.pager) : "");
     const mesaTxt = (petLigado && aceitaPet !== undefined)
       ? `<div class="cc-mesa">Mesa para ${mesa} ${mesa === 1 ? "pessoa" : "pessoas"} • ${aceitaPet ? "🐾 aceita pet" : "não é área pet"}</div>`
       : "";
@@ -594,12 +597,6 @@
       <div class="cc-name">${esc(chosen.nome)} ${chosen.preferencial ? "★" : ""}</div>
       <div class="cc-meta">${chosen.pessoas} ${chosen.pessoas === 1 ? "pessoa" : "pessoas"}${chosen.preferencial ? " • Preferencial" : ""}${isMesona(chosen) ? " • 🍽 mesa grande" : ""}${selos} • entrou ${fmtClock(chosen.criado_em)} • esperando há ${fmtElapsed(Date.now() - new Date(chosen.criado_em).getTime())}</div>
       ${mesaTxt}${alerta}`;
-    // campos extras da atendente (comanda / pager). O pet não entra aqui:
-    // ele já definiu quem podia ser chamado — mudar agora não teria efeito.
-    $("#callComanda").value = chosen.comanda || "";
-    $("#callPager").value = chosen.pager || "";
-    $("#callComandaField").hidden = CFG.campoComanda === false;
-    $("#callPagerField").hidden = CFG.campoPager === false;
     $("#callMsg").textContent = "";
     $("#callModal").hidden = false;
   }
@@ -1638,8 +1635,6 @@
         // na hora do "Sentou" o campo vem preenchido sozinho
         const mesaEscolhida = mesasLivres.find((m) => m.id === mesaSelecionada);
         await callPerson(p.id, {
-          comanda: $("#callComanda").value.trim() || null,
-          pager: $("#callPager").value.trim() || null,
           mesa_numero: (mesaEscolhida && (mesaEscolhida.numeros || mesaEscolhida.identificacao)) || p.mesa_numero || null,
         });
       } catch (e) {

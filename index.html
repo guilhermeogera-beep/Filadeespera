@@ -1,6 +1,6 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<meta name="theme-color" content="#2A7AC0" />
+<meta name="theme-color" content="#1A1A1A" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Fila Fácil" />
@@ -15,7 +15,7 @@
   <!-- ================= TOPO ================= -->
   <header class="topbar">
     <div class="brand">
-      <img class="brand-logo" src="./icons/icon-192.png" alt="" />
+      <img class="brand-logo" src="./icons/logo-branco.png" alt="Quinta do Aveiro" />
       <div class="brand-txt">
         <strong id="brandName">Fila Fácil</strong>
         <span class="brand-sub" id="brandSub">Quinta do Aveiro</span>
@@ -27,6 +27,7 @@
         <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
+      <button id="qrBtn" class="icon-btn-h staff-only" title="QR Code da página do cliente" aria-label="QR Code da página do cliente">📱</button>
       <button id="cfgBtn" class="icon-btn-h staff-only" title="Configurações" aria-label="Configurações">⚙</button>
     </div>
   </header>
@@ -62,6 +63,19 @@
             <button type="button" class="step-btn" data-freestep="1" aria-label="Mais">+</button>
           </div>
         </div>
+        <div class="field free-field" id="mesaPetField">
+          <span>Esta mesa aceita pet?</span>
+          <div class="segmented segmented-sm">
+            <label class="seg">
+              <input type="radio" name="mesapet" value="nao" checked />
+              <span>Não</span>
+            </label>
+            <label class="seg seg-pet">
+              <input type="radio" name="mesapet" value="sim" />
+              <span>🐾 Sim</span>
+            </label>
+          </div>
+        </div>
         <button type="button" class="btn btn-accent btn-big" id="freeTableBtn">🔔 Chamar próximo</button>
       </div>
       <p class="form-msg" id="staffMsg" role="status"></p>
@@ -77,6 +91,12 @@
         </div>
       </div>
 
+      <!-- MODO "TUDO JUNTO": uma lista só, na ordem de chegada (totem; nunca na atendente) -->
+      <div class="queue-group" id="groupTodas" hidden>
+        <ol class="queue-list" id="queueListTodas"></ol>
+        <div class="queue-empty" id="emptyTodas">Ninguém na fila neste momento 🎉</div>
+      </div>
+
       <!-- Mesas grandes ("mesonas"): aparecem separadas, mas seguem a mesma ordem de chegada -->
       <div class="queue-group" id="groupMesona" hidden>
         <div class="qg-head qg-meso">
@@ -86,7 +106,7 @@
         <div class="queue-empty" id="emptyMeso">Nenhuma mesa grande na fila</div>
       </div>
 
-      <div class="queue-group">
+      <div class="queue-group" id="groupPref">
         <div class="qg-head qg-pref">
           <span>★ Preferencial</span><span class="qg-count" id="statPref">0</span>
         </div>
@@ -94,7 +114,7 @@
         <div class="queue-empty" id="emptyPref">Nenhum preferencial na fila</div>
       </div>
 
-      <div class="queue-group">
+      <div class="queue-group" id="groupNorm">
         <div class="qg-head qg-norm">
           <span>Normal</span><span class="qg-count" id="statNorm">0</span>
         </div>
@@ -157,6 +177,24 @@
           <input type="checkbox" id="fPet" />
           <span class="check-txt"><b>🐾 Estou com pet</b><small>Temos mesas específicas para clientes com animais.</small></span>
         </label>
+
+        <!-- O contrário: quem NÃO quer ficar perto de animais -->
+        <label class="check-row" id="semPetRow">
+          <input type="checkbox" id="fSemPet" />
+          <span class="check-txt"><b>🚫 Não sentar na área pet</b><small>Por alergia, medo ou preferência — não vamos encaminhar para as mesas com animais.</small></span>
+        </label>
+
+        <!-- COMANDA / PAGER: só na aba da atendente, quando ligados na engrenagem -->
+        <div class="two-cols" id="formExtras" hidden>
+          <label class="field" id="formComandaField">
+            <span>🧾 Comanda</span>
+            <input id="fComanda" type="text" maxlength="12" inputmode="numeric" placeholder="nº" />
+          </label>
+          <label class="field" id="formPagerField">
+            <span>🔔 Pager</span>
+            <input id="fPager" type="text" maxlength="12" inputmode="numeric" placeholder="nº" />
+          </label>
+        </div>
 
         <!-- TERMOS: obrigatório para entrar na fila -->
         <label class="check-row" id="termosRow">
@@ -257,6 +295,60 @@
       <div class="modal-actions">
         <button class="btn btn-ghost btn-neutral" id="callCancel">Cancelar</button>
         <button class="btn btn-accent" id="callConfirm">🔔 Confirmar chamada</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: EDITAR CLIENTE (só atendente) ============ -->
+  <div class="modal" id="editModal" hidden>
+    <div class="modal-box modal-box-lg">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>✏️ Editar cliente</h3>
+      <div class="cfg-form">
+        <label class="field">
+          <span>Nome</span>
+          <input id="edNome" type="text" maxlength="40" />
+        </label>
+        <label class="field">
+          <span>Telefone</span>
+          <input id="edTel" type="tel" inputmode="tel" maxlength="20" placeholder="(11) 90000-0000" />
+        </label>
+        <div class="two-cols">
+          <label class="field">
+            <span>Quantas pessoas</span>
+            <input id="edPessoas" type="number" min="1" max="99" />
+          </label>
+          <label class="field">
+            <span>Tipo</span>
+            <select id="edTipo">
+              <option value="normal">Normal</option>
+              <option value="preferencial">★ Preferencial</option>
+            </select>
+          </label>
+        </div>
+        <div class="two-cols">
+          <label class="field" id="edComandaField">
+            <span>🧾 Comanda</span>
+            <input id="edComanda" type="text" maxlength="12" inputmode="numeric" placeholder="nº" />
+          </label>
+          <label class="field" id="edPagerField">
+            <span>🔔 Pager</span>
+            <input id="edPager" type="text" maxlength="12" inputmode="numeric" placeholder="nº" />
+          </label>
+        </div>
+        <label class="check-row check-sm" id="edPetRow">
+          <input type="checkbox" id="edPet" />
+          <span class="check-txt"><b>🐾 Está com pet</b></span>
+        </label>
+        <label class="check-row check-sm" id="edSemPetRow">
+          <input type="checkbox" id="edSemPet" />
+          <span class="check-txt"><b>🚫 Não sentar na área pet</b></span>
+        </label>
+        <p class="form-msg" id="edMsg"></p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Cancelar</button>
+        <button class="btn btn-primary" id="edSave">Salvar</button>
       </div>
     </div>
   </div>
@@ -399,6 +491,25 @@
         </label>
 
         <label class="field">
+          <span>Perguntar "não sentar na área pet"</span>
+          <select id="cfgSemPetOn">
+            <option value="sim">Sim, mostrar no totem</option>
+            <option value="nao">Não</option>
+          </select>
+          <small class="hint">Para quem tem alergia ou receio de animais. Ao chamar, essas pessoas
+            nunca são encaminhadas para uma mesa marcada como "aceita pet".</small>
+        </label>
+
+        <label class="field">
+          <span>Como mostrar a fila (totem e página do cliente)</span>
+          <select id="cfgFilasJuntas">
+            <option value="juntas">Tudo junto, na ordem de chegada</option>
+            <option value="separadas">Separado: mesas grandes, preferencial e normal</option>
+          </select>
+          <small class="hint">Na aba da atendente a fila fica <b>sempre separada</b>.</small>
+        </label>
+
+        <label class="field">
           <span>Mostrar o tempo médio de espera no totem</span>
           <select id="cfgMostrarMedia">
             <option value="sim">Mostrar</option>
@@ -481,6 +592,21 @@
           <small class="hint">Use {nome}, {restaurante}, {posicao} e {link}.</small>
         </label>
 
+        <label class="field">
+          <span>Botão "🍽 Pedido pronto"</span>
+          <select id="cfgAvisoPedido">
+            <option value="sim">Mostrar na aba da atendente</option>
+            <option value="nao">Não usar</option>
+          </select>
+          <small class="hint">Avisa o cliente no WhatsApp que o pedido pode ser retirado.</small>
+        </label>
+
+        <label class="field">
+          <span>Mensagem do pedido pronto</span>
+          <textarea id="cfgMsgPedido" rows="3"></textarea>
+          <small class="hint">Use {nome}, {restaurante}, {comanda} e {pager}.</small>
+        </label>
+
         <div class="cfg-sec">Identificação e acesso</div>
 
         <label class="field">
@@ -532,7 +658,7 @@
           <thead>
             <tr>
               <th>Nome</th><th>Telefone</th><th>Pessoas</th><th>Tipo</th><th>Pet</th>
-              <th>Comanda</th><th>Pager</th><th>Entrou</th><th>Chamado</th><th>Sentou</th>
+              <th>Comanda</th><th>Pager</th><th>Entrou</th><th>Chamado</th><th>Sentou</th><th>Pedido avisado</th>
               <th>Espera até chamar</th><th>Tempo total</th><th>Perdeu a vez</th><th>Situação</th>
             </tr>
           </thead>

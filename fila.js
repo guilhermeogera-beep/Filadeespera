@@ -26,7 +26,7 @@
 
   // Só estas configurações interessam a quem acompanha a fila. Copiar `dados`
   // inteiro traria junto qualquer ajuste interno guardado na configuração.
-  const CFG_PUBLICAS = ["restaurante", "marca", "mostrarMedia", "mesonaAtiva", "mesonaMin", "prazoComparecer"];
+  const CFG_PUBLICAS = ["restaurante", "marca", "mostrarMedia", "mesonaAtiva", "mesonaMin", "prazoComparecer", "filasJuntas"];
 
   // Janela de histórico: a página não precisa (nem deve) baixar a tabela inteira
   const JANELA_HIST_MS = 24 * 3600 * 1000;
@@ -181,11 +181,12 @@
         <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)</span>
       </div>`).join("");
 
-    // ---- fila completa (tudo junto, na ordem de chegada) ----
-    $("#queueList").innerHTML = w.map((r, i) => {
-      const selos =
-        (r.preferencial ? `<span class="q-tag pref">★ preferencial</span>` : "") +
-        (isMesona(r) ? `<span class="q-tag meso">🍽 mesa grande</span>` : "") +
+    // ---- a fila: tudo junto ou separada em grupos (segue a engrenagem) ----
+    const item = (r, i, junto) => {
+      const selos = (junto
+        ? (r.preferencial ? `<span class="q-tag pref">★ preferencial</span>` : "") +
+          (isMesona(r) ? `<span class="q-tag meso">🍽 mesa grande</span>` : "")
+        : "") +
         (r.pet ? `<span class="q-tag petx">🐾 pet</span>` : "");
       return `
         <li class="q-item ${r.preferencial ? "is-pref" : ""} ${isMesona(r) ? "is-meso-pub" : ""} ${r.id === meuId ? "is-me" : ""}">
@@ -199,7 +200,26 @@
             </div>
           </div>
         </li>`;
-    }).join("");
+    };
+
+    if (CFG.filasJuntas === false) {
+      // separada: mesas grandes, preferencial e normal — cada uma na ordem de chegada
+      const meso = w.filter(isMesona);
+      const pref = w.filter((r) => r.preferencial && !isMesona(r));
+      const norm = w.filter((r) => !r.preferencial && !isMesona(r));
+      const grupo = (titulo, classe, lista, vazio) => (!lista.length && !vazio) ? "" : `
+        <div class="queue-group">
+          <div class="qg-head ${classe}"><span>${titulo}</span><span class="qg-count">${lista.length}</span></div>
+          <ol class="queue-list">${lista.map((r, i) => item(r, i, false)).join("")}</ol>
+          ${lista.length ? "" : `<div class="queue-empty">${vazio}</div>`}
+        </div>`;
+      $("#queueWrap").innerHTML =
+        (CFG.mesonaAtiva === true ? grupo(`🍽 Mesas grandes (${Number(CFG.mesonaMin) || 8}+ pessoas)`, "qg-meso", meso, "Nenhuma mesa grande na fila") : "") +
+        grupo("★ Preferencial", "qg-pref", pref, "Nenhum preferencial na fila") +
+        grupo("Normal", "qg-norm", norm, "Ninguém na fila normal");
+    } else {
+      $("#queueWrap").innerHTML = `<ol class="queue-list">${w.map((r, i) => item(r, i, true)).join("")}</ol>`;
+    }
     $("#queueEmpty").hidden = w.length > 0;
 
     tick();

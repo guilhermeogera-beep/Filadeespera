@@ -59,6 +59,9 @@ window.FILA_CONFIG = {
   exigirTermos: true,     // exige aceitar as regras (termos) no totem
   termosTexto: "",        // vazio = usa o TERMOS_PADRAO acima
   petAtivo: true,         // mostra a opção "estou com pet" no totem
+  campoSemPet: true,      // mostra "não sentar na área pet" (alergia/receio de animais)
+  filasJuntas: true,      // true = totem e página do cliente mostram TUDO numa lista só
+                          // (a atendente vê sempre separado: mesas grandes / preferencial / normal)
   mostrarMedia: true,     // mostra o tempo médio de espera no TOTEM (na atendente aparece sempre)
   maxPessoas: 20,         // máximo de pessoas por grupo
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
@@ -70,7 +73,7 @@ window.FILA_CONFIG = {
   autoFecharQtd: 30,      // ... ao chegar nesta quantidade de pessoas aguardando
   autoFecharArmado: true, // controle interno: só fecha de novo depois de esvaziar
 
-  // --- Comanda e pager (preenchidos pela atendente ao chamar) ---
+  // --- Comanda e pager (a atendente preenche ao adicionar e ao chamar) ---
   campoComanda: true,
   campoPager: true,
 
@@ -81,6 +84,10 @@ window.FILA_CONFIG = {
   linkAtivo: true,        // oferece o link/QR de acompanhamento ao entrar na fila
   msgWhats: "Olá {nome}! Sua mesa na {restaurante} está pronta 🍽️ Por favor, compareça à recepção em até {prazo} minutos para não perder a vez. Obrigado!",
   msgLink: "Olá {nome}! Você entrou na fila da {restaurante} 🍽️ Sua posição no momento: {posicao}. Acompanhe a fila em tempo real por aqui: {link}",
+
+  // --- Aviso de "pedido pronto" (botão na aba da atendente) ---
+  avisoPedido: true,      // mostra o botão "🍽 Pedido pronto" junto de Chamar/Sentou/Saiu
+  msgPedido: "Olá {nome}! Seu pedido na {restaurante} está pronto 🍽️ Pode retirar no balcão quando quiser. Bom apetite!",
 
   // --- Preencher para ativar o modo nuvem (Supabase) ---
   supabaseUrl: "https://xmnrzjuvgegfdalbgpwb.supabase.co",

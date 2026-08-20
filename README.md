@@ -24,6 +24,8 @@ No painel do Supabase → **SQL Editor** → cole e rode. Pode rodar quantas vez
 
 ```sql
 alter table public.fila_espera add column if not exists pet boolean not null default false;
+alter table public.fila_espera add column if not exists sem_area_pet boolean not null default false;
+alter table public.fila_espera add column if not exists pedido_em timestamptz;
 alter table public.fila_espera add column if not exists comanda text;
 alter table public.fila_espera add column if not exists pager text;
 alter table public.fila_espera add column if not exists sentou_em timestamptz;
@@ -81,7 +83,9 @@ create table if not exists public.fila_espera (
   entrou_em timestamptz,                       -- hora real de chegada (não muda ao perder a vez)
   sentou_em timestamptz,                       -- quando a mesa foi ocupada (relatório)
   termos_em timestamptz,                       -- quando o cliente aceitou as regras
-  pet boolean not null default false,          -- grupo com animal de estimação
+  pet boolean not null default false,          -- cliente está com animal de estimação
+  sem_area_pet boolean not null default false, -- cliente NÃO quer sentar na área pet
+  pedido_em timestamptz,                       -- quando avisamos que o pedido estava pronto
   comanda text,                                -- nº da comanda (preenchido ao chamar)
   pager text,                                  -- nº do pager (preenchido ao chamar)
   chamadas_perdidas int not null default 0     -- quantas vezes foi chamado e não compareceu

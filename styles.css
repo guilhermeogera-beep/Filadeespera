@@ -1,27 +1,30 @@
 /* ============================================================
    Fila Fácil — Quinta do Aveiro
    ============================================================ */
+/* Paleta preto e branco, fiel ao logo da Quinta do Aveiro (arte monocromática).
+   As cores aparecem só onde comunicam ESTADO: o semáforo do prazo (verde→vermelho),
+   o roxo do preferencial, o âmbar da chamada e o vermelho dos erros. */
 :root{
-  --brand:#2A7AC0;        /* azul da marca Fila Fácil */
-  --brand-dark:#1E5C94;
-  --brand-soft:#e4f0fb;
-  --teal:#14B8A6;         /* teal do anel do ícone */
-  --accent:#F2A73B;       /* âmbar (chamando — alta visibilidade) */
-  --accent-dark:#cf8a1e;
-  --pref:#8A5CF6;         /* roxo preferencial */
-  --pref-soft:#efe9fe;
-  --meso:#0E7490;         /* azul-petróleo das mesas grandes */
-  --meso-soft:#dff3f7;
-  --bg:#EDF3F9;
+  --brand:#1A1A1A;        /* preto do logo — cabeçalho e botões principais */
+  --brand-dark:#000000;
+  --brand-soft:#EDEDEA;   /* cinza claro para faixas e selos */
+  --teal:#3D3D3A;         /* segundo tom do degradê do painel */
+  --accent:#E8A33D;       /* âmbar (chamando — alta visibilidade) */
+  --accent-dark:#c9861f;
+  --pref:#6B5BA8;         /* roxo discreto do preferencial */
+  --pref-soft:#ECEAF4;
+  --meso:#3F5C63;         /* cinza-petróleo das mesas grandes */
+  --meso-soft:#E7EBEC;
+  --bg:#F2F2F0;           /* fundo geral (papel) */
   --card:#ffffff;
-  --ink:#1e2733;
-  --muted:#6a7480;
-  --line:#dbe6ef;
-  --danger:#c0392b;
-  --ok:#0f9d6c;
+  --ink:#1A1A1A;
+  --muted:#6E6E68;
+  --line:#DCDCD6;
+  --danger:#B3261E;
+  --ok:#1E7A52;
   --radius:16px;
-  --shadow:0 6px 22px rgba(30,92,148,.10);
-  --shadow-lg:0 18px 50px rgba(30,92,148,.22);
+  --shadow:0 6px 22px rgba(0,0,0,.08);
+  --shadow-lg:0 18px 50px rgba(0,0,0,.28);
   font-size:16px;
 }
 
@@ -56,7 +59,8 @@ button{font-family:inherit}
   padding-top:calc(12px + env(safe-area-inset-top));
 }
 .brand{display:flex;align-items:center;gap:12px;min-width:0}
-.brand-logo{width:44px;height:44px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+/* o logo entra em branco (arte vazada) direto sobre o preto do cabeçalho */
+.brand-logo{width:52px;height:52px;object-fit:contain;display:block}
 .brand-txt{display:flex;flex-direction:column;line-height:1.1;min-width:0}
 .brand-txt strong{font-size:1.15rem}
 .brand-sub{font-size:.78rem;opacity:.8}
@@ -96,8 +100,8 @@ button{font-family:inherit}
 .btn-ghost{background:rgba(255,255,255,.16);color:#fff}
 .btn-ghost:hover{background:rgba(255,255,255,.26)}
 /* variação para usar dentro dos pop-ups (fundo branco) */
-.btn-neutral{background:#eef2f6;color:#41505f}
-.btn-neutral:hover{background:#e2e8ef}
+.btn-neutral{background:#EDEDEA;color:#41413C}
+.btn-neutral:hover{background:#E1E1DC}
 .btn-big{padding:15px 20px;font-size:1.1rem;width:100%}
 .btn-link{background:none;color:var(--brand);text-decoration:underline;padding:6px}
 .btn-danger{background:#fdecea;color:var(--danger)}
@@ -178,7 +182,7 @@ button{font-family:inherit}
 .field{display:flex;flex-direction:column;gap:7px}
 .field>span{font-weight:600;font-size:.95rem;color:var(--ink)}
 .field input[type=text],.field input[type=tel]{
-  border:1.5px solid var(--line);border-radius:12px;padding:14px;font-size:1.05rem;background:#fbfaf6;
+  border:1.5px solid var(--line);border-radius:12px;padding:14px;font-size:1.05rem;background:#FAFAF8;
 }
 .field input:focus{outline:none;border-color:var(--brand);background:#fff}
 .hint{color:var(--muted);font-size:.82rem}
@@ -187,7 +191,7 @@ button{font-family:inherit}
 .stepper{display:flex;align-items:center;gap:14px}
 .step-btn{
   width:52px;height:52px;border-radius:14px;border:1.5px solid var(--line);
-  background:#fbfaf6;font-size:1.6rem;font-weight:700;color:var(--brand);cursor:pointer;line-height:1;
+  background:#FAFAF8;font-size:1.6rem;font-weight:700;color:var(--brand);cursor:pointer;line-height:1;
 }
 .step-btn:active{background:var(--brand-soft)}
 .step-val{font-size:1.8rem;font-weight:800;min-width:48px;text-align:center}
@@ -197,7 +201,7 @@ button{font-family:inherit}
 .seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
 .seg>span{
   display:block;text-align:center;padding:14px;border-radius:12px;border:1.5px solid var(--line);
-  background:#fbfaf6;font-weight:700;color:var(--muted);transition:.15s;
+  background:#FAFAF8;font-weight:700;color:var(--muted);transition:.15s;
 }
 .seg input:checked+span{border-color:var(--brand);background:var(--brand);color:#fff}
 .seg-pref input:checked+span{border-color:var(--pref);background:var(--pref);color:#fff}
@@ -205,7 +209,7 @@ button{font-family:inherit}
 /* caixas de marcar (pet / termos) */
 .check-row{
   display:flex;align-items:flex-start;gap:12px;cursor:pointer;
-  border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;background:#fbfaf6;
+  border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;background:#FAFAF8;
 }
 .check-row:has(input:checked){border-color:var(--brand);background:var(--brand-soft)}
 .check-row input[type=checkbox]{width:26px;height:26px;flex:0 0 auto;accent-color:var(--brand);margin:1px 0 0}
@@ -247,7 +251,7 @@ button{font-family:inherit}
 .queue-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;counter-reset:pos}
 .q-item{
   display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);
-  border-radius:14px;background:#fbfaf6;
+  border-radius:14px;background:#FAFAF8;
 }
 .q-item.is-pref{border-color:var(--pref);background:var(--pref-soft)}
 .q-item.is-called{border-color:var(--accent);background:#fff7e6}
@@ -298,7 +302,7 @@ button{font-family:inherit}
   position:fixed;left:0;right:0;bottom:0;z-index:15;
   display:flex;justify-content:center;
   padding:12px 16px calc(14px + env(safe-area-inset-bottom));
-  background:var(--bg);box-shadow:0 -6px 16px rgba(30,92,148,.12);
+  background:var(--bg);box-shadow:0 -6px 16px rgba(0,0,0,.10);
 }
 .add-bar .btn{max-width:700px;width:100%}
 
@@ -309,7 +313,7 @@ button{font-family:inherit}
 .modal-box-lg{max-width:560px}
 .modal-box-full{max-width:1150px}
 .cfg-form{display:flex;flex-direction:column;gap:14px;margin-top:6px}
-.cfg-form select,.cfg-form textarea,.cfg-form input[type=number],.cfg-form input[type=text]{border:1.5px solid var(--line);border-radius:12px;padding:12px;font-size:1rem;background:#fbfaf6;font-family:inherit;width:100%}
+.cfg-form select,.cfg-form textarea,.cfg-form input[type=number],.cfg-form input[type=text]{border:1.5px solid var(--line);border-radius:12px;padding:12px;font-size:1rem;background:#FAFAF8;font-family:inherit;width:100%}
 .cfg-form select:focus,.cfg-form textarea:focus,.cfg-form input:focus{outline:none;border-color:var(--brand);background:#fff}
 .cfg-form textarea{resize:vertical}
 .cfg-sec{
@@ -341,7 +345,7 @@ button{font-family:inherit}
 /* ---------------- REGRAS / TERMOS ---------------- */
 .termos-txt{
   max-height:50vh;overflow-y:auto;border:1.5px solid var(--line);border-radius:12px;
-  padding:14px 16px;background:#fbfaf6;font-size:.94rem;line-height:1.55;color:var(--ink);
+  padding:14px 16px;background:#FAFAF8;font-size:.94rem;line-height:1.55;color:var(--ink);
 }
 .termos-txt p{margin:0 0 12px;color:var(--ink)}
 .termos-txt p:last-child{margin-bottom:0}
@@ -367,7 +371,7 @@ button{font-family:inherit}
 /* ---------------- RELATÓRIO ---------------- */
 .rel-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .rel-filter{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.9rem}
-.rel-filter select{border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;font-size:1rem;background:#fbfaf6;font-family:inherit}
+.rel-filter select{border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;font-size:1rem;background:#FAFAF8;font-family:inherit}
 .rel-actions{display:flex;gap:8px;flex-wrap:wrap}
 .rel-cards{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
 .rel-card{
@@ -406,3 +410,34 @@ button{font-family:inherit}
 #app[data-view="totem"] .staff-only{display:none !important}
 #app[data-view="publico"] .staff-only{display:none !important}
 #app[data-view="staff"] .totem-only{display:none !important}
+
+/* ---------------- ÁREA PET (mesa que aceita animais) ---------------- */
+/* selo de quem pediu para NÃO sentar perto de animais */
+.q-chip.chip-sempet{background:#fdeceb;color:#a02a1c}
+.q-tag.sempet{background:#c0392b;color:#fff}
+
+/* "Esta mesa aceita pet?" — ao lado da quantidade, na barra da atendente */
+.segmented-sm{gap:8px}
+.segmented-sm .seg>span{padding:10px 14px;font-size:.95rem;white-space:nowrap}
+.seg-pet input:checked+span{border-color:#0f9d6c;background:#0f9d6c;color:#fff}
+
+/* pop-up de chamada: mesa escolhida e aviso de incompatibilidade */
+.call-confirm .cc-mesa{margin-top:8px;font-size:.9rem;font-weight:700;color:var(--brand-dark);
+  background:var(--brand-soft);border-radius:10px;padding:7px 10px;display:inline-block}
+.call-confirm .cc-alerta{margin-top:10px;font-size:.92rem;font-weight:700;color:#8a2418;
+  background:#fdeceb;border:1.5px solid #f3c2bd;border-radius:10px;padding:9px 11px}
+
+/* formulário: comanda e pager lado a lado (só na aba da atendente) */
+#formExtras{margin-top:2px}
+
+/* ---------------- BOTÕES DE EDITAR E "PEDIDO PRONTO" ---------------- */
+/* na lista da fila */
+.btn-edit{background:#EDEDEA;color:#41413C}
+.btn-edit:hover{background:#E1E1DC}
+.btn-pedido{background:#25D366;color:#053b1e;text-decoration:none}
+.btn-pedido:hover{filter:brightness(1.06)}
+.btn-pedido.is-feito{background:#E4EFE9;color:#2c6b4f}
+/* no painel de chamada (fundo colorido do semáforo) */
+.ci-actions .ci-edit{background:rgba(0,0,0,.18);color:inherit}
+.ci-actions .ci-edit:hover{background:rgba(0,0,0,.30)}
+.ci-actions .btn-pedido{text-shadow:none}

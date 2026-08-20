@@ -13,7 +13,7 @@
 
   // Colunas que podem ainda não existir no banco do cliente.
   // Se faltarem, o app continua funcionando sem elas (e avisa nas configurações).
-  const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em"];
+  const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em", "sem_area_pet", "pedido_em"];
   const LS_COLS = "fila_cols_ausentes";
   const LS_PIN = "fila_pin_atendente";
 
@@ -34,6 +34,13 @@
   let pessoas = 2;          // stepper do formulário
   let mesa = 2;             // stepper de liberar mesa
   let pendingCall = null;   // linha aguardando confirmação de chamada
+
+  // A mesa que a atendente está liberando é da área pet?
+  function mesaAceitaPet() {
+    if (CFG.petAtivo === false) return false;
+    const r = $('input[name="mesapet"]:checked');
+    return !!r && r.value === "sim";
+  }
   let lastCalledIds = new Set(); // para detectar novas chamadas (beep)
   let relCache = [];        // linhas mostradas no relatório (para exportar/limpar)
 
@@ -349,9 +356,19 @@
 
   // Escolhe o próximo cliente para uma mesa de X lugares
   // (excludeId: ignora essa pessoa — usado ao "voltar à fila e chamar o próximo")
-  function pickNext(x, excludeId) {
+  // A pessoa pode sentar nesta mesa?
+  //  - mesa da ÁREA PET: quem pediu "não sentar na área pet" não pode
+  //  - mesa comum: quem está com pet não pode
+  function cabeNaMesa(r, mesaAceitaPet) {
+    if (CFG.petAtivo === false) return true;      // recurso desligado: não filtra nada
+    return mesaAceitaPet ? !r.sem_area_pet : !r.pet;
+  }
+
+  function pickNext(x, excludeId, mesaAceitaPet) {
     const regra = CFG.regraTamanho || "exato";
-    const wait = waiting().filter((r) => (excludeId ? r.id !== excludeId : true));
+    const wait = waiting()
+      .filter((r) => (excludeId ? r.id !== excludeId : true))
+      .filter((r) => cabeNaMesa(r, mesaAceitaPet));
     function pickFrom(pool) {
       if (!pool.length) return null;
       const prefPool = pool.filter((r) => r.preferencial);
@@ -365,7 +382,16 @@
     return pickFrom(wait.filter((r) => Number(r.pessoas) < x));
   }
 
-  async function addPerson({ nome, telefone, pessoas, preferencial, pet, aceitouTermos }) {
+  // Quantos grupos do tamanho certo ficaram de fora só por causa do pet?
+  // (serve para explicar à atendente por que "não achou ninguém")
+  function barradosPorPet(x, mesaAceitaPet) {
+    const regra = CFG.regraTamanho || "exato";
+    return waiting().filter((r) =>
+      (regra === "ate" ? Number(r.pessoas) <= x : Number(r.pessoas) === x) &&
+      !cabeNaMesa(r, mesaAceitaPet)).length;
+  }
+
+  async function addPerson({ nome, telefone, pessoas, preferencial, pet, semAreaPet, comanda, pager, aceitouTermos }) {
     const agora = new Date().toISOString();
     const entry = {
       id: uuid(),
@@ -374,8 +400,9 @@
       pessoas: Number(pessoas),
       preferencial: !!preferencial,
       pet: !!pet,
-      comanda: null,
-      pager: null,
+      sem_area_pet: !!semAreaPet,
+      comanda: (comanda || "").trim() || null,
+      pager: (pager || "").trim() || null,
       status: STATUS.AGUARDANDO,
       criado_em: agora,
       entrou_em: agora,
@@ -475,18 +502,107 @@
   }
 
   // Abre o pop-up de confirmação de chamada para uma pessoa escolhida
-  function openCallConfirm(chosen) {
+  // aceitaPet: passado quando a chamada veio do botão "Chamar próximo" (a atendente
+  // já disse se a mesa é da área pet). undefined = chamada manual, pela lista.
+  function openCallConfirm(chosen, aceitaPet) {
     pendingCall = chosen;
+    const petLigado = CFG.petAtivo !== false;
+    // aviso quando a pessoa escolhida à mão não combina com o tipo de mesa
+    let alerta = "";
+    if (petLigado && aceitaPet !== undefined && !cabeNaMesa(chosen, aceitaPet)) {
+      alerta = aceitaPet
+        ? `<div class="cc-alerta">🚫 Este cliente pediu para <b>não sentar na área pet</b>.</div>`
+        : `<div class="cc-alerta">🐾 Este cliente está <b>com pet</b> e a mesa não é da área pet.</div>`;
+    }
+    const selos = petLigado
+      ? (chosen.pet ? " • 🐾 com pet" : "") + (chosen.sem_area_pet ? " • 🚫 não quer área pet" : "")
+      : "";
+    const mesaTxt = (petLigado && aceitaPet !== undefined)
+      ? `<div class="cc-mesa">Mesa para ${mesa} ${mesa === 1 ? "pessoa" : "pessoas"} • ${aceitaPet ? "🐾 aceita pet" : "não é área pet"}</div>`
+      : "";
     $("#callModalBody").innerHTML = `
       <div class="cc-name">${esc(chosen.nome)} ${chosen.preferencial ? "★" : ""}</div>
-      <div class="cc-meta">${chosen.pessoas} ${chosen.pessoas === 1 ? "pessoa" : "pessoas"}${chosen.preferencial ? " • Preferencial" : ""}${isMesona(chosen) ? " • 🍽 mesa grande" : ""} • entrou ${fmtClock(chosen.criado_em)} • esperando há ${fmtElapsed(Date.now() - new Date(chosen.criado_em).getTime())}</div>`;
+      <div class="cc-meta">${chosen.pessoas} ${chosen.pessoas === 1 ? "pessoa" : "pessoas"}${chosen.preferencial ? " • Preferencial" : ""}${isMesona(chosen) ? " • 🍽 mesa grande" : ""}${selos} • entrou ${fmtClock(chosen.criado_em)} • esperando há ${fmtElapsed(Date.now() - new Date(chosen.criado_em).getTime())}</div>
+      ${mesaTxt}${alerta}`;
     // campos extras da atendente (pet / comanda / pager)
     $("#callPet").checked = !!chosen.pet;
+    $("#callPetRow").hidden = !petLigado;
     $("#callComanda").value = chosen.comanda || "";
     $("#callPager").value = chosen.pager || "";
     $("#callComandaField").hidden = CFG.campoComanda === false;
     $("#callPagerField").hidden = CFG.campoPager === false;
+    $("#callMsg").textContent = "";
     $("#callModal").hidden = false;
+  }
+
+  // ==========================================================
+  //  EDITAR UM CLIENTE (só a atendente)
+  // ==========================================================
+  let editandoId = null;
+
+  function openEdit(id) {
+    const r = rows.find((x) => x.id === id);
+    if (!r) return;
+    editandoId = id;
+    $("#edNome").value = r.nome || "";
+    $("#edTel").value = r.telefone || "";
+    $("#edPessoas").value = Number(r.pessoas) || 1;
+    $("#edPessoas").max = Number(CFG.maxPessoas) || MAX_P;
+    $("#edTipo").value = r.preferencial ? "preferencial" : "normal";
+    $("#edComanda").value = r.comanda || "";
+    $("#edPager").value = r.pager || "";
+    $("#edPet").checked = !!r.pet;
+    $("#edSemPet").checked = !!r.sem_area_pet;
+    const petLigado = CFG.petAtivo !== false;
+    $("#edPetRow").hidden = !petLigado;
+    $("#edSemPetRow").hidden = !petLigado || CFG.campoSemPet === false;
+    $("#edComandaField").hidden = CFG.campoComanda === false;
+    $("#edPagerField").hidden = CFG.campoPager === false;
+    $("#edMsg").textContent = "";
+    $("#editModal").hidden = false;
+  }
+
+  async function salvarEdicao() {
+    if (!editandoId) return;
+    const msg = $("#edMsg");
+    const nome = $("#edNome").value.trim();
+    if (!nome) { msg.textContent = "Digite o nome."; msg.className = "form-msg err"; return; }
+    const max = Number(CFG.maxPessoas) || MAX_P;
+    const patch = {
+      nome,
+      telefone: $("#edTel").value.trim(),
+      pessoas: Math.max(MIN_P, Math.min(max, parseInt($("#edPessoas").value, 10) || 1)),
+      preferencial: $("#edTipo").value === "preferencial",
+      comanda: $("#edComanda").value.trim() || null,
+      pager: $("#edPager").value.trim() || null,
+      pet: $("#edPet").checked,
+      sem_area_pet: $("#edSemPet").checked,
+    };
+    const btn = $("#edSave");
+    btn.disabled = true;
+    msg.textContent = "Salvando…"; msg.className = "form-msg";
+    try {
+      await backend.update(editandoId, patch);
+      await refresh();
+      $("#editModal").hidden = true;
+      editandoId = null;
+      avisoStaff(`✅ Cadastro de ${firstName(nome)} atualizado.`, true);
+    } catch (e) {
+      console.error("Erro ao editar:", e);
+      msg.textContent = "Não deu para salvar — verifique a internet e tente de novo.";
+      msg.className = "form-msg err";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // Marca que o cliente já foi avisado de que o pedido está pronto
+  // (o WhatsApp abre pelo próprio link; aqui só registramos a hora)
+  async function marcarPedido(id) {
+    try {
+      await backend.update(id, { pedido_em: new Date().toISOString() });
+      await refresh();
+    } catch (e) { console.warn("Não deu para registrar o aviso do pedido:", e); }
   }
 
   // O selo de conexão saiu da interface: os erros aparecem na faixa da atendente.
@@ -546,6 +662,17 @@
       .replace(/\{prazo\}/g, String(CFG.prazoComparecer || 10));
     return "https://wa.me/" + num + "?text=" + encodeURIComponent(msg);
   }
+  // Link do WhatsApp avisando que o PEDIDO ficou pronto para retirar
+  function waLinkPedido(r) {
+    const num = waNumber(r.telefone);
+    if (!num) return "";
+    const msg = (CFG.msgPedido || window.MSG_PEDIDO_PADRAO || "Olá {nome}! Seu pedido está pronto, pode retirar no balcão.")
+      .replace(/\{nome\}/g, firstName(r.nome))
+      .replace(/\{restaurante\}/g, CFG.restaurante || "")
+      .replace(/\{comanda\}/g, r.comanda || "")
+      .replace(/\{pager\}/g, r.pager || "");
+    return "https://wa.me/" + num + "?text=" + encodeURIComponent(msg);
+  }
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -587,27 +714,47 @@
   function chipsHTML(r, staff) {
     let h = "";
     if (r.pet) h += `<span class="q-chip chip-pet">🐾 pet</span>`;
+    if (r.sem_area_pet) h += `<span class="q-chip chip-sempet">🚫 sem área pet</span>`;
     if (staff && r.comanda) h += `<span class="q-chip">🧾 ${esc(r.comanda)}</span>`;
     if (staff && r.pager) h += `<span class="q-chip">🔔 ${esc(r.pager)}</span>`;
     return h;
   }
 
-  // HTML de um item da fila (usado nas três listas: mesona, preferencial e normal)
-  function queueItemHTML(r, i, staff) {
+  // Botão "pedido pronto": avisa o cliente no WhatsApp que pode retirar.
+  // É um link de verdade (e não um window.open) para o navegador não bloquear.
+  function pedidoBtnHTML(r) {
+    if (CFG.avisoPedido === false || CFG.whatsAtivo === false || !r.telefone) return "";
+    const link = waLinkPedido(r);
+    if (!link) return "";
+    const feito = !!r.pedido_em;
+    return `<a class="btn btn-sm btn-pedido ${feito ? "is-feito" : ""}" href="${link}" target="_blank" rel="noopener"
+      data-pedido="${r.id}" title="${feito ? "Avisado às " + fmtClock(r.pedido_em) : "Avisar no WhatsApp que o pedido está pronto"}">
+      ${feito ? "✅ pedido avisado" : "🍽 Pedido pronto"}</a>`;
+  }
+
+  // HTML de um item da fila. `junto` = lista única (totem): como não há cabeçalho
+  // de grupo, o tipo de cada pessoa vira selo no próprio item.
+  function queueItemHTML(r, i, staff, junto) {
     const tel = staff && r.telefone ? `<span>📞 ${esc(r.telefone)}</span>` : "";
     const meso = isMesona(r);
+    const selosTipo = junto
+      ? (r.preferencial ? `<span class="q-tag pref">★ preferencial</span>` : "") +
+        (meso ? `<span class="q-tag meso">🍽 mesa grande</span>` : "")
+      : (r.preferencial && meso ? `<span class="q-tag pref">★ preferencial</span>` : "");
     const actions = staff ? `
       <div class="q-actions staff-only">
         <button class="btn btn-sm btn-accent" data-call="${r.id}">Chamar</button>
         <button class="btn btn-sm btn-primary" data-seat="${r.id}">Sentou</button>
         <button class="btn btn-sm btn-danger" data-drop="${r.id}">Saiu</button>
+        <button class="btn btn-sm btn-edit" data-edit="${r.id}">✏️ Editar</button>
+        ${pedidoBtnHTML(r)}
       </div>` : "";
     return `
       <li class="q-item ${r.preferencial ? "is-pref" : ""} ${meso ? "is-meso" : ""} ${staff && r.chamadas_perdidas ? "is-perdeu" : ""}"
           ${meso && staff ? `data-meso-since="${r.criado_em}"` : ""}>
         <div class="q-pos">${i + 1}</div>
         <div class="q-main">
-          <div class="q-name">${esc(staff ? r.nome : firstName(r.nome))}${r.preferencial && meso ? `<span class="q-tag pref">★ preferencial</span>` : ""}${staff && r.chamadas_perdidas ? `<span class="q-tag perdeu">⚠️ perdeu a vez${r.chamadas_perdidas > 1 ? " (" + r.chamadas_perdidas + "×)" : ""}</span>` : ""}</div>
+          <div class="q-name">${esc(staff ? r.nome : firstName(r.nome))}${selosTipo}${staff && r.chamadas_perdidas ? `<span class="q-tag perdeu">⚠️ perdeu a vez${r.chamadas_perdidas > 1 ? " (" + r.chamadas_perdidas + "×)" : ""}</span>` : ""}</div>
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
             <span>🕐 entrou ${fmtClock(r.criado_em)}</span>
@@ -667,19 +814,33 @@
           ${(CFG.whatsAtivo !== false && r.telefone) ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
           <button class="btn btn-sm ci-ok" data-seat="${r.id}">✓ Sentou</button>
           <button class="btn btn-sm ci-back" data-back="${r.id}">↩ Voltar à fila</button>
+          <button class="btn btn-sm ci-edit" data-edit="${r.id}">✏️ Editar</button>
+          ${pedidoBtnHTML(r)}
           <button class="btn btn-sm ci-end" data-toend="${r.id}">⬇ Fim da fila</button>
         </div>` : ""}
       </div>`).join("");
 
-    // -------- listas separadas (cada uma na ordem de chegada) --------
-    $("#queueListMeso").innerHTML = meso.map((r, i) => queueItemHTML(r, i, staff)).join("");
-    $("#queueListPref").innerHTML = pref.map((r, i) => queueItemHTML(r, i, staff)).join("");
-    $("#queueListNorm").innerHTML = norm.map((r, i) => queueItemHTML(r, i, staff)).join("");
-    $("#emptyMeso").hidden = meso.length > 0;
-    $("#emptyPref").hidden = pref.length > 0;
-    $("#emptyNorm").hidden = norm.length > 0;
-    $("#groupMesona").hidden = CFG.mesonaAtiva !== true;
-    $("#mesoTitle").textContent = `🍽 Mesas grandes (${Number(CFG.mesonaMin) || 8}+ pessoas)`;
+    // -------- a fila: tudo junto ou separado --------
+    // a atendente vê SEMPRE separado (é assim que ela trabalha); o totem segue a configuração
+    const juntas = !staff && CFG.filasJuntas !== false;
+    $("#groupTodas").hidden = !juntas;
+    $("#groupMesona").hidden = juntas || CFG.mesonaAtiva !== true;
+    $("#groupPref").hidden = juntas;
+    $("#groupNorm").hidden = juntas;
+
+    if (juntas) {
+      // uma lista só, na ordem de chegada, com o tipo indicado em cada pessoa
+      $("#queueListTodas").innerHTML = w.map((r, i) => queueItemHTML(r, i, staff, true)).join("");
+      $("#emptyTodas").hidden = w.length > 0;
+    } else {
+      $("#queueListMeso").innerHTML = meso.map((r, i) => queueItemHTML(r, i, staff)).join("");
+      $("#queueListPref").innerHTML = pref.map((r, i) => queueItemHTML(r, i, staff)).join("");
+      $("#queueListNorm").innerHTML = norm.map((r, i) => queueItemHTML(r, i, staff)).join("");
+      $("#emptyMeso").hidden = meso.length > 0;
+      $("#emptyPref").hidden = pref.length > 0;
+      $("#emptyNorm").hidden = norm.length > 0;
+      $("#mesoTitle").textContent = `🍽 Mesas grandes (${Number(CFG.mesonaMin) || 8}+ pessoas)`;
+    }
 
     // boas-vindas (totem) e estado do botão de adicionar (fila fechada)
     const wb = $("#welcomeBanner");
@@ -693,6 +854,9 @@
         : "🔒 No momento não estamos aceitando novos nomes na fila. Fale com a recepção.";
     }
     updateAddBtn();
+    // a pergunta "esta mesa aceita pet?" só existe se o recurso estiver ligado
+    const mpf = $("#mesaPetField");
+    if (mpf) mpf.hidden = CFG.petAtivo === false;
     const fb = $("#toggleFilaBtn");
     if (fb) {
       const fechada = CFG.filaFechada === true;
@@ -822,9 +986,18 @@
     $("#fTelHint").textContent = telObrig
       ? "Obrigatório: usamos para avisar quando a sua mesa estiver pronta."
       : "Se informar, avisamos no WhatsApp quando a mesa estiver pronta.";
-    $("#petRow").hidden = CFG.petAtivo === false;
+    const petLigado = CFG.petAtivo !== false;
+    $("#petRow").hidden = !petLigado;
+    // "não sentar na área pet" só faz sentido se existe área pet
+    $("#semPetRow").hidden = !petLigado || CFG.campoSemPet === false;
     // as regras são aceitas pelo cliente no totem; a atendente confirma no balcão
     $("#termosRow").hidden = staff || CFG.exigirTermos === false;
+    // comanda e pager: só a atendente entrega, e só se estiverem ligados
+    const temComanda = staff && CFG.campoComanda !== false;
+    const temPager = staff && CFG.campoPager !== false;
+    $("#formComandaField").hidden = !temComanda;
+    $("#formPagerField").hidden = !temPager;
+    $("#formExtras").hidden = !temComanda && !temPager;
     // aviso de mesa grande
     const hint = $("#fMesoHint");
     if (CFG.mesonaAtiva === true && pessoas >= (Number(CFG.mesonaMin) || 8)) {
@@ -840,7 +1013,10 @@
     pessoas = 2; $("#fPessoas").textContent = pessoas;
     $('input[name="tipo"][value="normal"]').checked = true;
     $("#fPet").checked = false;
+    $("#fSemPet").checked = false;
     $("#fTermos").checked = false;
+    $("#fComanda").value = "";
+    $("#fPager").value = "";
     $("#formMsg").textContent = "";
     prepararFormulario();
     $("#formModal").hidden = false;
@@ -935,7 +1111,9 @@
       const nome = $("#fNome").value.trim();
       const tel = $("#fTel").value.trim();
       const tipo = ($('input[name="tipo"]:checked') || {}).value || "normal";
-      const pet = $("#fPet").checked && CFG.petAtivo !== false;
+      const petLigado = CFG.petAtivo !== false;
+      const pet = $("#fPet").checked && petLigado;
+      const semAreaPet = $("#fSemPet").checked && petLigado && CFG.campoSemPet !== false;
       const precisaTermos = !isStaff() && CFG.exigirTermos !== false;
       const msg = $("#formMsg");
       const erro = (t) => { msg.textContent = t; msg.className = "form-msg err"; };
@@ -954,7 +1132,9 @@
         const pessoa = await addPerson({
           nome, telefone: tel, pessoas,
           preferencial: tipo === "preferencial",
-          pet,
+          pet, semAreaPet,
+          comanda: isStaff() && CFG.campoComanda !== false ? $("#fComanda").value : "",
+          pager: isStaff() && CFG.campoPager !== false ? $("#fPager").value : "",
           aceitouTermos: precisaTermos,
         });
         msg.textContent = "";
@@ -975,18 +1155,25 @@
     // atendente: liberar mesa -> escolher próximo
     $("#freeTableBtn").addEventListener("click", () => {
       const smsg = $("#staffMsg");
-      const chosen = pickNext(mesa);
+      const aceitaPet = mesaAceitaPet();
+      const chosen = pickNext(mesa, null, aceitaPet);
       if (!chosen) {
         const alvo = mesa === 1 ? "pessoa" : "pessoas";
-        smsg.textContent = (CFG.regraTamanho === "ate")
-          ? `Nenhum grupo de até ${mesa} ${alvo} na fila.`
-          : `Nenhum grupo de exatamente ${mesa} ${alvo} na fila.`;
+        const base = (CFG.regraTamanho === "ate")
+          ? `Nenhum grupo de até ${mesa} ${alvo} disponível para esta mesa.`
+          : `Nenhum grupo de exatamente ${mesa} ${alvo} disponível para esta mesa.`;
+        // explica quando o motivo foi o pet (senão a atendente vê gente na fila e não entende)
+        const barrados = barradosPorPet(mesa, aceitaPet);
+        smsg.textContent = barrados
+          ? `${base} ${barrados} ${barrados === 1 ? "grupo desse tamanho não pode" : "grupos desse tamanho não podem"} usar ` +
+            (aceitaPet ? "a área pet." : "esta mesa por estar com pet.")
+          : base;
         smsg.className = "form-msg err";
         pendingCall = null;
         return;
       }
       smsg.textContent = "";
-      openCallConfirm(chosen);
+      openCallConfirm(chosen, aceitaPet);
     });
     $("#callCancel").addEventListener("click", () => { $("#callModal").hidden = true; pendingCall = null; });
     $("#callConfirm").addEventListener("click", async () => {
@@ -1030,7 +1217,7 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido]");
       if (!t) return;
 
       // abrir o pop-up de chamada não grava nada: sai antes
@@ -1039,6 +1226,9 @@
         if (p) openCallConfirm(p);
         return;
       }
+      if (t.dataset.edit) { openEdit(t.dataset.edit); return; }
+      // "pedido pronto" é um link: o WhatsApp abre sozinho, só registramos a hora
+      if (t.dataset.pedido) { marcarPedido(t.dataset.pedido); return; }
 
       if (t.disabled) return;
       t.disabled = true;   // evita toque duplo enquanto grava
@@ -1079,6 +1269,9 @@
       }
     });
 
+    // editar cliente
+    $("#edSave").addEventListener("click", salvarEdicao);
+
     // resetar média
     $("#resetAvgBtn").addEventListener("click", () => { $("#resetModal").hidden = false; });
     $("#resetAvgOk").addEventListener("click", () => { resetMedia(); $("#resetModal").hidden = true; });
@@ -1104,12 +1297,15 @@
 
     // atalhos dentro das configurações
     $("#openRelBtn").addEventListener("click", () => { $("#cfgModal").hidden = true; openRelatorio(); });
-    $("#openPublicBtn").addEventListener("click", () => {
+    // QR da página do cliente: pelo botão do cabeçalho ou de dentro das configurações
+    function abrirQrPublico() {
       const url = publicUrl();
       drawQR($("#publicQr"), url);
       $("#publicUrl").textContent = url;
       $("#publicModal").hidden = false;
-    });
+    }
+    $("#openPublicBtn").addEventListener("click", abrirQrPublico);
+    $("#qrBtn").addEventListener("click", abrirQrPublico);
 
     // relatório
     $("#relPeriodo").addEventListener("change", renderRelatorio);
@@ -1188,12 +1384,13 @@
         <td>${esc(r.telefone || "—")}</td>
         <td>${r.pessoas}</td>
         <td>${r.preferencial ? "★ Pref." : "Normal"}${isMesona(r) ? " / 🍽 grande" : ""}</td>
-        <td>${r.pet ? "🐾 sim" : "não"}</td>
+        <td>${r.pet ? "🐾 sim" : (r.sem_area_pet ? "🚫 sem área pet" : "não")}</td>
         <td>${esc(r.comanda || "—")}</td>
         <td>${esc(r.pager || "—")}</td>
         <td>${fmtDataHora(entradaEm(r))}</td>
         <td>${r.chamado_em ? fmtDataHora(r.chamado_em) : "—"}</td>
         <td>${r.sentou_em ? fmtDataHora(r.sentou_em) : "—"}</td>
+        <td>${r.pedido_em ? fmtDataHora(r.pedido_em) : "—"}</td>
         <td>${dash(esperaAteChamar(r))}</td>
         <td>${dash(tempoTotal(r))}</td>
         <td>${r.chamadas_perdidas || 0}</td>
@@ -1234,16 +1431,17 @@
     }
     const min = (ms) => (ms == null ? "" : String(Math.round(ms / 60000)).replace(".", ","));
     const cab = ["Nome", "Telefone", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
-      "Entrou", "Chamado", "Sentou", "Espera ate chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situacao"];
+      "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera ate chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situacao"];
     const linhas = relCache.map((r) => [
       r.nome, r.telefone || "", r.pessoas,
       r.preferencial ? "Preferencial" : "Normal",
       isMesona(r) ? "Sim" : "Nao",
-      r.pet ? "Sim" : "Nao",
+      r.pet ? "Sim" : (r.sem_area_pet ? "Nao - sem area pet" : "Nao"),
       r.comanda || "", r.pager || "",
       fmtDataHora(entradaEm(r)),
       r.chamado_em ? fmtDataHora(r.chamado_em) : "",
       r.sentou_em ? fmtDataHora(r.sentou_em) : "",
+      r.pedido_em ? fmtDataHora(r.pedido_em) : "",
       min(r.chamado_em ? new Date(r.chamado_em) - new Date(entradaEm(r)) : null),
       min(r.sentou_em ? new Date(r.sentou_em) - new Date(entradaEm(r)) : null),
       r.chamadas_perdidas || 0,
@@ -1335,10 +1533,11 @@
   // ATENÇÃO: esta lista é gravada na tabela `fila_config`, que QUALQUER cliente lê
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
-    "prazoComparecer", "msgWhats", "msgLink", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
+    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
-    "termosTexto", "petAtivo", "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo",
+    "termosTexto", "petAtivo", "campoSemPet", "filasJuntas",
+    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo",
     "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo",
   ];
 
@@ -1455,6 +1654,8 @@
     $("#cfgTermosOn").value = CFG.exigirTermos === false ? "nao" : "sim";
     $("#cfgTermosTxt").value = CFG.termosTexto || window.TERMOS_PADRAO || "";
     $("#cfgPetOn").value = CFG.petAtivo === false ? "nao" : "sim";
+    $("#cfgSemPetOn").value = CFG.campoSemPet === false ? "nao" : "sim";
+    $("#cfgFilasJuntas").value = CFG.filasJuntas === false ? "separadas" : "juntas";
     $("#cfgMostrarMedia").value = CFG.mostrarMedia === false ? "nao" : "sim";
     $("#cfgBoas").value = CFG.boasVindas || "";
     $("#cfgMaxP").value = CFG.maxPessoas || 20;
@@ -1468,6 +1669,8 @@
     $("#cfgWhatsMode").value = CFG.whatsAtivo === false ? "off" : (CFG.whatsAuto === false ? "toque" : "auto");
     $("#cfgMsg").value = CFG.msgWhats || "";
     $("#cfgMsgLink").value = CFG.msgLink || "";
+    $("#cfgAvisoPedido").value = CFG.avisoPedido === false ? "nao" : "sim";
+    $("#cfgMsgPedido").value = CFG.msgPedido || window.MSG_PEDIDO_PADRAO || "";
 
     $("#cfgRest").value = CFG.restaurante || "";
     $("#cfgPinAtend").value = CFG.pinAtendente || "";
@@ -1501,6 +1704,8 @@
       exigirTermos: $("#cfgTermosOn").value === "sim",
       termosTexto: $("#cfgTermosTxt").value.trim(),
       petAtivo: $("#cfgPetOn").value === "sim",
+      campoSemPet: $("#cfgSemPetOn").value === "sim",
+      filasJuntas: $("#cfgFilasJuntas").value === "juntas",
       mostrarMedia: $("#cfgMostrarMedia").value === "sim",
       boasVindas: $("#cfgBoas").value.trim(),
       maxPessoas: num("#cfgMaxP", 1, 99, 20),
@@ -1515,6 +1720,8 @@
       whatsAuto: $("#cfgWhatsMode").value === "auto",
       msgWhats: $("#cfgMsg").value.trim(),
       msgLink: $("#cfgMsgLink").value.trim(),
+      avisoPedido: $("#cfgAvisoPedido").value === "sim",
+      msgPedido: $("#cfgMsgPedido").value.trim(),
 
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
     };

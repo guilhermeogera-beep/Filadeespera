@@ -41,6 +41,7 @@ alter table public.fila_espera add column if not exists sem_area_pet      boolea
 alter table public.fila_espera add column if not exists comanda           text;
 alter table public.fila_espera add column if not exists pager             text;
 alter table public.fila_espera add column if not exists mesa_numero       text;
+alter table public.fila_espera add column if not exists email             text;
 alter table public.fila_espera add column if not exists chamadas_perdidas int not null default 0;
 
 -- Quem já estava na fila não tinha "entrou_em": copia da data de criação.

@@ -130,8 +130,10 @@
         <span class="busca-lupa" aria-hidden="true">🔎</span>
         <!-- name esquisito + autocomplete=off: sem isso o navegador acha que é um
              campo de usuário e preenche sozinho com o último login digitado -->
+        <!-- readonly até o primeiro toque: é o único jeito que o navegador
+             respeita para não despejar aqui o último usuário digitado -->
         <input id="buscaInput" type="text" name="busca-fila-x" autocomplete="off"
-               autocapitalize="none" spellcheck="false" inputmode="search"
+               autocapitalize="none" spellcheck="false" inputmode="search" readonly
                placeholder="Procurar por nome, telefone, comanda, pager ou mesa" aria-label="Procurar na fila" />
         <button type="button" id="buscaLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
       </div>
@@ -199,6 +201,13 @@
           <span id="fTelLabel">Telefone</span>
           <input id="fTel" name="telefone" type="tel" inputmode="tel" maxlength="20" placeholder="(11) 90000-0000" />
           <small class="hint" id="fTelHint">Usamos só para avisar quando a sua mesa estiver pronta.</small>
+        </label>
+
+        <label class="field" id="fEmailField" hidden>
+          <span id="fEmailLabel">E-mail</span>
+          <input id="fEmail" name="email" type="email" inputmode="email" autocapitalize="none"
+                 spellcheck="false" maxlength="60" placeholder="nome@email.com" />
+          <small class="hint" id="fEmailHint">Para avisos e novidades da casa.</small>
         </label>
 
         <div class="field">
@@ -436,6 +445,10 @@
             </select>
           </label>
         </div>
+          <label class="field" id="edEmailField">
+            <span>E-mail</span>
+            <input id="edEmail" type="email" maxlength="60" autocapitalize="none" spellcheck="false" placeholder="nome@email.com" />
+          </label>
         <div class="two-cols">
           <label class="field" id="edComandaField">
             <span>🧾 Comanda</span>
@@ -599,6 +612,16 @@
           <textarea id="cfgTermosTxt" rows="7"></textarea>
           <small class="hint">Use {restaurante} e {prazo}. Uma linha em branco separa os parágrafos.</small>
         </label>
+        <label class="field">
+          <span>Pedir o e-mail do cliente</span>
+          <select id="cfgCampoEmail">
+            <option value="nao">Não pedir</option>
+            <option value="opcional">Pedir — pode deixar em branco</option>
+            <option value="obrigatorio">Pedir — é obrigatório</option>
+          </select>
+          <small class="hint">Aparece no totem e no cadastro pelo balcão.</small>
+        </label>
+
         <label class="field">
           <span>Perguntar se está com pet</span>
           <select id="cfgPetOn">
@@ -791,7 +814,7 @@
         <table class="rel-table">
           <thead>
             <tr>
-              <th>Nome</th><th>Telefone</th><th>Pessoas</th><th>Tipo</th><th>Pet</th>
+              <th>Nome</th><th>Telefone</th><th>E-mail</th><th>Pessoas</th><th>Tipo</th><th>Pet</th>
               <th>Mesa</th><th>Comanda</th><th>Pager</th><th>Entrou</th><th>Chamado</th><th>Sentou</th><th>Pedido avisado</th>
               <th>Espera até chamar</th><th>Tempo total</th><th>Perdeu a vez</th><th>Situação</th>
             </tr>

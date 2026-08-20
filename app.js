@@ -594,9 +594,8 @@
       <div class="cc-name">${esc(chosen.nome)} ${chosen.preferencial ? "★" : ""}</div>
       <div class="cc-meta">${chosen.pessoas} ${chosen.pessoas === 1 ? "pessoa" : "pessoas"}${chosen.preferencial ? " • Preferencial" : ""}${isMesona(chosen) ? " • 🍽 mesa grande" : ""}${selos} • entrou ${fmtClock(chosen.criado_em)} • esperando há ${fmtElapsed(Date.now() - new Date(chosen.criado_em).getTime())}</div>
       ${mesaTxt}${alerta}`;
-    // campos extras da atendente (pet / comanda / pager)
-    $("#callPet").checked = !!chosen.pet;
-    $("#callPetRow").hidden = !petLigado;
+    // campos extras da atendente (comanda / pager). O pet não entra aqui:
+    // ele já definiu quem podia ser chamado — mudar agora não teria efeito.
     $("#callComanda").value = chosen.comanda || "";
     $("#callPager").value = chosen.pager || "";
     $("#callComandaField").hidden = CFG.campoComanda === false;
@@ -629,6 +628,18 @@
     setTimeout(() => $("#sentouMesa").focus(), 60);
   }
 
+  // Procura, entre as mesas livres, uma que combine com o que foi digitado.
+  // Compara número a número ("30 + 31" bate com "30"), sem confundir 3 com 30.
+  function acharMesaLivrePeloNumero(txt) {
+    const alvo = String(txt || "").split("+").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (!alvo.length) return null;
+    return mesasLivres.find((m) => {
+      const dela = String(m.numeros || m.identificacao || "")
+        .split("+").map((s) => s.trim().toLowerCase()).filter(Boolean);
+      return dela.length && alvo.some((n) => dela.includes(n));
+    }) || null;
+  }
+
   async function confirmarSentou() {
     if (!sentandoId) return;
     const btn = $("#sentouOk"), msg = $("#sentouMsg");
@@ -642,10 +653,18 @@
     btn.disabled = true;
     msg.textContent = "Salvando…"; msg.className = "form-msg";
     try {
+      // se a mesa digitada estava na lista de livres, ela acabou de ser ocupada
+      const livre = acharMesaLivrePeloNumero(numero);
       await seatPerson(sentandoId, numero);
       $("#sentouModal").hidden = true;
       sentandoId = null;
       msg.textContent = "";
+      if (livre) {
+        try {
+          await usarMesa(livre.id);
+          avisoStaff(`Mesa ${descMesa(livre)} saiu da lista de livres.`, true);
+        } catch (e2) { console.warn("Não deu para baixar a mesa:", e2); }
+      }
     } catch (e) {
       console.error("Erro ao marcar sentou:", e);
       msg.textContent = "Não deu para salvar — verifique a internet e tente de novo.";
@@ -1619,7 +1638,6 @@
         // na hora do "Sentou" o campo vem preenchido sozinho
         const mesaEscolhida = mesasLivres.find((m) => m.id === mesaSelecionada);
         await callPerson(p.id, {
-          pet: $("#callPet").checked,
           comanda: $("#callComanda").value.trim() || null,
           pager: $("#callPager").value.trim() || null,
           mesa_numero: (mesaEscolhida && (mesaEscolhida.numeros || mesaEscolhida.identificacao)) || p.mesa_numero || null,
@@ -2212,7 +2230,45 @@
   // ==========================================================
   //  ARRANQUE
   // ==========================================================
+  // Quando o app é atualizado, o aparelho pode ficar com a TELA velha guardada
+  // e o PROGRAMA novo. Aí os botões novos somem ou param de responder, sem erro
+  // visível. Aqui detectamos isso, limpamos o que está guardado e recarregamos
+  // uma vez — o usuário não precisa saber que existe "cache".
+  const ELEMENTOS_ESPERADOS = [
+    "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
+    "sentouModal", "cfgPerguntarMesa", "qrBtn", "editModal",
+  ];
+  const LS_RECARGA = "fila_recarga_versao";
+
+  async function telaEstaAtualizada() {
+    const faltando = ELEMENTOS_ESPERADOS.filter((id) => !document.getElementById(id));
+    if (!faltando.length) {
+      sessionStorage.removeItem(LS_RECARGA);   // tudo certo: libera a proteção p/ a próxima vez
+      return true;
+    }
+    console.warn("Tela desatualizada (faltam: " + faltando.join(", ") + ")");
+    if (sessionStorage.getItem(LS_RECARGA) === "1") {
+      // já tentamos recarregar e ainda falta: segue mesmo assim, mas avisa
+      console.warn("A tela continua desatualizada. Feche e abra o app de novo.");
+      return true;
+    }
+    sessionStorage.setItem(LS_RECARGA, "1");
+    try {
+      if (window.caches) {
+        const chaves = await caches.keys();
+        await Promise.all(chaves.map((k) => caches.delete(k)));
+      }
+      if (navigator.serviceWorker) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) await reg.unregister();
+      }
+    } catch (e) { console.warn("Não deu para limpar o cache:", e); }
+    location.reload();
+    return false;   // não continua: a página vai recarregar
+  }
+
   async function start() {
+    if (!(await telaEstaAtualizada())) return;
     applyBrand();
     carregarPinLocal();   // PIN da atendente: guardado só neste aparelho
 

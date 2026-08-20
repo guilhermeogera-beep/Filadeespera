@@ -95,10 +95,11 @@ window.FILA_CONFIG = {
   //   atendente  ->  atendente@filafacil.local
   dominioLogin: "filafacil.local",
 
-  // O Supabase exige senha de 6+ caracteres, mas a equipe usa 4 dígitos.
-  // O app junta este final à senha digitada. Ou seja: quem digita "4321"
-  // está enviando "4321-filafacil" — que é a senha a cadastrar no painel.
-  sufixoSenha: "-filafacil",
+  // Final acrescentado à senha digitada. Vazio = a senha vai como foi digitada
+  // (é o caso aqui: as contas foram criadas com a senha inteira no painel).
+  // Só serve se um dia você quiser senhas curtas na tela: com "-filafacil",
+  // quem digita "4321" envia "4321-filafacil" (o Supabase exige 6+ caracteres).
+  sufixoSenha: "",
 
   // --- Aba do GARÇOM (lança as mesas que vagaram) ---
   garcomAtivo: true,      // mostra a aba "Garçom" e o painel de mesas livres

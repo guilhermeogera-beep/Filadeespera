@@ -1645,9 +1645,12 @@
     const media = (el, filtro) => {
       const box = $(el);
       if (!box) return;
-      const m = staff ? avgWaitMs(filtro) : null;
-      box.hidden = m == null;
-      if (m != null) box.textContent = "⏱ ~" + fmtElapsed(m);
+      box.hidden = !staff;
+      if (!staff) return;
+      const m = avgWaitMs(filtro);
+      // sem nenhuma chamada ainda, mostra "—": sumir com a linha seria pior,
+      // a atendente ficaria procurando uma média que desapareceu
+      box.textContent = m == null ? "⏱ —" : "⏱ ~" + fmtElapsed(m);
     };
     media("#avgMeso", (r) => isMesona(r));
     media("#avgPref", (r) => r.preferencial && !isMesona(r));
@@ -1754,7 +1757,6 @@
           <b class="mesa-nome">${m.numeros ? "Mesa " + esc(m.numeros) : `<span class="mesa-sem-num">sem número</span>`}</b>
           ${m.identificacao ? `<span class="mesa-obs">${esc(m.identificacao)}</span>` : ""}
           <span class="mesa-tags">${m.pet ? `<span class="mesa-tag pet">🐾 área pet</span>` : `<span class="mesa-tag">sem pet</span>`}</span>
-          <span class="mesa-hora">livre há <b data-since="${m.criado_em}">agora</b></span>
         </div>
         <div class="mesa-acoes">
           ${staff
@@ -2228,6 +2230,11 @@
     const campo = $("#mNumero");
     const n = campo.value.trim();
     if (!n) return false;
+    // "12 + 12" não quer dizer nada: se já está na lista, só limpa o campo
+    if (numerosNovaMesa.some((x) => x.toLowerCase() === n.toLowerCase())) {
+      campo.value = "";
+      return true;
+    }
     if (numerosNovaMesa.length >= 6) return false;
     numerosNovaMesa.push(n);
     campo.value = "";
@@ -2324,6 +2331,10 @@
     });
     $("#mNumero").addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); $("#mAddNum").click(); }
+    });
+    // sair do campo já guarda o número: ninguém precisa lembrar de tocar no +
+    $("#mNumero").addEventListener("blur", () => {
+      if (guardarNumeroDigitado()) $("#mMsg").textContent = "";
     });
     $("#mNumChips").addEventListener("click", (e) => {
       const b = e.target.closest("[data-tiranum]");

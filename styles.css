@@ -484,7 +484,6 @@ button{font-family:inherit}
 .mesa-tags{display:flex;gap:6px;flex-wrap:wrap}
 .mesa-tag{font-size:.7rem;font-weight:800;padding:2px 8px;border-radius:999px;background:#e8eef4;color:#41505f;text-transform:uppercase;letter-spacing:.03em}
 .mesa-tag.pet{background:#d9f5e9;color:#0b6b48}
-.mesa-hora{color:var(--muted);font-size:.8rem}
 .mesa-acoes{display:flex;gap:8px;align-items:center}
 /* os dois botões do cartão têm o mesmo tamanho: ✓ verde e ✕ vermelho */
 .mesa-acoes .btn{width:44px;height:44px;min-height:44px;padding:0;font-size:1.05rem;flex:0 0 auto}

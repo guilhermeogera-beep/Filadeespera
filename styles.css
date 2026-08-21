@@ -791,3 +791,13 @@ button{font-family:inherit}
 .mesa-item.is-enxuta{cursor:pointer}
 .mesa-item.is-enxuta .mesa-info{gap:2px}
 .mesa-item.is-pronto{transform:scale(1.03);box-shadow:0 8px 20px rgba(0,0,0,.20)}
+
+/* botões de estado no pop-up da mesa do mapa */
+.btn-verde{background:#E4F3EA;border:2px solid #1E7A52;color:#125E40;font-weight:700}
+.btn-verde:hover{background:#D3EBDD}
+.btn-vermelho{background:#FBE3E1;border:2px solid #B3261E;color:#8C1D18;font-weight:700}
+.btn-vermelho:hover{background:#F6D2CF}
+/* o estado em que a mesa já está fica marcado */
+.mapa-acoes .btn.is-atual{
+  outline:3px solid var(--ink);outline-offset:2px;
+}

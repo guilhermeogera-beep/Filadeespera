@@ -1114,7 +1114,7 @@
   //    LIVRE    (verde)    - nenhuma das anteriores
   //  Só o "limpar" fica guardado na mesa; os outros são deduzidos da fila,
   //  para nunca haver duas verdades sobre a mesma mesa.
-  const MAPA = { LIVRE: "livre", LIMPAR: "limpar" };
+  const MAPA = { LIVRE: "livre", LIMPAR: "limpar", OCUPADA: "ocupada" };
 
   async function carregarMapa() {
     if (loginLigado() && !temSessaoEquipe()) { mapa = []; return; }
@@ -1174,10 +1174,18 @@
 
   function estadoDaMesa(m) {
     const bloco = blocoDaMesa(m);
-    if (ocupanteDaMesa(m)) return "ocupada";
+    if (ocupanteDaMesa(m)) return "ocupada";                          // cliente da fila
+    if (bloco.some((x) => x.status === MAPA.OCUPADA)) return "ocupada"; // marcada na mão
     if (bloco.some((x) => x.status === MAPA.LIMPAR)) return "limpar";
     if (bloco.some(mesaAvisada)) return "avisada";
     return "livre";
+  }
+
+  // Mesa que pode ser arrastada e juntada: só as que estão realmente à mão
+  // do garçom. Liberada já foi prometida à recepção; ocupada tem gente nela.
+  function podeJuntar(m) {
+    const e = estadoDaMesa(m);
+    return e === "livre" || e === "limpar";
   }
 
   // Encerrar a mesa: some o cronômetro e ela sai do vermelho.
@@ -1191,6 +1199,29 @@
     renderMapa();
     for (const x of bloco) await backend.updateMapa(x.id, { status, liberada_em: agora });
     await refresh();
+  }
+
+  // Marca a mesa como ocupada na mão (cliente que sentou sem passar pela fila)
+  async function marcarOcupada(id) {
+    const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
+    bloco.forEach((x) => { x.status = MAPA.OCUPADA; });
+    renderMapa();
+    for (const x of bloco) await backend.updateMapa(x.id, { status: MAPA.OCUPADA });
+    await refresh();
+  }
+
+  // Volta a mesa para o verde. Se ela já tinha sido avisada à recepção,
+  // desfaz o aviso também — senão ela voltaria a ficar verde tracejada e a
+  // recepção continuaria contando com uma mesa que o garçom retomou.
+  async function voltarParaLivre(m) {
+    const bloco = blocoDaMesa(m);
+    for (const x of bloco) {
+      const avisadas = mesasLivres.filter((z) => numeroBate(x.numero, z.numeros || z.identificacao));
+      for (const z of avisadas) {
+        try { await backend.removeMesa(z.id); } catch (e) { console.warn("Não deu para tirar da recepção:", e); }
+      }
+    }
+    await encerrarMesaMapa(m.id, MAPA.LIVRE);
   }
 
   // Avisar a recepção: entra na lista de mesas livres, como se o garçom
@@ -1212,17 +1243,22 @@
     const b = mapa.find((x) => x.id === idDestino);
     if (!a || !b || a.id === b.id) return;
     if (a.grupo && a.grupo === b.grupo) return;          // já estão juntas
-    // mesa já avisada à recepção não entra em junção: ela está prometida
-    if (estadoDaMesa(b) === "avisada" || estadoDaMesa(a) === "avisada") {
-      avisoStaff("Mesa já liberada para a recepção — não dá para juntar.");
+    // só mesas à mão do garçom entram em junção
+    if (!podeJuntar(a) || !podeJuntar(b)) {
+      avisoStaff("Só dá para juntar mesas livres ou que precisam de limpeza.");
       return;
     }
+    // juntando uma limpa com uma suja, o bloco inteiro precisa de limpeza:
+    // a mesa suja continua suja mesmo encostada na outra
+    const precisaLimpar = blocoDaMesa(a).concat(blocoDaMesa(b))
+      .some((x) => x.status === MAPA.LIMPAR);
     const grupo = b.grupo || a.grupo || uuid();
 
     // quem vem junto com a arrastada mantém a formação que já tinha
     const vindos = blocoDaMesa(a);
     for (const m of vindos) {
       const patch = { grupo };
+      if (precisaLimpar) patch.status = MAPA.LIMPAR;
       if (m.x_ant == null) { patch.x_ant = m.x; patch.y_ant = m.y; }
       if (m.id === a.id && ondeSoltou) { patch.x = ondeSoltou.x; patch.y = ondeSoltou.y; }
       Object.assign(m, patch);                            // desenho já fica certo
@@ -1230,9 +1266,11 @@
     }
     // o bloco de destino só adota o grupo (ninguém sai do lugar)
     for (const m of blocoDaMesa(b)) {
-      if (m.grupo === grupo) continue;
-      Object.assign(m, { grupo });
-      await backend.updateMapa(m.id, { grupo });
+      const p2 = { grupo };
+      if (precisaLimpar) p2.status = MAPA.LIMPAR;
+      if (m.grupo === grupo && !precisaLimpar) continue;
+      Object.assign(m, p2);
+      await backend.updateMapa(m.id, p2);
     }
     await refresh();
   }
@@ -1353,16 +1391,16 @@
       `${lugares} ${lugares === 1 ? "lugar" : "lugares"}${juntas ? ` (${bloco.map((x) => x.lugares).join(" + ")})` : ""}` +
       `${petDoBloco(m) ? " • 🐾 área pet" : ""} — ${situacao}` +
       (oc ? `<br><b>${esc(firstName(oc.nome))}</b> sentou às ${fmtClock(oc.sentou_em)} (há <b data-since="${oc.sentou_em}">agora</b>)` : "");
-    const btns = [];
-    if (est === "ocupada" || est === "limpar") {
-      if (est === "ocupada") btns.push(`<button type="button" class="btn btn-amarelo" data-macao="limpar">🧽 Terminou — precisa limpar</button>`);
-      btns.push(`<button type="button" class="btn btn-primary" data-macao="liberar">✓ Limpa e liberada</button>`);
-    } else if (est === "avisada") {
-      btns.push(`<button type="button" class="btn btn-amarelo" data-macao="limpar">🧽 Marcar para limpar</button>`);
-    } else {
-      btns.push(`<button type="button" class="btn btn-primary" data-macao="liberar">🔔 Liberar para a recepção</button>`);
-      btns.push(`<button type="button" class="btn btn-amarelo" data-macao="limpar">🧽 Marcar para limpar</button>`);
-    }
+    // As quatro ações estão sempre à mão: o garçom não precisa adivinhar qual
+    // aparece em qual situação. A atual fica marcada.
+    const btn = (acao, classe, texto) =>
+      `<button type="button" class="btn ${classe}${est === acao ? " is-atual" : ""}" data-macao="${acao}">${texto}</button>`;
+    const btns = [
+      btn("liberar", "btn-primary", "🔔 Liberar para a recepção"),
+      btn("livre", "btn-verde", "🟢 Livre"),
+      btn("limpar", "btn-amarelo", "🟡 Precisa limpar"),
+      btn("ocupada", "btn-vermelho", "🔴 Ocupada"),
+    ];
     if (juntas) btns.push(`<button type="button" class="btn btn-neutral" data-macao="separar">✂️ Separar as mesas</button>`);
     $("#mapaAcoes").innerHTML = btns.join("");
     $("#mapaAcaoMsg").textContent = "";
@@ -1379,6 +1417,8 @@
     msg.textContent = "";
     try {
       if (acao === "limpar") await encerrarMesaMapa(m.id, MAPA.LIMPAR);
+      else if (acao === "ocupada") await marcarOcupada(m.id);
+      else if (acao === "livre") await voltarParaLivre(m);
       else if (acao === "separar") await separarMesas(m.id);
       else await liberarMesaDoMapa(m);
     } catch (e) {
@@ -1538,7 +1578,7 @@
         const m = mapa.find((x) => x.id === el.dataset.mapamesa);
         if (!m) return;
         if (meuGrupo && m.grupo === meuGrupo) return;      // já estão juntas
-        if (estadoDaMesa(m) === "avisada") return;          // já prometida à recepção
+        if (!podeJuntar(m)) return;      // liberada ou ocupada não recebe mesa
         [[lg, 0], [-lg, 0], [0, at], [0, -at]].forEach(([dx2, dy2]) => {
           const vx = Number(m.x) + dx2, vy = Number(m.y) + dy2;
           if (vx < 4 || vx > 96 || vy < 6 || vy > 94) return;   // fora do piso
@@ -1579,7 +1619,7 @@
         if (el === alvo) return;
         if (modo === "juntar") {
           const m = mapa.find((x) => x.id === el.dataset.mapamesa);
-          if (m && estadoDaMesa(m) === "avisada") return;
+          if (m && !podeJuntar(m)) return;
         }
         const o = el.getBoundingClientRect();
         const ox = o.left + o.width / 2, oy = o.top + o.height / 2;
@@ -1602,6 +1642,11 @@
       dx = e.clientX - (r.left + r.width / 2);
       dy = e.clientY - (r.top + r.height / 2);
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* sem pointer real */ }
+      // liberada ou ocupada não sai do lugar: arrastar não faria sentido
+      if (modo === "juntar") {
+        const eu = mapa.find((x) => x.id === el.dataset.mapamesa);
+        if (eu && !podeJuntar(eu)) return;
+      }
       relogio = setTimeout(() => {
         podeArrastar = true;
         el.classList.add("is-pronto");
@@ -1709,14 +1754,22 @@
     const m = mesasLivres.find((x) => x.id === id);
     if (!m) return;
     mesaLivreAtiva = id;
+    const cliente = m.reservada_para ? rows.find((r) => r.id === m.reservada_para) : null;
     $("#mlTitulo").textContent = m.numeros ? "Mesa " + m.numeros : "Mesa sem número";
     $("#mlInfo").innerHTML = `${m.lugares} ${m.lugares === 1 ? "lugar" : "lugares"}${m.pet ? " • 🐾 área pet" : ""}` +
       (m.identificacao ? ` • ${esc(m.identificacao)}` : "") +
-      (m.reservada_para ? `<br>🔔 chamada, aguardando o cliente sentar` : "");
-    $("#mlAcoes").innerHTML = `
-      <button type="button" class="btn btn-primary" data-mlacao="usei">✓ Já usei esta mesa</button>
+      (m.reservada_para
+        ? `<br>🔔 chamada para <b>${esc(cliente ? firstName(cliente.nome) : "um cliente")}</b>, aguardando sentar`
+        : "");
+    // quando a mesa está reservada, a saída mais comum é o cliente ter ido
+    // parar em outra mesa: sem esse botão, a mesa ficaria vermelha até alguém
+    // "usar" ou excluir, e ninguém conseguiria oferecê-la a outro grupo
+    const soltar = m.reservada_para
+      ? `<button type="button" class="btn btn-primary" data-mlacao="soltar">↩ O cliente sentou em outra mesa</button>` : "";
+    $("#mlAcoes").innerHTML = soltar + `
+      <button type="button" class="btn ${m.reservada_para ? "btn-neutral" : "btn-primary"}" data-mlacao="usei">✓ Já usei esta mesa</button>
       <button type="button" class="btn btn-edit" data-mlacao="editar">✏️ Corrigir a mesa</button>
-      <button type="button" class="btn btn-danger" data-mlacao="apagar">✕ Cancelar o lançamento</button>`;
+      <button type="button" class="btn btn-danger" data-mlacao="apagar">🗑 Excluir a mesa</button>`;
     $("#mesaLivreModal").hidden = false;
   }
 
@@ -1727,10 +1780,15 @@
     $("#mesaLivreModal").hidden = true;
     mesaLivreAtiva = null;
     try {
-      if (acao === "usei") await usarMesa(id);
+      if (acao === "soltar") {
+        // solta a mesa sem mexer no cliente: ele será sentado em outra
+        await backend.updateMesa(id, { reservada_para: null });
+        await refresh();
+      }
+      else if (acao === "usei") await usarMesa(id);
       else if (acao === "editar") abrirMesaModal(id);
       else if (acao === "apagar") {
-        if (confirm("Cancelar o lançamento desta mesa?")) await apagarMesa(id);
+        if (confirm("Excluir esta mesa da lista de livres?")) await apagarMesa(id);
       }
     } catch (e) {
       console.error("Ação na mesa livre falhou:", e);
@@ -2254,7 +2312,7 @@
         </div>
         <div class="mesa-acoes">
           <button class="btn btn-sm btn-edit" data-editmesa="${m.id}" title="Corrigir esta mesa" aria-label="Corrigir esta mesa">✏️</button>
-          <button class="btn btn-sm btn-danger" data-apagarmesa="${m.id}" title="Cancelar este lançamento" aria-label="Cancelar este lançamento">✕</button>
+          <button class="btn btn-sm btn-danger" data-apagarmesa="${m.id}" title="Excluir a mesa" aria-label="Excluir a mesa">🗑</button>
         </div>
       </div>`;
     }).join("");
@@ -2906,7 +2964,7 @@
         else if (t.dataset.usarmesa) { e.stopPropagation(); await usarMesa(t.dataset.usarmesa); }
         else if (t.dataset.apagarmesa) {
           e.stopPropagation();
-          if (confirm("Tirar esta mesa da lista?")) await apagarMesa(t.dataset.apagarmesa);
+          if (confirm("Excluir esta mesa da lista de livres?")) await apagarMesa(t.dataset.apagarmesa);
         }
         else if (t.dataset.selmesa) selecionarMesa(t.dataset.selmesa);
       } catch (err) {

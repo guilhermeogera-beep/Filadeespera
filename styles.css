@@ -870,3 +870,16 @@ button{font-family:inherit}
 }
 /* na tela do totem o botão pode ser mais largo: é o alvo do dedo à distância */
 #app[data-view="totem"] .add-bar .btn{max-width:900px}
+/* cabeçalho do totem: logo e nome também são lidos de longe */
+#app[data-view="totem"] .topbar{padding:20px 28px;padding-top:calc(20px + env(safe-area-inset-top))}
+#app[data-view="totem"] .brand{gap:20px}
+#app[data-view="totem"] .brand-logo{width:104px;height:104px}
+#app[data-view="totem"] .brand-txt strong{font-size:2.3rem}
+#app[data-view="totem"] .brand-sub{font-size:1.55rem;opacity:.9}
+@media (max-width: 900px){
+  #app[data-view="totem"] .topbar{padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top))}
+  #app[data-view="totem"] .brand{gap:12px}
+  #app[data-view="totem"] .brand-logo{width:64px;height:64px}
+  #app[data-view="totem"] .brand-txt strong{font-size:1.45rem}
+  #app[data-view="totem"] .brand-sub{font-size:1rem}
+}

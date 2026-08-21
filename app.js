@@ -3458,8 +3458,11 @@
     document.addEventListener("click", (e) => {
       const x = e.target.closest("[data-close]");
       if (x) { closeModal(x.closest(".modal")); return; }
-      // clique no fundo escuro (fora da caixa) fecha
-      if (e.target.classList && e.target.classList.contains("modal")) closeModal(e.target);
+      // Clique no fundo escuro fecha — MENOS nos pop-ups com campos digitados.
+      // Num toque errado no totem, o cliente perdia o cadastro pela metade;
+      // nesses o jeito de sair é o × ou o Cancelar, que são propositais.
+      if (e.target.classList && e.target.classList.contains("modal") &&
+          !e.target.hasAttribute("data-fixo")) closeModal(e.target);
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {

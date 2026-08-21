@@ -387,6 +387,20 @@
     </div>
   </div>
 
+  <!-- ============ MODAL: FICHA DO CLIENTE (atendente) ============ -->
+  <div class="modal" id="clienteModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3 id="cliNome">Cliente</h3>
+      <p class="cli-selos" id="cliSelos"></p>
+      <dl class="cli-dados" id="cliDados"></dl>
+      <div class="cli-acoes" id="cliAcoes"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ MODAL: AÇÕES DE UMA MESA DO MAPA (garçom) ============ -->
   <div class="modal" id="mapaAcaoModal" hidden>
     <div class="modal-box">
@@ -752,7 +766,7 @@
           <input id="cfgNormalPrazo" type="number" min="0" max="600" />
           <small class="hint">Mesma cor, na fila normal. Use <b>0</b> para não colorir.</small>
         </label>
-        <div class="cfg-sec">Entrada na fila (totem)</div>
+        <div class="cfg-sec">Entrada na fila (totem e balcão)</div>
 
         <label class="field">
           <span>Telefone do cliente</span>

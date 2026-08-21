@@ -730,3 +730,30 @@ button{font-family:inherit}
 .mesa-reserva{
   display:block;margin-top:4px;font-size:.78rem;font-weight:700;color:#8C1D18;
 }
+
+/* ---- ficha do cliente (abre ao tocar no cartão da fila) --------------- */
+.q-item.is-toque{cursor:pointer}
+.q-item.is-toque:hover{background:#FAFAF8}
+.cli-selos{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.cli-dados{
+  display:grid;grid-template-columns:auto 1fr;gap:6px 14px;
+  margin:0 0 18px;font-size:.94rem;
+}
+.cli-dados dt{font-weight:700;color:var(--muted);white-space:nowrap}
+.cli-dados dd{margin:0;color:var(--ink)}
+.cli-acoes{display:flex;flex-wrap:wrap;gap:8px}
+.cli-acoes .btn{flex:1 1 46%;justify-content:center}
+
+/* mesa vinda do garçom: os dados vêm travados (a atendente não tem como
+   conferir os lugares à distância; um toque errado mandaria o grupo errado) */
+.tm-travado{
+  display:flex;flex-direction:column;gap:2px;width:100%;
+  padding:12px 14px;border:2px solid var(--ink);border-radius:14px;background:#F2F2F0;
+}
+.tm-travado-nome{font-size:1.05rem;font-weight:800}
+.tm-travado-info{font-size:.86rem;color:var(--muted)}
+.tm-destravar{
+  align-self:flex-start;margin-top:6px;padding:0;border:0;background:none;
+  color:var(--muted);font-family:inherit;font-size:.8rem;text-decoration:underline;cursor:pointer;
+}
+.tm-destravar:hover{color:var(--ink)}

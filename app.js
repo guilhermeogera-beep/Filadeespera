@@ -46,6 +46,7 @@
   let mesasLivres = [];     // mesas que o garçom liberou e ainda não foram usadas
   let mesaSelecionada = null; // mesa que a atendente escolheu para a próxima chamada
   let modoManual = false;   // true = a atendente está digitando um tamanho fora da lista
+  let tamanhoTravado = false; // true = a chamada saiu de uma mesa do garçom
   let grupoManual = false;  // true = o cliente está usando o contador em vez dos botões
   let lugaresNovaMesa = 2;  // stepper do pop-up do garçom
   let numerosNovaMesa = []; // números das mesas juntadas (ex.: 12 + 13)
@@ -93,11 +94,17 @@
 
   // Abre o pop-up "que mesa vagou". A tela principal fica só com o botão.
   function abrirTamanho() {
-    // se a atendente escolheu uma mesa no painel do garçom, já vem marcada
+    // se a atendente escolheu uma mesa no painel do garçom, o tamanho e o pet
+    // vêm daquela mesa e ficam TRAVADOS: ela não tem como conferir os lugares
+    // à distância, e um toque errado mandaria o grupo para a mesa errada
     const daMesa = mesasLivres.find((m) => m.id === mesaSelecionada);
-    if (daMesa) mesa = Math.max(MIN_P, Math.min(TETO_EQUIPE, Number(daMesa.lugares) || 2));
+    tamanhoTravado = !!daMesa;
+    if (daMesa) {
+      mesa = Math.max(MIN_P, Math.min(TETO_EQUIPE, Number(daMesa.lugares) || 2));
+      const alvo = $(`input[name="mesapet"][value="${daMesa.pet ? "sim" : "nao"}"]`);
+      if (alvo) alvo.checked = true;
+    }
     modoManual = !tamanhosDaCasa().includes(Number(mesa));
-    $("#mesaPetField").hidden = CFG.petAtivo === false;
     $("#tamanhoMsg").textContent = "";
     $("#staffMsg").textContent = "";
     desenharTamanhos();
@@ -105,6 +112,22 @@
   }
 
   function desenharTamanhos() {
+    const daMesa = mesasLivres.find((m) => m.id === mesaSelecionada);
+    if (tamanhoTravado && daMesa) {
+      const nome = daMesa.numeros ? "Mesa " + esc(daMesa.numeros)
+        : (daMesa.identificacao ? esc(daMesa.identificacao) : "Mesa lançada pelo garçom");
+      $("#tmTamanhos").innerHTML = `
+        <div class="tm-travado">
+          <b class="tm-travado-nome">${nome}</b>
+          <span class="tm-travado-info">${mesa} ${mesa === 1 ? "lugar" : "lugares"}${daMesa.pet ? " • 🐾 área pet" : ""}</span>
+          <button type="button" class="tm-destravar" data-tam="destravar">✏️ corrigir</button>
+        </div>`;
+      $("#tmManualField").hidden = true;
+      $("#mesaPetField").hidden = true;
+      $("#fMesa").textContent = mesa;
+      return;
+    }
+    $("#mesaPetField").hidden = CFG.petAtivo === false;
     $("#tmTamanhos").innerHTML =
       tamanhosDaCasa().map((n) => `<button type="button" class="tm-btn${!modoManual && Number(mesa) === n ? " is-sel" : ""}" data-tam="${n}">
         <b>${n}</b><span>${n === 1 ? "pessoa" : "pessoas"}</span>
@@ -117,7 +140,8 @@
   }
 
   function escolherTamanho(v) {
-    if (v === "manual") modoManual = true;
+    if (v === "destravar") tamanhoTravado = false;    // correção proposital, não acidental
+    else if (v === "manual") modoManual = true;
     else { modoManual = false; mesa = Number(v); }
     $("#tamanhoMsg").textContent = "";
     desenharTamanhos();
@@ -751,7 +775,7 @@
       (CFG.campoComanda !== false && chosen.comanda ? " • 🧾 comanda " + esc(chosen.comanda) : "") +
       (CFG.campoPager !== false && chosen.pager ? " • 🔔 pager " + esc(chosen.pager) : "");
     const mesaTxt = (petLigado && aceitaPet !== undefined)
-      ? `<div class="cc-mesa">Mesa para ${mesa} ${mesa === 1 ? "pessoa" : "pessoas"} • ${aceitaPet ? "🐾 aceita pet" : "não é área pet"}</div>`
+      ? `<div class="cc-mesa">Mesa para ${mesa} ${mesa === 1 ? "pessoa" : "pessoas"}${aceitaPet ? " • 🐾 área pet" : ""}</div>`
       : "";
     $("#callModalBody").innerHTML = `
       <div class="cc-name">${esc(chosen.nome)} ${chosen.preferencial ? "★" : ""}</div>
@@ -783,7 +807,7 @@
     desenharMesasDoSentou(r);
     $("#sentouMsg").textContent = "";
     $("#sentouModal").hidden = false;
-    setTimeout(() => $("#sentouMesa").focus(), 60);
+    focoSePuder("#sentouMesa");
   }
 
   // Mostra as mesas que o garçom liberou como botões, para a atendente tocar
@@ -1370,7 +1394,7 @@
     $("#mmMsg").textContent = "";
     desenharLugaresCadastro();
     $("#mapaMesaModal").hidden = false;
-    setTimeout(() => $("#mmNumero").focus(), 60);
+    focoSePuder("#mmNumero");
   }
 
   function desenharLugaresCadastro() {
@@ -1698,6 +1722,17 @@
   // ==========================================================
   let busca = "";
 
+  // Só coloca o cursor no campo em aparelho com mouse. No celular isso abriria
+  // o teclado junto com o pop-up, cobrindo metade da tela sem ninguém pedir.
+  const temMouse = () => {
+    try { return window.matchMedia("(hover: hover) and (pointer: fine)").matches; }
+    catch (e) { return true; }
+  };
+  function focoSePuder(seletor, ms) {
+    if (!temMouse()) return;
+    setTimeout(() => { const el = $(seletor); if (el) el.focus(); }, ms || 60);
+  }
+
   const semAcento = (s) => String(s == null ? "" : s)
     .toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const soDigitos = (s) => String(s == null ? "" : s).replace(/\D/g, "");
@@ -1810,37 +1845,85 @@
   // HTML de um item da fila. `junto` = lista única (totem): como não há cabeçalho
   // de grupo, o tipo de cada pessoa vira selo no próprio item.
   function queueItemHTML(r, i, staff, junto) {
-    const tel = staff && r.telefone ? `<span>📞 ${esc(r.telefone)}</span>` : "";
     const meso = isMesona(r);
     const selosTipo = junto
       ? (r.preferencial ? `<span class="q-tag pref">★ preferencial</span>` : "") +
         (meso ? `<span class="q-tag meso">🍽 mesa grande</span>` : "")
       : (r.preferencial && meso ? `<span class="q-tag pref">★ preferencial</span>` : "");
-    const actions = staff ? `
-      <div class="q-actions staff-only">
-        <button class="btn btn-sm btn-accent" data-call="${r.id}">Chamar</button>
-        <button class="btn btn-sm btn-primary" data-seat="${r.id}">Sentou</button>
-        <button class="btn btn-sm btn-danger" data-drop="${r.id}">Saiu</button>
-        <button class="btn btn-sm btn-edit" data-edit="${r.id}">✏️ Editar</button>
-        ${CFG.linkAtivo === false ? "" : `<button class="btn btn-sm btn-qr" data-qrcliente="${r.id}" title="QR Code deste cliente">📱 QR</button>`}
-        ${pedidoBtnHTML(r)}
-      </div>` : "";
-    return `
-      <li class="q-item ${r.preferencial ? "is-pref" : ""} ${meso ? "is-meso" : ""} ${staff && r.chamadas_perdidas ? "is-perdeu" : ""}"
-          ${staff && prazoDaFila(r) ? `data-espera-since="${r.criado_em}" data-espera-prazo="${prazoDaFila(r)}"` : ""}>
+    const perdeu = staff && r.chamadas_perdidas
+      ? `<span class="q-tag perdeu">⚠️ perdeu a vez${r.chamadas_perdidas > 1 ? " (" + r.chamadas_perdidas + "×)" : ""}</span>` : "";
+    // Na tela da atendente o cartão é enxuto: nome, tamanho do grupo, espera e
+    // pet. Todo o resto (telefone, comanda, pager, botões) está no pop-up que
+    // abre ao tocar — assim a fila inteira cabe na tela.
+    const petChips = (r.pet ? `<span class="q-chip chip-pet">🐾 pet</span>` : "") +
+      (r.sem_area_pet ? `<span class="q-chip chip-sempet">🚫 sem área pet</span>` : "");
+    if (staff) {
+      return `
+      <li class="q-item is-toque ${r.preferencial ? "is-pref" : ""} ${meso ? "is-meso" : ""} ${r.chamadas_perdidas ? "is-perdeu" : ""}"
+          data-cliente="${r.id}" role="button" tabindex="0"
+          ${prazoDaFila(r) ? `data-espera-since="${r.criado_em}" data-espera-prazo="${prazoDaFila(r)}"` : ""}>
         <div class="q-pos">${i + 1}</div>
         <div class="q-main">
-          <div class="q-name">${esc(staff ? r.nome : firstName(r.nome))}${selosTipo}${staff && r.chamadas_perdidas ? `<span class="q-tag perdeu">⚠️ perdeu a vez${r.chamadas_perdidas > 1 ? " (" + r.chamadas_perdidas + "×)" : ""}</span>` : ""}</div>
+          <div class="q-name">${esc(r.nome)}${selosTipo}${perdeu}</div>
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
-            ${(staff || CFG.mostrarHoraEntrada !== false) ? `<span>🕐 entrou ${fmtClock(r.criado_em)}</span>` : ""}
-            ${(staff || CFG.mostrarTempoEspera !== false) ? `<span>⏱️ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>` : ""}
-            ${tel}
-            ${chipsHTML(r, staff)}
+            <span>⏱️ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>
+            ${petChips}
           </div>
         </div>
-        ${actions}
       </li>`;
+    }
+    return `
+      <li class="q-item ${r.preferencial ? "is-pref" : ""} ${meso ? "is-meso" : ""}">
+        <div class="q-pos">${i + 1}</div>
+        <div class="q-main">
+          <div class="q-name">${esc(firstName(r.nome))}${selosTipo}</div>
+          <div class="q-sub">
+            <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
+            ${CFG.mostrarHoraEntrada !== false ? `<span>🕐 entrou ${fmtClock(r.criado_em)}</span>` : ""}
+            ${CFG.mostrarTempoEspera !== false ? `<span>⏱️ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>` : ""}
+            ${petChips}
+          </div>
+        </div>
+      </li>`;
+  }
+
+  // Ficha completa do cliente, com os botões de ação. Abre ao tocar no cartão.
+  function abrirCliente(id) {
+    const r = rows.find((x) => x.id === id);
+    if (!r) return;
+    const meso = isMesona(r);
+    $("#cliNome").textContent = r.nome;
+    $("#cliSelos").innerHTML =
+      (r.preferencial ? `<span class="q-tag pref">★ preferencial</span>` : `<span class="q-tag">normal</span>`) +
+      (meso ? `<span class="q-tag meso">🍽 mesa grande</span>` : "") +
+      (r.pet ? `<span class="q-chip chip-pet">🐾 pet</span>` : "") +
+      (r.sem_area_pet ? `<span class="q-chip chip-sempet">🚫 sem área pet</span>` : "") +
+      (r.chamadas_perdidas ? `<span class="q-tag perdeu">⚠️ perdeu a vez ${r.chamadas_perdidas}×</span>` : "");
+
+    const linha = (rotulo, valor) => valor ? `<dt>${rotulo}</dt><dd>${valor}</dd>` : "";
+    $("#cliDados").innerHTML =
+      linha("Pessoas", `${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}`) +
+      linha("Entrou", `${fmtClock(entradaEm(r))} — esperando há <b data-since="${entradaEm(r)}">agora</b>`) +
+      linha("Telefone", r.telefone ? esc(r.telefone) : "") +
+      linha("E-mail", r.email ? esc(r.email) : "") +
+      linha("Aniversário", r.aniversario ? esc(r.aniversario) : "") +
+      linha("Comanda", r.comanda ? esc(r.comanda) : "") +
+      linha("Pager", r.pager ? esc(r.pager) : "") +
+      linha("Mesa", r.mesa_numero ? esc(r.mesa_numero) : "") +
+      linha("Chamado", r.chamado_em ? fmtClock(r.chamado_em) : "");
+
+    const wa = (CFG.whatsAtivo !== false && r.telefone && waLink(r))
+      ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : "";
+    $("#cliAcoes").innerHTML = `
+      <button class="btn btn-accent" data-call="${r.id}">🔔 Chamar</button>
+      <button class="btn btn-primary" data-seat="${r.id}">✓ Sentou</button>
+      <button class="btn btn-edit" data-edit="${r.id}">✏️ Editar</button>
+      ${wa}
+      ${CFG.linkAtivo === false ? "" : `<button class="btn btn-qr" data-qrcliente="${r.id}">📱 QR do cliente</button>`}
+      ${pedidoBtnHTML(r)}
+      <button class="btn btn-danger" data-drop="${r.id}">✕ Saiu da fila</button>`;
+    $("#clienteModal").hidden = false;
   }
 
   // Botão de adicionar: rótulo por aba e bloqueio quando a fila está fechada (totem)
@@ -2011,7 +2094,7 @@
         <div class="mesa-info">
           <b class="mesa-nome">${m.numeros ? "Mesa " + esc(m.numeros) : `<span class="mesa-sem-num">sem número</span>`}</b>
           ${m.identificacao ? `<span class="mesa-obs">${esc(m.identificacao)}</span>` : ""}
-          <span class="mesa-tags">${m.pet ? `<span class="mesa-tag pet">🐾 área pet</span>` : `<span class="mesa-tag">sem pet</span>`}</span>
+          <span class="mesa-tags">${m.pet ? `<span class="mesa-tag pet">🐾 área pet</span>` : ""}</span>
           ${reservada(m) ? `<span class="mesa-reserva">🔔 chamada para ${esc(quemFoiChamado(m))} — aguardando sentar</span>` : ""}
         </div>
         <div class="mesa-acoes">
@@ -2172,7 +2255,7 @@
       usuario = null;
       $("#loginSub").textContent = CFG.restaurante || "";
       tela.hidden = false;
-      setTimeout(() => $("#loginEmail").focus(), 80);
+      focoSePuder("#loginEmail", 80);
       return false;
     }
     usuario = await lerPapel(backend.client, sess.user);
@@ -2339,7 +2422,7 @@
     $("#pinMsg").textContent = "";
     $("#pinInput").value = "";
     $("#pinModal").hidden = false;
-    setTimeout(() => $("#pinInput").focus(), 50);
+    focoSePuder("#pinInput", 50);
   }
   function closePin() { $("#pinModal").hidden = true; }
 
@@ -2448,7 +2531,7 @@
     desenharTamanhosMesa();
     renderNumChips();
     $("#mesaModal").hidden = false;
-    setTimeout(() => $("#mNumero").focus(), 60);
+    focoSePuder("#mNumero");
   }
 
   // Os mesmos tamanhos configurados na engrenagem viram botões aqui também,
@@ -2514,7 +2597,7 @@
     sincPetForm();   // "com pet" x "sem área pet" recomeçam destravados
     prepararFormulario();
     $("#formModal").hidden = false;
-    setTimeout(() => $("#fNome").focus(), 60);
+    focoSePuder("#fNome");
   }
 
   // Pop-up mostrado depois de entrar na fila: posição + QR + link
@@ -2823,7 +2906,8 @@
     $("#tmTamanhos").addEventListener("click", (e) => {
       const b = e.target.closest("[data-tam]");
       if (!b) return;
-      escolherTamanho(b.dataset.tam === "manual" ? "manual" : Number(b.dataset.tam));
+      const v = b.dataset.tam;
+      escolherTamanho(v === "manual" || v === "destravar" ? v : Number(v));
     });
     $("#callCancel").addEventListener("click", () => { $("#callModal").hidden = true; pendingCall = null; });
     $("#callConfirm").addEventListener("click", async () => {
@@ -2876,10 +2960,18 @@
       }
     });
 
+    // tocar no cartão da fila abre a ficha do cliente
+    document.addEventListener("click", (e) => {
+      const card = e.target.closest("[data-cliente]");
+      if (card) acaoSegura("abrir cliente", () => abrirCliente(card.dataset.cliente))();
+    });
+
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
       const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente]");
       if (!t) return;
+      // veio da ficha do cliente? ela sai da frente antes da ação acontecer
+      if (t.closest("#clienteModal")) $("#clienteModal").hidden = true;
 
       // abrir o pop-up de chamada não grava nada: sai antes
       if (t.dataset.call) {
@@ -2983,7 +3075,7 @@
       $("#cfgPinInput").value = "";
       $("#cfgPinMsg").textContent = "";
       $("#cfgPinModal").hidden = false;
-      setTimeout(() => $("#cfgPinInput").focus(), 50);
+      focoSePuder("#cfgPinInput", 50);
     });
     $("#cfgPinOk").addEventListener("click", () => {
       if ($("#cfgPinInput").value === String(CFG.pinConfig || "")) {

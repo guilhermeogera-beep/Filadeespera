@@ -106,14 +106,11 @@
     </section>
 
     <!-- ============ CONTROLES DA ATENDENTE (antes da fila; só na aba atendente) ============ -->
+    <!-- só o aviso: o botão de chamar mora na barra de baixo, ao lado do de adicionar -->
     <section class="card staff-bar" id="staffBar" hidden>
-      <div class="staff-head">
-        <h2 class="card-title">Chamar próxima mesa</h2>
-        <div class="staff-head-actions">
-          <button id="installBtn" class="btn btn-neutral btn-sm" hidden>⬇ Instalar</button>
-        </div>
+      <div class="staff-head-actions">
+        <button id="installBtn" class="btn btn-neutral btn-sm" hidden>⬇ Instalar</button>
       </div>
-      <button type="button" class="btn btn-accent btn-big btn-chamar-mesa" id="freeTableBtn">🔔 Chamar próxima mesa</button>
       <p class="form-msg" id="staffMsg" role="status"></p>
     </section>
 
@@ -179,6 +176,7 @@
 
   <!-- ============ BOTÃO FIXO: ADICIONAR / ENTRAR (abre o pop-up do formulário) ============ -->
   <div class="add-bar">
+    <button type="button" class="btn btn-accent btn-big" id="freeTableBtn" hidden>🔔 Chamar mesa</button>
     <button class="btn btn-primary btn-big" id="openFormBtn">➕ Entrar na fila</button>
   </div>
 
@@ -383,6 +381,19 @@
       <div class="modal-actions">
         <button class="btn btn-ghost btn-danger" id="mmApagar">🗑 Apagar</button>
         <button class="btn btn-primary" id="mmSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: AÇÕES DE UMA MESA LIVRE (atendente) ============ -->
+  <div class="modal" id="mesaLivreModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3 id="mlTitulo">Mesa</h3>
+      <p class="mapa-acao-info" id="mlInfo"></p>
+      <div class="mapa-acoes" id="mlAcoes"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Fechar</button>
       </div>
     </div>
   </div>

@@ -305,6 +305,8 @@ button{font-family:inherit}
   background:var(--bg);box-shadow:0 -6px 16px rgba(0,0,0,.10);
 }
 .add-bar .btn{max-width:700px;width:100%}
+/* a largura máxima vale para o conjunto, não para cada botão */
+.add-bar{max-width:100%}
 
 /* ---------------- MODAIS ---------------- */
 .modal{position:fixed;inset:0;background:rgba(20,30,25,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
@@ -773,3 +775,19 @@ button{font-family:inherit}
 
 /* enquanto uma mesa está sendo arrastada, o mapa segura o gesto */
 .mapa-piso.is-pegando{touch-action:none}
+
+/* barra de baixo com dois botões: metade para cada um, mesma altura de antes */
+.add-bar{gap:10px}
+.add-bar .btn{flex:1 1 0;min-width:0}
+.add-bar .btn[hidden]{display:none}
+/* celular estreito: os dois rótulos precisam caber numa linha só, senão a
+   barra dobra de altura */
+@media (max-width: 430px){
+  .add-bar{gap:8px}
+  .add-bar .btn{font-size:.9rem;padding-left:8px;padding-right:8px;white-space:nowrap}
+}
+
+/* cartão enxuto da mesa livre (atendente): um toque chama, segurar abre as ações */
+.mesa-item.is-enxuta{cursor:pointer}
+.mesa-item.is-enxuta .mesa-info{gap:2px}
+.mesa-item.is-pronto{transform:scale(1.03);box-shadow:0 8px 20px rgba(0,0,0,.20)}

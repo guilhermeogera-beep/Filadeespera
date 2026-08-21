@@ -107,6 +107,7 @@
     modoManual = !tamanhosDaCasa().includes(Number(mesa));
     $("#tamanhoMsg").textContent = "";
     $("#staffMsg").textContent = "";
+    ajustarBarraStaff();
     desenharTamanhos();
     $("#tamanhoModal").hidden = false;
   }
@@ -974,11 +975,23 @@
   }
 
   // O selo de conexão saiu da interface: os erros aparecem na faixa da atendente.
+  // O card da atendente só existe para avisos e para o botão de instalar.
+  // Vazio, ele vira uma faixa branca sem sentido no meio da tela.
+  function ajustarBarraStaff() {
+    const card = $("#staffBar");
+    if (!card) return;
+    if (appEl.getAttribute("data-view") !== "staff") { card.hidden = true; return; }
+    const temAviso = !!($("#staffMsg") && $("#staffMsg").textContent.trim());
+    const temInstalar = !!($("#installBtn") && !$("#installBtn").hidden);
+    card.hidden = !temAviso && !temInstalar;
+  }
+
   function avisoStaff(txt, ok) {
     const smsg = $("#staffMsg");
     if (!smsg) return;
     smsg.textContent = txt;
     smsg.className = "form-msg " + (ok ? "ok" : "err");
+    ajustarBarraStaff();
   }
 
   async function refresh() {
@@ -1191,49 +1204,35 @@
     if (!jaAvisada) await lancarMesa({ lugares, pet, identificacao: "", numeros });
   }
 
-  // Passo entre uma mesa e a vizinha, em % do piso. Sai do tamanho real
-  // do quadradinho na tela; se o mapa ainda não foi desenhado, usa 12%.
-  function passoDoMapa() {
-    const piso = $("#mapaPiso");
-    const um = piso && piso.querySelector(".mm-mesa");
-    if (!piso || !um) return { x: 12, y: 14 };
-    const p = piso.getBoundingClientRect(), r = um.getBoundingClientRect();
-    if (!p.width || !r.width) return { x: 12, y: 14 };
-    return { x: (r.width / p.width) * 100 + 0.5, y: (r.height / p.height) * 100 + 0.5 };
-  }
-
-  // Onde cada mesa do bloco fica, em fila ao lado da âncora.
-  // Se não couber para a direita, a fila cresce para a esquerda.
-  function lugaresEncostados(ancora, quantas) {
-    const passo = passoDoMapa();
-    const paraEsquerda = ancora.x + passo.x * (quantas - 1) > 96;
-    return Array.from({ length: quantas }, (_, i) => ({
-      x: Math.max(4, Math.min(96, ancora.x + (paraEsquerda ? -1 : 1) * passo.x * i)),
-      y: ancora.y,
-    }));
-  }
-
-  // Juntar: a mesa arrastada entra no grupo da mesa de baixo e encosta nela.
-  async function juntarMesas(idArrastada, idDestino) {
+  // Juntar: a mesa arrastada entra no grupo da mesa de destino e FICA ONDE FOI
+  // SOLTA. O garçom monta a formação que quiser (em linha, em L, em U) e o
+  // desenho no mapa fica igual ao arranjo real do salão.
+  async function juntarMesas(idArrastada, idDestino, ondeSoltou) {
     const a = mapa.find((x) => x.id === idArrastada);
     const b = mapa.find((x) => x.id === idDestino);
     if (!a || !b || a.id === b.id) return;
     if (a.grupo && a.grupo === b.grupo) return;          // já estão juntas
+    // mesa já avisada à recepção não entra em junção: ela está prometida
+    if (estadoDaMesa(b) === "avisada" || estadoDaMesa(a) === "avisada") {
+      avisoStaff("Mesa já liberada para a recepção — não dá para juntar.");
+      return;
+    }
     const grupo = b.grupo || a.grupo || uuid();
 
-    // a mesa de destino é a âncora: ela não sai do lugar
-    const vindos = blocoDaMesa(a).filter((x) => x.id !== b.id);
-    const doDestino = blocoDaMesa(b).filter((x) => x.id !== b.id);
-    const fila = [b].concat(doDestino, vindos);
-    const lugares = lugaresEncostados(b, fila.length);
-
-    for (let i = 0; i < fila.length; i++) {
-      const m = fila[i];
-      const patch = { grupo, x: lugares[i].x, y: lugares[i].y };
-      // guarda de onde veio, para voltar ao separar (só na primeira vez)
-      if (m.id !== b.id && m.x_ant == null) { patch.x_ant = m.x; patch.y_ant = m.y; }
+    // quem vem junto com a arrastada mantém a formação que já tinha
+    const vindos = blocoDaMesa(a);
+    for (const m of vindos) {
+      const patch = { grupo };
+      if (m.x_ant == null) { patch.x_ant = m.x; patch.y_ant = m.y; }
+      if (m.id === a.id && ondeSoltou) { patch.x = ondeSoltou.x; patch.y = ondeSoltou.y; }
       Object.assign(m, patch);                            // desenho já fica certo
       await backend.updateMapa(m.id, patch);
+    }
+    // o bloco de destino só adota o grupo (ninguém sai do lugar)
+    for (const m of blocoDaMesa(b)) {
+      if (m.grupo === grupo) continue;
+      Object.assign(m, { grupo });
+      await backend.updateMapa(m.id, { grupo });
     }
     await refresh();
   }
@@ -1250,8 +1249,37 @@
     await refresh();
   }
 
-  // A atendente toca numa mesa livre: já abre o pop-up de chamar, com o
-  // tamanho e o pet daquela mesa preenchidos. Um toque a menos no balcão.
+  // Escolhe quem chamar para o tamanho/pet que estão preparados e abre a
+  // confirmação. Serve tanto para o pop-up de tamanho quanto para o atalho
+  // de tocar direto numa mesa livre.
+  function chamarParaMesa() {
+    const smsg = $("#staffMsg");
+    const aceitaPet = mesaAceitaPet();
+    const chosen = pickNext(mesa, null, aceitaPet);
+    if (!chosen) {
+      const alvo = mesa === 1 ? "pessoa" : "pessoas";
+      const base = (CFG.regraTamanho === "ate")
+        ? `Nenhum grupo de até ${mesa} ${alvo} disponível para esta mesa.`
+        : `Nenhum grupo de exatamente ${mesa} ${alvo} disponível para esta mesa.`;
+      // explica quando o motivo foi o pet (senão a atendente vê gente na fila e não entende)
+      const barrados = barradosPorPet(mesa, aceitaPet);
+      smsg.textContent = barrados
+        ? `${base} ${barrados} ${barrados === 1 ? "grupo desse tamanho não pode" : "grupos desse tamanho não podem"} usar ` +
+          (aceitaPet ? "a área pet." : "esta mesa por estar com pet.")
+        : base;
+      smsg.className = "form-msg err";
+      ajustarBarraStaff();
+      pendingCall = null;
+      return;
+    }
+    smsg.textContent = "";
+    ajustarBarraStaff();
+    openCallConfirm(chosen, aceitaPet);
+  }
+
+  // A atendente toca numa mesa livre: vai DIRETO para a confirmação, já com
+  // o cliente escolhido. O tamanho e o pet vêm da mesa; perguntar de novo
+  // seria pedir para conferir algo que ela não tem como conferir daqui.
   function selecionarMesa(id) {
     const m = mesasLivres.find((x) => x.id === id);
     if (!m) return;
@@ -1261,7 +1289,7 @@
     const alvo = $(`input[name="mesapet"][value="${m.pet ? "sim" : "nao"}"]`);
     if (alvo) alvo.checked = true;
     render();
-    abrirTamanho();
+    chamarParaMesa();
   }
 
   // ---------- desenho do mapa ----------
@@ -1491,7 +1519,7 @@
   function ligarArrasto(seletor, modo) {
     const piso = $(seletor);
     if (!piso) return;
-    let alvo = null, podeArrastar = false, moveu = false;
+    let alvo = null, podeArrastar = false, moveu = false, vagaAcesa = null;
     let dx = 0, dy = 0, posOriginal = null, xInicial = 0, yInicial = 0, relogio = null;
     const SEGURAR = 350;   // ms de dedo parado para liberar o arrasto
     const FOLGA = 10;      // px de tremida que ainda contam como "parado"
@@ -1510,11 +1538,15 @@
         const m = mapa.find((x) => x.id === el.dataset.mapamesa);
         if (!m) return;
         if (meuGrupo && m.grupo === meuGrupo) return;      // já estão juntas
+        if (estadoDaMesa(m) === "avisada") return;          // já prometida à recepção
         [[lg, 0], [-lg, 0], [0, at], [0, -at]].forEach(([dx2, dy2]) => {
           const vx = Number(m.x) + dx2, vy = Number(m.y) + dy2;
           if (vx < 4 || vx > 96 || vy < 6 || vy > 94) return;   // fora do piso
           const v = document.createElement("div");
           v.className = "mm-vaga";
+          v.dataset.vx = vx;
+          v.dataset.vy = vy;
+          v.dataset.dono = m.id;
           v.style.left = vx + "%";
           v.style.top = vy + "%";
           v.style.width = lg + "%";
@@ -1532,7 +1564,7 @@
       clearTimeout(relogio);
       if (alvo) alvo.classList.remove("is-arrastando", "is-pronto");
       $$(seletor + " .mm-mesa").forEach((x) => x.classList.remove("is-alvo"));
-      alvo = null; podeArrastar = false; moveu = false;
+      alvo = null; podeArrastar = false; moveu = false; vagaAcesa = null;
     };
 
     // Qual mesa está embaixo da que está sendo arrastada. Comparo as posições
@@ -1545,6 +1577,10 @@
       let melhor = null, menor = Infinity;
       $$(seletor + " .mm-mesa").forEach((el) => {
         if (el === alvo) return;
+        if (modo === "juntar") {
+          const m = mapa.find((x) => x.id === el.dataset.mapamesa);
+          if (m && estadoDaMesa(m) === "avisada") return;
+        }
         const o = el.getBoundingClientRect();
         const ox = o.left + o.width / 2, oy = o.top + o.height / 2;
         const dist = Math.hypot(cx - ox, cy - oy);
@@ -1612,6 +1648,7 @@
             if (d < dmin) { dmin = d; perto = v; }
           });
         }
+        vagaAcesa = perto;
         $$(seletor + " .mm-vaga").forEach((v) => v.classList.toggle("is-perto", v === perto));
       }
     });
@@ -1620,6 +1657,9 @@
       if (!alvo) return;
       const el = alvo, arrastou = podeArrastar && moveu;
       const outra = modo === "juntar" && arrastou ? soltoEmCima() : null;
+      // a vaga acesa diz em qual lado da mesa o garçom encostou
+      const vaga = vagaAcesa && outra && vagaAcesa.dataset.dono === outra.dataset.mapamesa
+        ? { x: Number(vagaAcesa.dataset.vx), y: Number(vagaAcesa.dataset.vy) } : null;
       const eraToque = !podeArrastar && !moveu;
       const id = el.dataset.mapamesa;
       soltar();
@@ -1632,12 +1672,12 @@
       if (!arrastou) return;                     // segurou e soltou sem mover
 
       if (modo === "juntar") {
-        // o mapa do garçom não muda a planta: a mesa volta ao lugar e, se caiu
-        // sobre outra, o próprio juntar recoloca as duas encostadas
+        // solta no vazio: volta ao lugar. Sobre uma vaga: o juntar coloca a
+        // mesa exatamente naquele lado, mantendo a formação que o garçom fez
         el.style.left = posOriginal.left;
         el.style.top = posOriginal.top;
         if (!outra) return;
-        try { await juntarMesas(id, outra.dataset.mapamesa); }
+        try { await juntarMesas(id, outra.dataset.mapamesa, vaga); }
         catch (err) {
           console.error("Erro ao juntar mesas:", err);
           avisoStaff("Não deu para juntar as mesas — verifique a internet.");
@@ -1660,6 +1700,42 @@
 
     piso.addEventListener("pointerup", fim);
     piso.addEventListener("pointercancel", () => soltar());
+  }
+
+  // Pop-up de ações de uma mesa livre (abre ao segurar o cartão na atendente)
+  let mesaLivreAtiva = null;
+
+  function abrirAcoesMesaLivre(id) {
+    const m = mesasLivres.find((x) => x.id === id);
+    if (!m) return;
+    mesaLivreAtiva = id;
+    $("#mlTitulo").textContent = m.numeros ? "Mesa " + m.numeros : "Mesa sem número";
+    $("#mlInfo").innerHTML = `${m.lugares} ${m.lugares === 1 ? "lugar" : "lugares"}${m.pet ? " • 🐾 área pet" : ""}` +
+      (m.identificacao ? ` • ${esc(m.identificacao)}` : "") +
+      (m.reservada_para ? `<br>🔔 chamada, aguardando o cliente sentar` : "");
+    $("#mlAcoes").innerHTML = `
+      <button type="button" class="btn btn-primary" data-mlacao="usei">✓ Já usei esta mesa</button>
+      <button type="button" class="btn btn-edit" data-mlacao="editar">✏️ Corrigir a mesa</button>
+      <button type="button" class="btn btn-danger" data-mlacao="apagar">✕ Cancelar o lançamento</button>`;
+    $("#mesaLivreModal").hidden = false;
+  }
+
+  async function acaoMesaLivre(acao) {
+    const id = mesaLivreAtiva;
+    const m = mesasLivres.find((x) => x.id === id);
+    if (!m) return;
+    $("#mesaLivreModal").hidden = true;
+    mesaLivreAtiva = null;
+    try {
+      if (acao === "usei") await usarMesa(id);
+      else if (acao === "editar") abrirMesaModal(id);
+      else if (acao === "apagar") {
+        if (confirm("Cancelar o lançamento desta mesa?")) await apagarMesa(id);
+      }
+    } catch (e) {
+      console.error("Ação na mesa livre falhou:", e);
+      avisoStaff("Não deu para salvar — verifique a internet e tente de novo.");
+    }
   }
 
   function descMesa(m) {
@@ -2005,7 +2081,8 @@
       btn.textContent = "🔒 Fila fechada";
     } else {
       btn.disabled = false;
-      btn.textContent = "➕ " + (isStaff() ? "Adicionar cliente" : "Entrar na fila");
+      // na atendente o botão divide a barra com o de chamar: rótulo curto
+      btn.textContent = "➕ " + (isStaff() ? "Adicionar" : "Entrar na fila");
     }
   }
 
@@ -2151,23 +2228,36 @@
       return r ? firstName(r.nome) : "cliente chamado";
     };
     $("#mesasCount").textContent = mesasLivres.filter((m) => !reservada(m)).length;
-    $("#mesasList").innerHTML = mesasLivres.map((m) => `
-      <div class="mesa-item ${m.pet ? "is-pet" : ""} ${mesaSelecionada === m.id ? "is-sel" : ""} ${reservada(m) ? "is-reservada" : ""}"
-           ${staff && !reservada(m) ? `data-selmesa="${m.id}" role="button" tabindex="0"` : ""}>
+    // Na tela da atendente o cartão é só número e lugares: um toque chama.
+    // As ações (usei / cancelar / corrigir) ficam no pop-up que abre ao segurar.
+    $("#mesasList").innerHTML = mesasLivres.map((m) => {
+      const nome = m.numeros ? "Mesa " + esc(m.numeros) : `<span class="mesa-sem-num">sem número</span>`;
+      const classes = `mesa-item ${m.pet ? "is-pet" : ""} ${mesaSelecionada === m.id ? "is-sel" : ""} ${reservada(m) ? "is-reservada" : ""}`;
+      if (staff) {
+        return `
+      <div class="${classes} is-enxuta" data-selmesa="${m.id}" role="button" tabindex="0">
         <div class="mesa-lug">${m.lugares}<small>${m.lugares === 1 ? "lugar" : "lugares"}</small></div>
         <div class="mesa-info">
-          <b class="mesa-nome">${m.numeros ? "Mesa " + esc(m.numeros) : `<span class="mesa-sem-num">sem número</span>`}</b>
-          ${m.identificacao ? `<span class="mesa-obs">${esc(m.identificacao)}</span>` : ""}
-          <span class="mesa-tags">${m.pet ? `<span class="mesa-tag pet">🐾 área pet</span>` : ""}</span>
+          <b class="mesa-nome">${nome}</b>
+          ${m.pet ? `<span class="mesa-tags"><span class="mesa-tag pet">🐾 área pet</span></span>` : ""}
           ${reservada(m) ? `<span class="mesa-reserva">🔔 chamada para ${esc(quemFoiChamado(m))} — aguardando sentar</span>` : ""}
         </div>
+      </div>`;
+      }
+      return `
+      <div class="${classes}">
+        <div class="mesa-lug">${m.lugares}<small>${m.lugares === 1 ? "lugar" : "lugares"}</small></div>
+        <div class="mesa-info">
+          <b class="mesa-nome">${nome}</b>
+          ${m.identificacao ? `<span class="mesa-obs">${esc(m.identificacao)}</span>` : ""}
+          ${m.pet ? `<span class="mesa-tags"><span class="mesa-tag pet">🐾 área pet</span></span>` : ""}
+        </div>
         <div class="mesa-acoes">
-          ${staff
-            ? `<button class="btn btn-sm btn-usei" data-usarmesa="${m.id}" title="Já usei esta mesa" aria-label="Já usei esta mesa">✓</button>`
-            : `<button class="btn btn-sm btn-edit" data-editmesa="${m.id}" title="Corrigir esta mesa" aria-label="Corrigir esta mesa">✏️</button>`}
+          <button class="btn btn-sm btn-edit" data-editmesa="${m.id}" title="Corrigir esta mesa" aria-label="Corrigir esta mesa">✏️</button>
           <button class="btn btn-sm btn-danger" data-apagarmesa="${m.id}" title="Cancelar este lançamento" aria-label="Cancelar este lançamento">✕</button>
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
 
     const vazio = $("#mesasEmpty");
     vazio.hidden = mesasLivres.length > 0;
@@ -2474,6 +2564,10 @@
     $("#tabStaff").classList.toggle("is-active", v === "staff");
     $("#tabGarcom").classList.toggle("is-active", v === "garcom");
     $("#staffBar").hidden = v !== "staff";
+    // o botão de chamar mesa acompanha a aba da atendente, na barra de baixo
+    const fb2 = $("#freeTableBtn");
+    if (fb2) fb2.hidden = v !== "staff";
+    ajustarBarraStaff();
     const rotulo = v === "staff" ? "Adicionar cliente" : "Entrar na fila";
     $("#formTitle").textContent = rotulo;
     $("#joinBtn").textContent = rotulo;
@@ -2822,6 +2916,47 @@
       }
     });
 
+    // Segurar o cartão de uma mesa livre abre as ações; toque simples chama.
+    (function segurarMesa() {
+      const lista = $("#mesasList");
+      if (!lista) return;
+      let alvo = null, relogio = null, x0 = 0, y0 = 0, abriu = false;
+      const limpar = () => {
+        clearTimeout(relogio);
+        if (alvo) alvo.classList.remove("is-pronto");
+        alvo = null;
+      };
+      lista.addEventListener("pointerdown", (e) => {
+        const card = e.target.closest("[data-selmesa]");
+        if (!card) return;
+        alvo = card; abriu = false; x0 = e.clientX; y0 = e.clientY;
+        relogio = setTimeout(() => {
+          abriu = true;
+          card.classList.add("is-pronto");
+          if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) { /* ignora */ } }
+          acaoSegura("ações da mesa", () => abrirAcoesMesaLivre(card.dataset.selmesa))();
+          limpar();
+        }, 450);
+      });
+      lista.addEventListener("pointermove", (e) => {
+        if (alvo && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) limpar();
+      });
+      lista.addEventListener("pointerup", () => { limpar(); });
+      lista.addEventListener("pointercancel", limpar);
+      // o clique que vem depois de um "segurar" não deve chamar a mesa
+      lista.addEventListener("click", (e) => {
+        if (!abriu) return;
+        abriu = false;
+        e.stopPropagation();
+        e.preventDefault();
+      }, true);
+    })();
+
+    $("#mlAcoes").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mlacao]");
+      if (b) acaoMesaLivre(b.dataset.mlacao);
+    });
+
     // PIN
     $("#pinOk").addEventListener("click", () => {
       const garcom = pinAlvo === "garcom";
@@ -2935,26 +3070,7 @@
     $("#freeTableBtn").addEventListener("click", acaoSegura("chamar próxima mesa", abrirTamanho));
     $("#tamanhoOk").addEventListener("click", acaoSegura("chamar próxima mesa", () => {
       $("#tamanhoModal").hidden = true;
-      const smsg = $("#staffMsg");
-      const aceitaPet = mesaAceitaPet();
-      const chosen = pickNext(mesa, null, aceitaPet);
-      if (!chosen) {
-        const alvo = mesa === 1 ? "pessoa" : "pessoas";
-        const base = (CFG.regraTamanho === "ate")
-          ? `Nenhum grupo de até ${mesa} ${alvo} disponível para esta mesa.`
-          : `Nenhum grupo de exatamente ${mesa} ${alvo} disponível para esta mesa.`;
-        // explica quando o motivo foi o pet (senão a atendente vê gente na fila e não entende)
-        const barrados = barradosPorPet(mesa, aceitaPet);
-        smsg.textContent = barrados
-          ? `${base} ${barrados} ${barrados === 1 ? "grupo desse tamanho não pode" : "grupos desse tamanho não podem"} usar ` +
-            (aceitaPet ? "a área pet." : "esta mesa por estar com pet.")
-          : base;
-        smsg.className = "form-msg err";
-        pendingCall = null;
-        return;
-      }
-      smsg.textContent = "";
-      openCallConfirm(chosen, aceitaPet);
+      chamarParaMesa();
     }));
     $("#mapaAcoes").addEventListener("click", (e) => {
       const b = e.target.closest("[data-macao]");

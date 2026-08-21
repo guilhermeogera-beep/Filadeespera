@@ -531,7 +531,7 @@
         </div>
 
         <div class="field">
-          <span>Número da mesa</span>
+          <span id="mNumeroLabel">Número da mesa</span>
           <div class="num-row">
             <input id="mNumero" type="text" maxlength="8" inputmode="numeric" placeholder="ex.: 12" />
             <button type="button" class="btn btn-neutral num-add" id="mAddNum" title="Juntar outra mesa">+</button>
@@ -944,6 +944,14 @@
         </label>
         <div class="cfg-sec">Equipe e acesso</div>
 
+        <label class="field">
+          <span>Número da mesa ao liberar (garçom)</span>
+          <select id="cfgMesaNumObr">
+            <option value="sim">Obrigatório</option>
+            <option value="nao">Opcional</option>
+          </select>
+          <small class="hint">Sem o número, a atendente não sabe para onde mandar o cliente e o mapa não liga a mesa a ninguém.</small>
+        </label>
         <label class="field">
           <span>Nome do estabelecimento</span>
           <input id="cfgRest" type="text" maxlength="40" />

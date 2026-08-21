@@ -90,6 +90,9 @@ window.FILA_CONFIG = {
   // Mapa do salão: dá para ocultar por perfil (o cadastro continua na engrenagem)
   mapaGarcom: true,
   mapaAdm: true,
+
+  // O garçom precisa informar o número da mesa ao liberar?
+  mesaNumObrigatorio: true,
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
 
   // --- Fechamento da fila ---

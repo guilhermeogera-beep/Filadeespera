@@ -2523,6 +2523,10 @@
     const alvo = $(`input[name="mesapetnova"][value="${m && m.pet ? "sim" : "nao"}"]`);
     if (alvo) alvo.checked = true;
     $("#mNumero").value = "";
+    const numObr = CFG.mesaNumObrigatorio !== false;
+    $("#mNumeroLabel").innerHTML = numObr
+      ? 'Número da mesa <b class="req">*</b>'
+      : "Número da mesa <small>(opcional)</small>";
     $("#mIdent").value = (m && m.identificacao) || "";
     $("#mMsg").textContent = "";
     $("#mPetField").hidden = CFG.petAtivo === false;
@@ -2603,11 +2607,22 @@
   // Pop-up mostrado depois de entrar na fila: posição + QR + link
   function mostrarEntrou(pessoa) {
     const pos = waiting().findIndex((r) => r.id === pessoa.id) + 1;
-    const total = waiting().length;
     $("#joinedTitle").textContent = isStaff() ? `✅ ${firstName(pessoa.nome)} entrou na fila!` : "✅ Você está na fila!";
     $("#joinedPos").textContent = pos > 0 ? pos + "º" : "—";
     const avg = avgWaitMs();
-    $("#joinedSub").textContent = `${total} ${total === 1 ? "grupo" : "grupos"} aguardando` +
+    // Quantos grupos DO MESMO TAMANHO estão na frente. É o que realmente
+    // manda na espera: as mesas são chamadas pelo número de lugares, então
+    // "12 grupos na fila" assusta sem querer dizer nada para quem é 2.
+    const n = Number(pessoa.pessoas);
+    const naFrente = waiting().filter((r, i) => i < pos - 1 && Number(r.pessoas) === n).length;
+    const gente = `${n} ${n === 1 ? "pessoa" : "pessoas"}`;
+    // texto neutro: o mesmo pop-up aparece para o cliente no totem e para a
+    // atendente no balcão
+    const frente = pos <= 1 ? "primeiro da fila"
+      : (naFrente === 0
+          ? `nenhum grupo de ${gente} na frente`
+          : `${naFrente} ${naFrente === 1 ? "grupo" : "grupos"} de ${gente} na frente`);
+    $("#joinedSub").textContent = frente +
       (avg != null && CFG.mostrarMedia !== false ? ` • espera média ~${fmtElapsed(avg)}` : "");
 
     const link = publicUrl(pessoa.id);
@@ -2687,6 +2702,14 @@
       const btn = $("#mSalvar"), msg = $("#mMsg");
       if (btn.disabled) return;
       guardarNumeroDigitado();   // aproveita o número que ficou digitado sem tocar no +
+      // sem o número, a mesa não serve para nada: a atendente não sabe para
+      // onde mandar o cliente e o mapa não consegue ligar a mesa a ninguém
+      if (CFG.mesaNumObrigatorio !== false && !numerosNovaMesa.length) {
+        msg.textContent = "Digite o número da mesa.";
+        msg.className = "form-msg err";
+        $("#mNumero").focus();
+        return;
+      }
       btn.disabled = true;
       msg.textContent = "Salvando…"; msg.className = "form-msg";
       try {
@@ -2899,8 +2922,14 @@
     $("#fpTamanhos").addEventListener("click", (e) => {
       const b = e.target.closest("[data-fptam]");
       if (!b) return;
-      if (b.dataset.fptam === "manual") grupoManual = true;
-      else { grupoManual = false; pessoas = Number(b.dataset.fptam); }
+      if (b.dataset.fptam === "manual") {
+        grupoManual = true;
+        // começa no primeiro número que os botões não cobrem: com 1..6 na
+        // lista, "outro" abre em 7. Voltar para 2 obrigava a subir tudo de novo.
+        const teto = isStaff() ? TETO_EQUIPE : (Number(CFG.maxPessoas) || MAX_P);
+        const maior = Math.max.apply(null, tamanhosDeGrupo().filter((n) => n <= teto).concat([MIN_P]));
+        pessoas = Math.min(teto, maior + 1);
+      } else { grupoManual = false; pessoas = Number(b.dataset.fptam); }
       prepararFormulario();
     });
     $("#tmTamanhos").addEventListener("click", (e) => {
@@ -3332,7 +3361,7 @@
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
-    "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa",
+    "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa", "mesaNumObrigatorio",
   ];
 
   // O PIN da atendente fica guardado só NESTE aparelho (não sobe para a nuvem)
@@ -3505,6 +3534,7 @@
     $("#cfgRest").value = CFG.restaurante || "";
     $("#cfgPinAtend").value = CFG.pinAtendente || "";
     $("#cfgPerguntarMesa").value = CFG.perguntarMesa || "opcional";
+    $("#cfgMesaNumObr").value = CFG.mesaNumObrigatorio === false ? "nao" : "sim";
     $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
     $("#cfgPinGarcom").value = CFG.pinGarcom || "";
 
@@ -3572,6 +3602,7 @@
 
       garcomAtivo: $("#cfgGarcomOn").value === "sim",
       perguntarMesa: $("#cfgPerguntarMesa").value,
+      mesaNumObrigatorio: $("#cfgMesaNumObr").value === "sim",
 
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
     };
@@ -3607,7 +3638,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "mapaEditModal", "cfgMapaBtn", "mmNumero",
-    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgMapaGarcom", "cfgMapaAdm",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

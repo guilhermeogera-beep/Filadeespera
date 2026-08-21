@@ -88,6 +88,23 @@
       <p class="form-msg" id="mesasMsg" role="status"></p>
     </section>
 
+    <!-- ============ MAPA DO SALÃO (aba do garçom) ============ -->
+    <section class="card mapa-card" id="mapaCard" hidden>
+      <div class="mesas-head">
+        <h2 class="card-title">🗺 Mapa do salão</h2>
+        <div class="mapa-legenda">
+          <span class="ml livre">livre</span>
+          <span class="ml ocupada">ocupada</span>
+          <span class="ml limpar">limpar</span>
+        </div>
+      </div>
+      <div class="mapa-piso" id="mapaPiso"></div>
+      <div class="mapa-vazio" id="mapaVazio" hidden>
+        Nenhuma mesa cadastrada ainda. O cadastro fica na engrenagem, em
+        <b>"Configurar mapa de mesas"</b>.
+      </div>
+    </section>
+
     <!-- ============ CONTROLES DA ATENDENTE (antes da fila; só na aba atendente) ============ -->
     <section class="card staff-bar" id="staffBar" hidden>
       <div class="staff-head">
@@ -317,6 +334,72 @@
   </div>
 
   <!-- ============ MODAL: CONFIRMAR CHAMADA ============ -->
+  <!-- ============ MODAL: CADASTRO DO MAPA (adm/atendente) ============ -->
+  <div class="modal modal-wide" id="mapaEditModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>🗺 Configurar mapa de mesas</h3>
+      <p class="hint">Arraste as mesas para montar a planta do salão. Toque numa mesa para
+        mudar o número, os lugares ou apagá-la.</p>
+      <div class="mapa-piso is-edit" id="mapaEditPiso"></div>
+      <div class="mapa-edit-barra">
+        <button type="button" class="btn btn-primary" id="mapaNova">➕ Nova mesa</button>
+        <span class="hint" id="mapaEditInfo"></span>
+      </div>
+      <p class="form-msg" id="mapaEditMsg" role="status"></p>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: UMA MESA DO CADASTRO ============ -->
+  <div class="modal" id="mapaMesaModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3 id="mapaMesaTitulo">Mesa</h3>
+      <label class="field">
+        <span>Número da mesa <b class="req">*</b></span>
+        <input id="mmNumero" type="text" maxlength="8" inputmode="numeric" placeholder="ex.: 12" />
+      </label>
+      <div class="field">
+        <span>Quantos lugares?</span>
+        <div class="tm-tamanhos" id="mmTamanhos"></div>
+      </div>
+      <div class="field" id="mmLugaresField" hidden>
+        <span>Quantos lugares?</span>
+        <div class="stepper">
+          <button type="button" class="step-btn" data-mmstep="-1" aria-label="Menos">−</button>
+          <output id="mmLugares" class="step-val">4</output>
+          <button type="button" class="step-btn" data-mmstep="1" aria-label="Mais">+</button>
+        </div>
+      </div>
+      <div class="field" id="mmPetField">
+        <span>Fica na área pet?</span>
+        <div class="segmented segmented-sm">
+          <label class="seg"><input type="radio" name="mmpet" value="nao" checked /><span>Não</span></label>
+          <label class="seg seg-pet"><input type="radio" name="mmpet" value="sim" /><span>🐾 Sim</span></label>
+        </div>
+      </div>
+      <p class="form-msg" id="mmMsg" role="status"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-danger" id="mmApagar">🗑 Apagar</button>
+        <button class="btn btn-primary" id="mmSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: AÇÕES DE UMA MESA DO MAPA (garçom) ============ -->
+  <div class="modal" id="mapaAcaoModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3 id="mapaAcaoTitulo">Mesa</h3>
+      <p id="mapaAcaoInfo" class="mapa-acao-info"></p>
+      <div class="mapa-acoes" id="mapaAcoes"></div>
+      <p class="form-msg" id="mapaAcaoMsg" role="status"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ MODAL: QUE MESA VAGOU (atendente) ============ -->
   <div class="modal" id="tamanhoModal" hidden>
     <div class="modal-box">
@@ -582,6 +665,11 @@
             <option value="1:3">1 preferencial : 3 normais</option>
             <option value="normal">Fila normal sempre primeiro</option>
           </select>
+        </label>
+        <label class="field">
+          <span>Mapa do salão</span>
+          <button type="button" class="btn btn-neutral" id="cfgMapaBtn">🗺 Configurar mapa de mesas</button>
+          <small class="hint">Cadastre as mesas da casa e arraste para montar a planta. O mapa aparece na aba do garçom.</small>
         </label>
         <label class="field">
           <span>Filas na tela da atendente</span>

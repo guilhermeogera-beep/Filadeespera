@@ -634,3 +634,60 @@ button{font-family:inherit}
   margin-left:auto;margin-right:10px;
   font-size:.78rem;font-weight:600;opacity:.75;white-space:nowrap;
 }
+
+/* ---- MAPA DO SALÃO ---------------------------------------------------
+   O piso é uma caixa de proporção fixa; cada mesa é posicionada em % dela,
+   então a planta fica igual em qualquer tela. */
+.mapa-piso{
+  position:relative;width:100%;aspect-ratio:3/2;
+  background:
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0/100% 12.5%,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/8.33% 100%,
+    #FAFAF8;
+  border:2px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;touch-action:none;
+}
+.mapa-piso.is-edit{cursor:grab}
+.mapa-vazio{
+  text-align:center;color:var(--muted);font-size:.9rem;line-height:1.5;
+  padding:14px 8px 2px;
+}
+
+/* uma mesa no piso */
+.mm-mesa{
+  position:absolute;transform:translate(-50%, -50%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+  min-width:56px;min-height:52px;padding:6px 8px;cursor:pointer;
+  border:2px solid;border-radius:12px;font-family:inherit;line-height:1.05;
+  box-shadow:0 2px 6px rgba(0,0,0,.10);
+}
+.mm-num{font-size:1.05rem;font-weight:800}
+.mm-lug{font-size:.72rem;opacity:.85}
+.mm-timer{font-size:.7rem;font-weight:700;margin-top:2px}
+.mm-mesa.is-arrastando{opacity:.85;box-shadow:0 8px 20px rgba(0,0,0,.25);z-index:5}
+
+/* cores dos estados */
+.mm-mesa.is-livre   {color:#125E40}
+.mm-mesa.is-avisada {background:#E4F3EA;border-color:#1E7A52;color:#125E40;border-style:dashed}
+.mm-mesa.is-ocupada {background:#FBE3E1;border-color:#B3261E;color:#8C1D18}
+.mm-mesa.is-limpar  {background:#FCF0D8;border-color:#C9861F;color:#7A5210}
+.mm-mesa.is-pet     {box-shadow:0 2px 6px rgba(0,0,0,.10), inset 0 0 0 2px rgba(63,92,99,.35)}
+
+/* legenda */
+.mapa-legenda{display:flex;gap:10px;flex-wrap:wrap}
+.ml{font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    padding:3px 8px;border-radius:999px;border:2px solid}
+.ml.livre  {background:#E4F3EA;border-color:#1E7A52;color:#125E40}
+.ml.ocupada{background:#FBE3E1;border-color:#B3261E;color:#8C1D18}
+.ml.limpar {background:#FCF0D8;border-color:#C9861F;color:#7A5210}
+
+/* pop-up de ações */
+.mapa-acao-info{margin:0 0 14px;line-height:1.5}
+.mapa-acoes{display:flex;flex-direction:column;gap:8px;margin:0 0 6px}
+.mapa-acoes .btn{width:100%}
+.btn-amarelo{background:#FCF0D8;border:2px solid #C9861F;color:#7A5210;font-weight:700}
+.btn-amarelo:hover{background:#F7E4BD}
+
+/* editor */
+.modal-wide .modal-box{max-width:760px;width:min(760px, 94vw)}
+.mapa-edit-barra{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}

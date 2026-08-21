@@ -23,6 +23,8 @@
   const LS_MESAS = "fila_mesas_v1";       // mesas livres no modo local
   const SESSION_PIN_G = "fila_garcom_ok";
   const T_MESAS = "mesas_livres";         // tabela das mesas livres na nuvem
+  const LS_MAPA = "fila_mapa_v1";         // mapa do salão no modo local
+  const T_MAPA = "mapa_mesas";            // tabela do mapa do salão na nuvem
 
   // A tela ao vivo precisa da fila + um pouco de histórico (média e alternância).
   // Baixar a tabela INTEIRA é perigoso: o Supabase corta a resposta no "Max rows"
@@ -49,6 +51,8 @@
   let editandoMesaId = null; // mesa que o garçom está corrigindo (null = nova)
   let modoManualMesa = false; // true = o garçom está digitando um tamanho fora da lista
   let semTabelaMesas = false; // true se a tabela `mesas_livres` ainda não existe no banco
+  let mapa = [];            // mapa do salão (cadastro das mesas da casa)
+  let semTabelaMapa = false; // true se a tabela `mapa_mesas` ainda não existe no banco
 
   // Os tamanhos de mesa que a casa trabalha (viram os botões do pop-up).
   // Sem nada configurado, usa os quatro mais comuns.
@@ -189,6 +193,14 @@
       localStorage.setItem(LS_KEY, JSON.stringify(data));
       if (bc) bc.postMessage("changed");
     }
+    function readMapa() {
+      try { return JSON.parse(localStorage.getItem(LS_MAPA)) || []; }
+      catch (e) { return []; }
+    }
+    function writeMapa(data) {
+      localStorage.setItem(LS_MAPA, JSON.stringify(data));
+      if (bc) bc.postMessage("changed");
+    }
     function readMesas() {
       try { return JSON.parse(localStorage.getItem(LS_MESAS)) || []; }
       catch (e) { return []; }
@@ -201,7 +213,7 @@
 
     if (bc) bc.onmessage = () => notify();
     window.addEventListener("storage", (e) => {
-      if (e.key === LS_KEY || e.key === LS_MESAS) notify();
+      if (e.key === LS_KEY || e.key === LS_MESAS || e.key === LS_MAPA) notify();
     });
 
     return {
@@ -269,6 +281,16 @@
         if (i >= 0) { d[i] = Object.assign({}, d[i], patch); writeMesas(d); }
       },
       async removeMesa(id) { writeMesas(readMesas().filter((m) => m.id !== id)); },
+
+      // ---- mapa do salão (cadastro das mesas da casa) ----
+      async listMapa() { return readMapa(); },
+      async addMapa(m) { const d = readMapa(); d.push(m); writeMapa(d); return m; },
+      async updateMapa(id, patch) {
+        const d = readMapa();
+        const i = d.findIndex((m) => m.id === id);
+        if (i >= 0) { d[i] = Object.assign({}, d[i], patch); writeMapa(d); }
+      },
+      async removeMapa(id) { writeMapa(readMapa().filter((m) => m.id !== id)); },
 
       onChange(cb) { listeners.push(cb); },
     };
@@ -413,6 +435,27 @@
         if (error) throw error;
       },
 
+      // ---- mapa do salão ----
+      async listMapa() {
+        const { data, error } = await client.from(T_MAPA).select("*")
+          .order("criado_em", { ascending: true }).limit(PAGINA);
+        if (error) throw error;
+        return data || [];
+      },
+      async addMapa(m) {
+        const { data, error } = await client.from(T_MAPA).insert(m).select().single();
+        if (error) throw error;
+        return data;
+      },
+      async updateMapa(id, patch) {
+        const { error } = await client.from(T_MAPA).update(patch).eq("id", id);
+        if (error) throw error;
+      },
+      async removeMapa(id) {
+        const { error } = await client.from(T_MAPA).delete().eq("id", id);
+        if (error) throw error;
+      },
+
       onChange(cb) {
         // A equipe escuta a fila direto. O totem não tem permissão para isso
         // (nem para escutar), então acompanha o "sino": uma tabelinha que só
@@ -429,6 +472,11 @@
         client
           .channel("mesas-rt")
           .on("postgres_changes", { event: "*", schema: "public", table: T_MESAS }, () => cb())
+          .subscribe();
+        // o mapa do salão muda de cor sozinho nos outros aparelhos
+        client
+          .channel("mapa-rt")
+          .on("postgres_changes", { event: "*", schema: "public", table: T_MAPA }, () => cb())
           .subscribe();
       },
     };
@@ -883,6 +931,7 @@
     try {
       rows = await backend.list();
       await carregarMesas();
+      await carregarMapa();
       render();
       checkAutoClose();
     } catch (e) {
@@ -962,6 +1011,77 @@
     await refresh();
   }
 
+  // ==========================================================
+  //  MAPA DO SALÃO (planta baixa das mesas da casa)
+  // ==========================================================
+  //  Estados de uma mesa no mapa:
+  //    OCUPADA  (vermelha) - alguém da fila está sentado nela agora
+  //    LIMPAR   (amarela)  - o garçom marcou que precisa limpar
+  //    AVISADA  (verde/borda) - já foi liberada para a recepção
+  //    LIVRE    (verde)    - nenhuma das anteriores
+  //  Só o "limpar" fica guardado na mesa; os outros são deduzidos da fila,
+  //  para nunca haver duas verdades sobre a mesma mesa.
+  const MAPA = { LIVRE: "livre", LIMPAR: "limpar" };
+
+  async function carregarMapa() {
+    if (loginLigado() && !temSessaoEquipe()) { mapa = []; return; }
+    try {
+      mapa = await backend.listMapa();
+      semTabelaMapa = false;
+    } catch (e) {
+      semTabelaMapa = true;
+      mapa = [];
+      console.warn("Mapa de mesas: tabela indisponível (rode o SQL do mapa).", e);
+    }
+  }
+
+  // Compara números de mesa com tolerância: "30 + 31" contém "30".
+  function numeroBate(numeroDaMesa, texto) {
+    const alvo = String(numeroDaMesa || "").trim().toLowerCase();
+    if (!alvo) return false;
+    return String(texto || "").split("+").map((s) => s.trim().toLowerCase()).includes(alvo);
+  }
+
+  // Quem está sentado nesta mesa agora (para a cor vermelha e o cronômetro)
+  function ocupanteDaMesa(m) {
+    // depois que o garçom encerra a mesa, quem sentou antes disso não conta mais
+    const corte = m.liberada_em ? new Date(m.liberada_em).getTime() : 0;
+    const candidatos = rows.filter((r) => r.status === STATUS.SENTADO &&
+      numeroBate(m.numero, r.mesa_numero) &&
+      new Date(r.sentou_em || r.chamado_em || r.criado_em).getTime() > corte);
+    // se houver mais de um (mesa reaproveitada), vale o mais recente
+    candidatos.sort((a, b) => new Date(b.sentou_em || b.criado_em) - new Date(a.sentou_em || a.criado_em));
+    return candidatos[0] || null;
+  }
+
+  // Esta mesa já foi avisada à recepção?
+  function mesaAvisada(m) {
+    return mesasLivres.some((x) => numeroBate(m.numero, x.numeros || x.identificacao));
+  }
+
+  function estadoDaMesa(m) {
+    if (ocupanteDaMesa(m)) return "ocupada";
+    if (m.status === MAPA.LIMPAR) return "limpar";
+    if (mesaAvisada(m)) return "avisada";
+    return "livre";
+  }
+
+  // Encerrar a mesa: some o cronômetro e ela sai do vermelho.
+  // "limpar" deixa amarela; "livre" deixa verde.
+  async function encerrarMesaMapa(id, status) {
+    await backend.updateMapa(id, { status, liberada_em: new Date().toISOString() });
+    await refresh();
+  }
+
+  // Avisar a recepção: entra na lista de mesas livres, como se o garçom
+  // tivesse lançado pelo botão de sempre.
+  async function liberarMesaDoMapa(m) {
+    await encerrarMesaMapa(m.id, MAPA.LIVRE);
+    if (!mesaAvisada(m)) {
+      await lancarMesa({ lugares: m.lugares, pet: m.pet, identificacao: "", numeros: [String(m.numero)] });
+    }
+  }
+
   // A atendente toca numa mesa: os campos de "liberar mesa" já ficam prontos
   function selecionarMesa(id) {
     const m = mesasLivres.find((x) => x.id === id);
@@ -975,6 +1095,234 @@
       avisoStaff(`Mesa ${descMesa(m)} escolhida — toque em "Chamar próximo".`, true);
     }
     render();
+  }
+
+  // ---------- desenho do mapa ----------
+  // Uma mesa do mapa vira um quadradinho posicionado em % do piso, para
+  // ficar igual em qualquer tela.
+  function mesaMapaHTML(m, editando) {
+    const est = editando ? "livre" : estadoDaMesa(m);
+    const oc = editando ? null : ocupanteDaMesa(m);
+    const desde = oc && (oc.sentou_em || oc.chamado_em);
+    return `<button type="button" class="mm-mesa is-${est}${m.pet ? " is-pet" : ""}"
+      style="left:${Number(m.x) || 50}%;top:${Number(m.y) || 50}%"
+      data-mapamesa="${m.id}" title="Mesa ${esc(m.numero)}">
+      <b class="mm-num">${esc(m.numero)}</b>
+      <span class="mm-lug">${m.lugares}${m.pet ? " 🐾" : ""}</span>
+      ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}
+    </button>`;
+  }
+
+  function renderMapa() {
+    const card = $("#mapaCard");
+    if (!card) return;
+    // o mapa é ferramenta do salão: aparece na aba do garçom
+    const vista = appEl.getAttribute("data-view");
+    card.hidden = CFG.garcomAtivo === false || vista !== "garcom" || semTabelaMapa;
+    if (card.hidden) return;
+    $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, false)).join("");
+    $("#mapaVazio").hidden = mapa.length > 0;
+  }
+
+  // ---------- pop-up de ação (garçom toca numa mesa) ----------
+  let mapaMesaAtiva = null;
+
+  function abrirAcaoMesa(id) {
+    const m = mapa.find((x) => x.id === id);
+    if (!m) return;
+    mapaMesaAtiva = id;
+    const est = estadoDaMesa(m);
+    const oc = ocupanteDaMesa(m);
+    $("#mapaAcaoTitulo").textContent = "Mesa " + m.numero;
+    const situacao = { ocupada: "🔴 ocupada", limpar: "🟡 precisa limpar",
+                       avisada: "🟢 já avisada à recepção", livre: "🟢 livre" }[est];
+    $("#mapaAcaoInfo").innerHTML = `${m.lugares} ${m.lugares === 1 ? "lugar" : "lugares"}${m.pet ? " • 🐾 área pet" : ""} — ${situacao}` +
+      (oc ? `<br><b>${esc(firstName(oc.nome))}</b> sentou às ${fmtClock(oc.sentou_em)} (há <b data-since="${oc.sentou_em}">agora</b>)` : "");
+    const btns = [];
+    if (est === "ocupada" || est === "limpar") {
+      if (est === "ocupada") btns.push(`<button type="button" class="btn btn-amarelo" data-macao="limpar">🧽 Terminou — precisa limpar</button>`);
+      btns.push(`<button type="button" class="btn btn-primary" data-macao="liberar">✓ Limpa e liberada</button>`);
+    } else if (est === "avisada") {
+      btns.push(`<button type="button" class="btn btn-amarelo" data-macao="limpar">🧽 Marcar para limpar</button>`);
+    } else {
+      btns.push(`<button type="button" class="btn btn-primary" data-macao="liberar">🔔 Liberar para a recepção</button>`);
+      btns.push(`<button type="button" class="btn btn-amarelo" data-macao="limpar">🧽 Marcar para limpar</button>`);
+    }
+    $("#mapaAcoes").innerHTML = btns.join("");
+    $("#mapaAcaoMsg").textContent = "";
+    $("#mapaAcaoModal").hidden = false;
+  }
+
+  async function acaoNaMesa(acao) {
+    const m = mapa.find((x) => x.id === mapaMesaAtiva);
+    if (!m) return;
+    const msg = $("#mapaAcaoMsg");
+    msg.textContent = "Salvando…"; msg.className = "form-msg";
+    try {
+      if (acao === "limpar") await encerrarMesaMapa(m.id, MAPA.LIMPAR);
+      else await liberarMesaDoMapa(m);
+      $("#mapaAcaoModal").hidden = true;
+      mapaMesaAtiva = null;
+      msg.textContent = "";
+    } catch (e) {
+      console.error("Erro na mesa do mapa:", e);
+      msg.textContent = "Não deu para salvar — verifique a internet e tente de novo.";
+      msg.className = "form-msg err";
+    }
+  }
+
+  // ---------- editor do mapa (engrenagem) ----------
+  let mapaEditando = null;   // id da mesa aberta no pop-up de cadastro
+  let mmLugares = 4;
+  let mmManual = false;
+
+  function abrirEditorMapa() {
+    $("#cfgModal").hidden = true;
+    $("#mapaEditMsg").textContent = "";
+    desenharEditorMapa();
+    $("#mapaEditModal").hidden = false;
+  }
+
+  function desenharEditorMapa() {
+    $("#mapaEditPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, true)).join("");
+    $("#mapaEditInfo").textContent = mapa.length
+      ? `${mapa.length} ${mapa.length === 1 ? "mesa cadastrada" : "mesas cadastradas"}`
+      : "Nenhuma mesa ainda — toque em “Nova mesa”.";
+  }
+
+  // pop-up de uma mesa do cadastro (nova ou existente)
+  function abrirMesaCadastro(id) {
+    const m = id ? mapa.find((x) => x.id === id) : null;
+    mapaEditando = m ? id : null;
+    mmLugares = m ? (Number(m.lugares) || 4) : 4;
+    mmManual = !tamanhosDaCasa().includes(mmLugares);
+    $("#mapaMesaTitulo").textContent = m ? "Mesa " + m.numero : "Nova mesa";
+    $("#mmNumero").value = m ? m.numero : "";
+    const alvo = $(`input[name="mmpet"][value="${m && m.pet ? "sim" : "nao"}"]`);
+    if (alvo) alvo.checked = true;
+    $("#mmPetField").hidden = CFG.petAtivo === false;
+    $("#mmApagar").hidden = !m;
+    $("#mmMsg").textContent = "";
+    desenharLugaresCadastro();
+    $("#mapaMesaModal").hidden = false;
+    setTimeout(() => $("#mmNumero").focus(), 60);
+  }
+
+  function desenharLugaresCadastro() {
+    $("#mmTamanhos").innerHTML =
+      tamanhosDaCasa().map((n) => `<button type="button" class="tm-btn${!mmManual && mmLugares === n ? " is-sel" : ""}" data-mmtam="${n}">
+        <b>${n}</b><span>${n === 1 ? "lugar" : "lugares"}</span>
+      </button>`).join("") +
+      `<button type="button" class="tm-btn tm-outro${mmManual ? " is-sel" : ""}" data-mmtam="manual"><b>✎</b><span>outro</span></button>`;
+    $("#mmLugaresField").hidden = !mmManual;
+    $("#mmLugares").textContent = mmLugares;
+  }
+
+  async function salvarMesaCadastro() {
+    const numero = $("#mmNumero").value.trim();
+    const msg = $("#mmMsg");
+    if (!numero) { msg.textContent = "Digite o número da mesa."; msg.className = "form-msg err"; return; }
+    // dois cartões com o mesmo número tornariam impossível saber quem está onde
+    const repetida = mapa.some((x) => x.id !== mapaEditando &&
+      String(x.numero).trim().toLowerCase() === numero.toLowerCase());
+    if (repetida) { msg.textContent = `Já existe a mesa ${numero} no mapa.`; msg.className = "form-msg err"; return; }
+    const pet = ($('input[name="mmpet"]:checked') || {}).value === "sim" && CFG.petAtivo !== false;
+    msg.textContent = "Salvando…"; msg.className = "form-msg";
+    try {
+      if (mapaEditando) {
+        await backend.updateMapa(mapaEditando, { numero, lugares: mmLugares, pet });
+      } else {
+        // entra num lugar livre do piso, para não nascer em cima de outra
+        const pos = posicaoLivre();
+        await backend.addMapa({ id: uuid(), numero, lugares: mmLugares, pet,
+          x: pos.x, y: pos.y, status: MAPA.LIVRE, liberada_em: null,
+          criado_em: new Date().toISOString() });
+      }
+      await refresh();
+      $("#mapaMesaModal").hidden = true;
+      mapaEditando = null;
+      desenharEditorMapa();
+    } catch (e) {
+      console.error("Erro ao salvar a mesa do mapa:", e);
+      msg.textContent = "Não deu para salvar — verifique a internet e tente de novo.";
+      msg.className = "form-msg err";
+    }
+  }
+
+  // Procura um ponto do piso onde ainda não há mesa (varre em linhas)
+  function posicaoLivre() {
+    for (let y = 12; y <= 88; y += 16) {
+      for (let x = 10; x <= 90; x += 14) {
+        const perto = mapa.some((m) => Math.abs(m.x - x) < 10 && Math.abs(m.y - y) < 12);
+        if (!perto) return { x, y };
+      }
+    }
+    return { x: 50, y: 50 };
+  }
+
+  async function apagarMesaCadastro() {
+    if (!mapaEditando) return;
+    try {
+      await backend.removeMapa(mapaEditando);
+      await refresh();
+      $("#mapaMesaModal").hidden = true;
+      mapaEditando = null;
+      desenharEditorMapa();
+    } catch (e) {
+      console.error("Erro ao apagar a mesa do mapa:", e);
+      $("#mmMsg").textContent = "Não deu para apagar — tente de novo.";
+      $("#mmMsg").className = "form-msg err";
+    }
+  }
+
+  // ---------- arrastar as mesas no editor ----------
+  // Trabalha com pointer events: funciona igual no mouse e no toque.
+  function ligarArrasto() {
+    const piso = $("#mapaEditPiso");
+    if (!piso) return;
+    let alvo = null, moveu = false, dx = 0, dy = 0;
+
+    piso.addEventListener("pointerdown", (e) => {
+      const el = e.target.closest("[data-mapamesa]");
+      if (!el) return;
+      alvo = el; moveu = false;
+      const r = el.getBoundingClientRect();
+      dx = e.clientX - (r.left + r.width / 2);
+      dy = e.clientY - (r.top + r.height / 2);
+      el.setPointerCapture(e.pointerId);
+      el.classList.add("is-arrastando");
+    });
+
+    piso.addEventListener("pointermove", (e) => {
+      if (!alvo) return;
+      const p = piso.getBoundingClientRect();
+      const x = ((e.clientX - dx - p.left) / p.width) * 100;
+      const y = ((e.clientY - dy - p.top) / p.height) * 100;
+      // 4 dedos de folga nas bordas para a mesa não sair do piso
+      alvo.style.left = Math.max(4, Math.min(96, x)) + "%";
+      alvo.style.top = Math.max(6, Math.min(94, y)) + "%";
+      if (Math.abs(e.clientX - dx - p.left - (parseFloat(alvo.style.left) / 100) * p.width) > 0) moveu = true;
+      moveu = true;
+    });
+
+    piso.addEventListener("pointerup", async (e) => {
+      if (!alvo) return;
+      const el = alvo, arrastou = moveu;
+      alvo = null;
+      el.classList.remove("is-arrastando");
+      const id = el.dataset.mapamesa;
+      if (!arrastou) { abrirMesaCadastro(id); return; }   // foi um toque, não um arrasto
+      const x = Math.round(parseFloat(el.style.left) * 10) / 10;
+      const y = Math.round(parseFloat(el.style.top) * 10) / 10;
+      const m = mapa.find((v) => v.id === id);
+      if (m) { m.x = x; m.y = y; }                        // desenho já fica no lugar
+      try { await backend.updateMapa(id, { x, y }); }
+      catch (err) {
+        console.error("Erro ao mover a mesa:", err);
+        $("#mapaEditMsg").textContent = "Não deu para guardar a posição — verifique a internet.";
+        $("#mapaEditMsg").className = "form-msg err";
+      }
+    });
   }
 
   function descMesa(m) {
@@ -1327,6 +1675,7 @@
       </div>`).join("");
 
     renderMesas();
+    renderMapa();
 
     // -------- a fila: tudo junto ou separado --------
     // a atendente vê SEMPRE separado (é assim que ela trabalha); o totem segue a configuração
@@ -2169,6 +2518,36 @@
       smsg.textContent = "";
       openCallConfirm(chosen, aceitaPet);
     }));
+    // mapa do salão: tocar numa mesa abre as ações do garçom
+    $("#mapaPiso").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mapamesa]");
+      if (b) acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(b.dataset.mapamesa))();
+    });
+    $("#mapaAcoes").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-macao]");
+      if (b) acaoNaMesa(b.dataset.macao);
+    });
+    // cadastro do mapa (pela engrenagem)
+    $("#cfgMapaBtn").addEventListener("click", acaoSegura("configurar o mapa", abrirEditorMapa));
+    $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));
+    $("#mmSalvar").addEventListener("click", salvarMesaCadastro);
+    $("#mmApagar").addEventListener("click", apagarMesaCadastro);
+    $("#mmNumero").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#mmSalvar").click(); });
+    $("#mmTamanhos").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mmtam]");
+      if (!b) return;
+      if (b.dataset.mmtam === "manual") mmManual = true;
+      else { mmManual = false; mmLugares = Number(b.dataset.mmtam); }
+      desenharLugaresCadastro();
+    });
+    $$(".step-btn[data-mmstep]").forEach((b) =>
+      b.addEventListener("click", () => {
+        mmLugares = Math.min(TETO_EQUIPE, Math.max(MIN_P, mmLugares + Number(b.dataset.mmstep)));
+        $("#mmLugares").textContent = mmLugares;
+      })
+    );
+    ligarArrasto();
+
     $("#tmTamanhos").addEventListener("click", (e) => {
       const b = e.target.closest("[data-tam]");
       if (!b) return;
@@ -2832,6 +3211,7 @@
     "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
+    "mapaCard", "mapaPiso", "mapaEditModal", "cfgMapaBtn", "mmNumero",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

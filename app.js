@@ -3199,25 +3199,40 @@
     try { await loadSettings(); render(); } catch (e) { console.warn("Recarga da config:", e); }
   }
 
+  // Aviso de que a configuração NÃO foi para a nuvem.
+  function avisarConfigLocal() {
+    const msg = $("#cfgMsgStatus");
+    const texto = "⚠ Não deu para salvar na nuvem — vale só neste aparelho. " +
+      "Os outros continuam com a configuração antiga. Verifique a internet e salve de novo.";
+    if (msg) { msg.textContent = texto; msg.className = "form-msg err"; }
+    else avisoStaff(texto);
+  }
+
   async function saveSettings(obj) {
     // relê a nuvem ANTES de gravar: assim este aparelho não apaga, com um snapshot
     // velho, o que outro aparelho mudou (ex.: reabrir uma fila fechada pela atendente)
     aplicarConfig(await lerConfigNuvem());
     Object.assign(CFG, obj);
     const snap = settingsSnapshot();
+    let naNuvem = true;
     try {
       if (backend.mode === "online" && backend.client) {
         const { error } = await backend.client.from("fila_config").upsert({ id: 1, dados: snap });
         if (error) throw error;
       } else {
+        naNuvem = false;
         localStorage.setItem("fila_settings", JSON.stringify(snap));
       }
     } catch (e) {
-      console.warn("Config: não salvou na nuvem (crie a tabela fila_config). Salvo localmente.", e);
+      console.warn("Config: não salvou na nuvem. Guardado só neste aparelho.", e);
       localStorage.setItem("fila_settings", JSON.stringify(snap));
+      // Guardar quieto é pior do que falhar: os aparelhos ficam cada um com uma
+      // configuração e ninguém entende o porquê. Então avisa na cara.
+      naNuvem = false;
     }
     applyBrand();
     render();
+    return naNuvem;
   }
 
   function subscribeConfig() {
@@ -3352,10 +3367,16 @@
     btn.disabled = true;
     $("#cfgMsgStatus").textContent = "Salvando…";
     $("#cfgMsgStatus").className = "form-msg";
-    await saveSettings(obj);
+    const naNuvem = await saveSettings(obj);
+    btn.disabled = false;
+    if (naNuvem === false && backend.mode === "online") {
+      // guardar quieto no aparelho é pior do que falhar: os aparelhos ficariam
+      // cada um com uma configuração e ninguém entenderia o porquê
+      avisarConfigLocal();
+      return;                    // não fecha: a atendente precisa ver o aviso
+    }
     $("#cfgMsgStatus").textContent = "✅ Salvo!";
     $("#cfgMsgStatus").className = "form-msg ok";
-    btn.disabled = false;
     setTimeout(() => { $("#cfgModal").hidden = true; $("#cfgMsgStatus").textContent = ""; }, 900);
   }
 

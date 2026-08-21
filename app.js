@@ -610,6 +610,27 @@
     return mesaAceitaPet ? !r.sem_area_pet : !r.pet;
   }
 
+  // Quantos grupos ainda dá para sentar, dadas as mesas que sobram.
+  // Guloso: começa pela MENOR mesa e coloca nela o MAIOR grupo que couber.
+  // Não é a divisão perfeita de todos os casos, mas acerta o que importa aqui:
+  // não gastar a mesa grande com um grupo pequeno quando existe mesa pequena.
+  function quantosSentam(mesas, grupos) {
+    const livres = mesas.slice().sort((a, b) => a.lugares - b.lugares);
+    const fila = grupos.slice();
+    let n = 0;
+    for (const mesa of livres) {
+      let melhor = -1;
+      for (let i = 0; i < fila.length; i++) {
+        const g = fila[i];
+        if (Number(g.pessoas) > mesa.lugares) continue;
+        if (!cabeNaMesa(g, mesa.pet)) continue;
+        if (melhor < 0 || Number(g.pessoas) > Number(fila[melhor].pessoas)) melhor = i;
+      }
+      if (melhor >= 0) { fila.splice(melhor, 1); n++; }
+    }
+    return n;
+  }
+
   function pickNext(x, excludeId, mesaAceitaPet) {
     const regra = CFG.regraTamanho || "exato";
     const wait = waiting()
@@ -624,8 +645,30 @@
     // sempre tenta o tamanho EXATO primeiro
     const exato = pickFrom(wait.filter((r) => Number(r.pessoas) === x));
     if (regra === "exato" || exato) return exato;
-    // modo "ate": não há exato -> pega um grupo MENOR que caiba
-    return pickFrom(wait.filter((r) => Number(r.pessoas) < x));
+
+    // modo "ate": não há grupo do tamanho exato, então cabe um menor.
+    const menores = wait.filter((r) => Number(r.pessoas) < x);
+    if (!menores.length) return null;
+    const escolhido = pickFrom(menores);
+
+    // ANTES de confirmar, olha as OUTRAS mesas livres: dar esta mesa ao grupo
+    // errado pode deixar um grupo grande sem mesa nenhuma. Exemplo real:
+    // mesas de 12 e 10 livres, grupos de 10 (preferencial) e 11. Chamando o
+    // preferencial para a de 12, o de 11 não cabe em lugar nenhum. Chamando o
+    // de 11, os dois sentam — e o preferencial nem espera mais por isso.
+    const outras = mesasLivres.filter((m) => m.id !== mesaSelecionada && !m.reservada_para);
+    if (!outras.length) return escolhido;
+
+    const semEle = (g) => wait.filter((r) => r.id !== g.id);
+    let melhor = escolhido;
+    let melhorTotal = 1 + quantosSentam(outras, semEle(escolhido));
+    for (const g of menores) {
+      if (g.id === escolhido.id) continue;
+      const total = 1 + quantosSentam(outras, semEle(g));
+      // só troca se atender MAIS grupos; empate mantém a ordem de prioridade
+      if (total > melhorTotal) { melhor = g; melhorTotal = total; }
+    }
+    return melhor;
   }
 
   // Quantos grupos do tamanho certo ficaram de fora só por causa do pet?
@@ -1386,7 +1429,8 @@
       ? "Mesas " + numerosDoBloco(m).join(" + ")
       : "Mesa " + m.numero;
     const situacao = { ocupada: "🔴 ocupada", limpar: "🟡 precisa limpar",
-                       avisada: "🟢 já avisada à recepção", livre: "🟢 livre" }[est];
+                       avisada: "🟢 liberada", aguardando: "🔵 aguardando",
+                       livre: "🔵 aguardando" }[est];
     $("#mapaAcaoInfo").innerHTML =
       `${lugares} ${lugares === 1 ? "lugar" : "lugares"}${juntas ? ` (${bloco.map((x) => x.lugares).join(" + ")})` : ""}` +
       `${petDoBloco(m) ? " • 🐾 área pet" : ""} — ${situacao}` +
@@ -1394,10 +1438,10 @@
     // As quatro ações estão sempre à mão: o garçom não precisa adivinhar qual
     // aparece em qual situação. A atual fica marcada.
     const btn = (acao, classe, texto) =>
-      `<button type="button" class="btn ${classe}${est === acao ? " is-atual" : ""}" data-macao="${acao}">${texto}</button>`;
+      `<button type="button" class="btn ${classe}${(est === acao || (acao === "liberar" && est === "avisada")) ? " is-atual" : ""}" data-macao="${acao}">${texto}</button>`;
     const btns = [
-      btn("liberar", "btn-primary", "🔔 Liberar para a recepção"),
-      btn("livre", "btn-verde", "🟢 Livre"),
+      btn("liberar", "btn-verde", "🟢 Liberada"),
+      btn("livre", "btn-azul", "🔵 Aguardando"),
       btn("limpar", "btn-amarelo", "🟡 Precisa limpar"),
       btn("ocupada", "btn-vermelho", "🔴 Ocupada"),
     ];
@@ -1559,6 +1603,8 @@
   function ligarArrasto(seletor, modo) {
     const piso = $(seletor);
     if (!piso) return;
+    // o menu de "copiar" do Android aparece ao segurar: aqui ele só atrapalha
+    piso.addEventListener("contextmenu", (e) => e.preventDefault());
     let alvo = null, podeArrastar = false, moveu = false, vagaAcesa = null;
     let dx = 0, dy = 0, posOriginal = null, xInicial = 0, yInicial = 0, relogio = null;
     const SEGURAR = 350;   // ms de dedo parado para liberar o arrasto
@@ -2065,7 +2111,7 @@
           <div class="q-name">${esc(r.nome)}${selosTipo}${perdeu}</div>
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
-            <span>⏱️ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>
+            <span>⏱️ <b class="q-time" data-since="${r.criado_em}">agora</b></span>
             ${petChips}
           </div>
         </div>
@@ -2078,7 +2124,7 @@
           <div class="q-name">${esc(firstName(r.nome))}${selosTipo}</div>
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
-            ${CFG.mostrarHoraEntrada !== false ? `<span>🕐 entrou ${fmtClock(r.criado_em)}</span>` : ""}
+            ${CFG.mostrarHoraEntrada !== false ? `<span>🕐 ${fmtClock(r.criado_em)}</span>` : ""}
             ${CFG.mostrarTempoEspera !== false ? `<span>⏱️ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>` : ""}
             ${petChips}
           </div>
@@ -2312,7 +2358,7 @@
         </div>
         <div class="mesa-acoes">
           <button class="btn btn-sm btn-edit" data-editmesa="${m.id}" title="Corrigir esta mesa" aria-label="Corrigir esta mesa">✏️</button>
-          <button class="btn btn-sm btn-danger" data-apagarmesa="${m.id}" title="Excluir a mesa" aria-label="Excluir a mesa">🗑</button>
+          <button class="btn btn-sm btn-azul" data-apagarmesa="${m.id}" title="Mover para aguardando" aria-label="Mover para aguardando">🔵</button>
         </div>
       </div>`;
     }).join("");
@@ -2964,7 +3010,8 @@
         else if (t.dataset.usarmesa) { e.stopPropagation(); await usarMesa(t.dataset.usarmesa); }
         else if (t.dataset.apagarmesa) {
           e.stopPropagation();
-          if (confirm("Excluir esta mesa da lista de livres?")) await apagarMesa(t.dataset.apagarmesa);
+          // tirar da lista de liberadas devolve a mesa para "aguardando" no mapa
+          if (confirm("Mover esta mesa de volta para aguardando?")) await apagarMesa(t.dataset.apagarmesa);
         }
         else if (t.dataset.selmesa) selecionarMesa(t.dataset.selmesa);
       } catch (err) {
@@ -2979,6 +3026,9 @@
       const lista = $("#mesasList");
       if (!lista) return;
       let alvo = null, relogio = null, x0 = 0, y0 = 0, abriu = false;
+      lista.addEventListener("contextmenu", (e) => {
+        if (e.target.closest("[data-selmesa]")) e.preventDefault();
+      });
       const limpar = () => {
         clearTimeout(relogio);
         if (alvo) alvo.classList.remove("is-pronto");
@@ -3125,7 +3175,14 @@
     $("#joinedCopy").addEventListener("click", () => copiarLink($("#joinedCopy").dataset.link, $("#joinedMsg")));
 
     // atendente: o botão da tela só abre o pop-up de "que mesa vagou"
-    $("#freeTableBtn").addEventListener("click", acaoSegura("chamar próxima mesa", abrirTamanho));
+    $("#freeTableBtn").addEventListener("click", acaoSegura("chamar próxima mesa", () => {
+      // o botão da tela é sempre uma chamada nova: solta qualquer mesa que
+      // tenha ficado escolhida de um toque anterior, senão ele abriria
+      // travado na última mesa tocada
+      if (mesaSelecionada) { mesaSelecionada = null; render(); }
+      tamanhoTravado = false;
+      abrirTamanho();
+    }));
     $("#tamanhoOk").addEventListener("click", acaoSegura("chamar próxima mesa", () => {
       $("#tamanhoModal").hidden = true;
       chamarParaMesa();
@@ -3176,7 +3233,8 @@
       const v = b.dataset.tam;
       escolherTamanho(v === "manual" || v === "destravar" ? v : Number(v));
     });
-    $("#callCancel").addEventListener("click", () => { $("#callModal").hidden = true; pendingCall = null; });
+    $("#callCancel").addEventListener("click", () => { $("#callModal").hidden = true; pendingCall = null;
+      if (mesaSelecionada) { mesaSelecionada = null; render(); } });
     $("#callConfirm").addEventListener("click", async () => {
       const p = pendingCall;
       if (!p) { $("#callModal").hidden = true; return; }
@@ -3275,7 +3333,11 @@
     function closeModal(m) {
       if (!m) return;
       m.hidden = true;
-      if (m.id === "callModal") pendingCall = null;
+      if (m.id === "callModal") {
+        pendingCall = null;
+        // fechar sem confirmar solta a mesa escolhida
+        if (mesaSelecionada) { mesaSelecionada = null; render(); }
+      }
       // fechar o pop-up de chamar solta a mesa que estava escolhida: senão ela
       // ficaria grudada numa chamada feita depois, por outro motivo
       if (m.id === "tamanhoModal" && mesaSelecionada) { mesaSelecionada = null; render(); }

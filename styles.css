@@ -671,8 +671,8 @@ button{font-family:inherit}
 .mm-mesa.is-arrastando{opacity:.85;box-shadow:0 8px 20px rgba(0,0,0,.25);z-index:5}
 
 /* cores dos estados */
-.mm-mesa.is-livre   {color:#125E40}
-.mm-mesa.is-avisada {background:#E4F3EA;border-color:#1E7A52;color:#125E40;border-style:dashed}
+.mm-mesa.is-livre   {background:#E3ECFB;border-color:#2563EB;color:#17408B}
+.mm-mesa.is-avisada {background:#E4F3EA;border-color:#1E7A52;color:#125E40}
 .mm-mesa.is-ocupada {background:#FBE3E1;border-color:#B3261E;color:#8C1D18}
 .mm-mesa.is-limpar  {background:#FCF0D8;border-color:#C9861F;color:#7A5210}
 .mm-mesa.is-pet     {box-shadow:0 2px 6px rgba(0,0,0,.10), inset 0 0 0 2px rgba(63,92,99,.35)}
@@ -681,7 +681,8 @@ button{font-family:inherit}
 .mapa-legenda{display:flex;gap:10px;flex-wrap:wrap}
 .ml{font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
     padding:3px 8px;border-radius:999px;border:2px solid}
-.ml.livre  {background:#E4F3EA;border-color:#1E7A52;color:#125E40}
+.ml.aguardando{background:#E3ECFB;border-color:#2563EB;color:#17408B}
+.ml.liberada  {background:#E4F3EA;border-color:#1E7A52;color:#125E40}
 .ml.ocupada{background:#FBE3E1;border-color:#B3261E;color:#8C1D18}
 .ml.limpar {background:#FCF0D8;border-color:#C9861F;color:#7A5210}
 
@@ -800,4 +801,28 @@ button{font-family:inherit}
 /* o estado em que a mesa já está fica marcado */
 .mapa-acoes .btn.is-atual{
   outline:3px solid var(--ink);outline-offset:2px;
+}
+
+/* botão "aguardando" no pop-up da mesa */
+.btn-azul{background:#E3ECFB;border:2px solid #2563EB;color:#17408B;font-weight:700}
+.btn-azul:hover{background:#D3E1F8}
+/* mesas juntadas: o anel fica FORA do cartão, para não se confundir com o
+   azul de "aguardando", que é o preenchimento */
+.mm-mesa.is-junta{outline-offset:4px}
+/* o botão pequeno de "mover para aguardando" nos cartões de mesa */
+.btn-sm.btn-azul{padding:0;width:34px;height:34px;display:flex;align-items:center;justify-content:center}
+
+/* ---- pressionar e segurar não pode virar "selecionar texto" -------------
+   No Android, segurar sobre um texto abre a alça de seleção e o menu de
+   copiar — bem no meio do gesto de arrastar a mesa. Aqui o toque é comando,
+   nunca leitura de texto. */
+.mapa-piso, .mapa-piso *,
+.mm-mesa, .mm-mesa *,
+.mesa-item, .mesa-item *,
+.q-item.is-toque, .q-item.is-toque *{
+  -webkit-user-select:none;
+  -moz-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;      /* iOS: sem o balãozinho de copiar */
+  -webkit-tap-highlight-color:transparent;
 }

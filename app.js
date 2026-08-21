@@ -46,6 +46,7 @@
   let mesasLivres = [];     // mesas que o garçom liberou e ainda não foram usadas
   let mesaSelecionada = null; // mesa que a atendente escolheu para a próxima chamada
   let modoManual = false;   // true = a atendente está digitando um tamanho fora da lista
+  let grupoManual = false;  // true = o cliente está usando o contador em vez dos botões
   let lugaresNovaMesa = 2;  // stepper do pop-up do garçom
   let numerosNovaMesa = []; // números das mesas juntadas (ex.: 12 + 13)
   let editandoMesaId = null; // mesa que o garçom está corrigindo (null = nova)
@@ -62,6 +63,32 @@
     const nums = bruto.map(Number).filter((n) => n >= 1 && n <= 99);
     const unicos = Array.from(new Set(nums)).sort((a, b) => a - b);
     return unicos.length ? unicos : [2, 4, 6, 8];
+  }
+
+  // Tamanhos de grupo mais comuns: viram os botões de "Quantas pessoas?".
+  // É uma lista separada da dos tamanhos de mesa — grupo de 1 existe, mesa de 1 não.
+  function tamanhosDeGrupo() {
+    const bruto = Array.isArray(CFG.tamanhosGrupo) ? CFG.tamanhosGrupo
+      : String(CFG.tamanhosGrupo === undefined ? "" : CFG.tamanhosGrupo).split(/[^0-9]+/);
+    const nums = bruto.map(Number).filter((n) => n >= MIN_P && n <= 99);
+    const unicos = Array.from(new Set(nums)).sort((a, b) => a - b);
+    return unicos.length ? unicos : [1, 2, 3, 4, 5, 6];
+  }
+
+  // No totem o máximo da engrenagem vale; no balcão, não.
+  function desenharTamanhosGrupo() {
+    const caixa = $("#fpTamanhos");
+    if (!caixa) return;
+    const teto = isStaff() ? TETO_EQUIPE : (Number(CFG.maxPessoas) || MAX_P);
+    const tams = tamanhosDeGrupo().filter((n) => n <= teto);
+    const naLista = !grupoManual && tams.includes(Number(pessoas));
+    caixa.innerHTML =
+      tams.map((n) => `<button type="button" class="tm-btn${naLista && Number(pessoas) === n ? " is-sel" : ""}" data-fptam="${n}">
+        <b>${n}</b><span>${n === 1 ? "pessoa" : "pessoas"}</span>
+      </button>`).join("") +
+      `<button type="button" class="tm-btn tm-outro${naLista ? "" : " is-sel"}" data-fptam="manual"><b>✏️</b><span>outro</span></button>`;
+    $("#fpStepper").hidden = naLista;
+    $("#fPessoas").textContent = pessoas;
   }
 
   // Abre o pop-up "que mesa vagou". A tela principal fica só com o botão.
@@ -83,7 +110,7 @@
         <b>${n}</b><span>${n === 1 ? "pessoa" : "pessoas"}</span>
       </button>`).join("") +
       `<button type="button" class="tm-btn tm-outro${modoManual ? " is-sel" : ""}" data-tam="manual">
-        <b>✎</b><span>outro</span>
+        <b>✏️</b><span>outro</span>
       </button>`;
     $("#tmManualField").hidden = !modoManual;
     $("#fMesa").textContent = mesa;
@@ -1204,7 +1231,7 @@
       btns.push(`<button type="button" class="btn btn-primary" data-macao="liberar">🔔 Liberar para a recepção</button>`);
       btns.push(`<button type="button" class="btn btn-amarelo" data-macao="limpar">🧽 Marcar para limpar</button>`);
     }
-    if (juntas) btns.push(`<button type="button" class="btn btn-neutral" data-macao="separar">✂ Separar as mesas</button>`);
+    if (juntas) btns.push(`<button type="button" class="btn btn-neutral" data-macao="separar">✂️ Separar as mesas</button>`);
     $("#mapaAcoes").innerHTML = btns.join("");
     $("#mapaAcaoMsg").textContent = "";
     $("#mapaAcaoModal").hidden = false;
@@ -1271,7 +1298,7 @@
       tamanhosDaCasa().map((n) => `<button type="button" class="tm-btn${!mmManual && mmLugares === n ? " is-sel" : ""}" data-mmtam="${n}">
         <b>${n}</b><span>${n === 1 ? "lugar" : "lugares"}</span>
       </button>`).join("") +
-      `<button type="button" class="tm-btn tm-outro${mmManual ? " is-sel" : ""}" data-mmtam="manual"><b>✎</b><span>outro</span></button>`;
+      `<button type="button" class="tm-btn tm-outro${mmManual ? " is-sel" : ""}" data-mmtam="manual"><b>✏️</b><span>outro</span></button>`;
     $("#mmLugaresField").hidden = !mmManual;
     $("#mmLugares").textContent = mmLugares;
   }
@@ -1695,7 +1722,7 @@
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
             ${(staff || CFG.mostrarHoraEntrada !== false) ? `<span>🕐 entrou ${fmtClock(r.criado_em)}</span>` : ""}
-            ${(staff || CFG.mostrarTempoEspera !== false) ? `<span>⏱ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>` : ""}
+            ${(staff || CFG.mostrarTempoEspera !== false) ? `<span>⏱️ esperando <b class="q-time" data-since="${r.criado_em}">agora</b></span>` : ""}
             ${tel}
             ${chipsHTML(r, staff)}
           </div>
@@ -1760,7 +1787,7 @@
       const m = avgWaitMs(filtro);
       // sem nenhuma chamada ainda, mostra "—": sumir com a linha seria pior,
       // a atendente ficaria procurando uma média que desapareceu
-      box.textContent = m == null ? "⏱ —" : "⏱ ~" + fmtElapsed(m);
+      box.textContent = m == null ? "⏱️ —" : "⏱️ ~" + fmtElapsed(m);
     };
     media("#avgMeso", (r) => isMesona(r));
     media("#avgPref", (r) => r.preferencial && !isMesona(r));
@@ -2251,6 +2278,7 @@
     $("#fEmailLabel").innerHTML = modoEmail === "obrigatorio"
       ? 'E-mail <b class="req">*</b>' : "E-mail <small>(opcional)</small>";
 
+    desenharTamanhosGrupo();
     // aniversário: mesma lógica do e-mail, só dia e mês
     const modoAniv = CFG.campoAniversario || "nao";
     $("#fAniversarioField").hidden = modoAniv === "nao";
@@ -2312,7 +2340,7 @@
         <b>${n}</b><span>${n === 1 ? "lugar" : "lugares"}</span>
       </button>`).join("") +
       `<button type="button" class="tm-btn tm-outro${modoManualMesa ? " is-sel" : ""}" data-mtam="manual">
-        <b>✎</b><span>outro</span>
+        <b>✏️</b><span>outro</span>
       </button>`;
     $("#mLugaresField").hidden = !modoManualMesa;
     $("#mLugares").textContent = lugaresNovaMesa;
@@ -2354,7 +2382,7 @@
 
   function abrirFormulario() {
     $("#joinForm").reset();
-    pessoas = 2; $("#fPessoas").textContent = pessoas;
+    pessoas = 2; grupoManual = false; $("#fPessoas").textContent = pessoas;
     $('input[name="tipo"][value="normal"]').checked = true;
     $("#fPet").checked = false;
     $("#fSemPet").checked = false;
@@ -2665,6 +2693,14 @@
     ligarArrasto("#mapaEditPiso", "editar");
     ligarArrasto("#mapaPiso", "juntar");
 
+    // botões de "Quantas pessoas?" na entrada da fila
+    $("#fpTamanhos").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-fptam]");
+      if (!b) return;
+      if (b.dataset.fptam === "manual") grupoManual = true;
+      else { grupoManual = false; pessoas = Number(b.dataset.fptam); }
+      prepararFormulario();
+    });
     $("#tmTamanhos").addEventListener("click", (e) => {
       const b = e.target.closest("[data-tam]");
       if (!b) return;
@@ -3081,7 +3117,7 @@
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
     "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
-    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "tamanhosMesa", "filasColunas", "boasVindas",
+    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
@@ -3202,6 +3238,7 @@
     $("#cfgAlt").value = CFG.alternancia || "1:1";
     $("#cfgRegra").value = CFG.regraTamanho || "exato";
     $("#cfgTamanhos").value = tamanhosDaCasa().join(", ");
+    $("#cfgTamanhosGrupo").value = tamanhosDeGrupo().join(", ");
     $("#cfgFilasColunas").value = CFG.filasColunas === false ? "lista" : "colunas";
     $("#cfgSom").value = CFG.somAtivo === false ? "nao" : "sim";
 
@@ -3264,6 +3301,8 @@
       regraTamanho: $("#cfgRegra").value,
       // guarda já limpo (números, sem repetir, em ordem)
       filasColunas: $("#cfgFilasColunas").value === "colunas",
+      tamanhosGrupo: Array.from(new Set($("#cfgTamanhosGrupo").value.split(/[^0-9]+/).map(Number)
+        .filter((n) => n >= 1 && n <= 99))).sort((a, b) => a - b),
       tamanhosMesa: Array.from(new Set($("#cfgTamanhos").value.split(/[^0-9]+/).map(Number)
         .filter((n) => n >= 1 && n <= 99))).sort((a, b) => a - b),
       somAtivo: $("#cfgSom").value === "sim",
@@ -3332,6 +3371,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "mapaEditModal", "cfgMapaBtn", "mmNumero",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";
@@ -3363,7 +3403,32 @@
     return false;   // não continua: a página vai recarregar
   }
 
+  // Se este aparelho vai precisar de login, a tela de entrar sobe ANTES de
+  // qualquer espera pela rede. Sem isso a fila aparece por um instante e
+  // depois some — parece defeito, e ainda mostra a fila a quem não entrou.
+  function talvezPrecisaLogin() {
+    const c = window.FILA_CONFIG || {};
+    if (c.loginAtivo !== true) return false;
+    if (!(c.supabaseUrl && c.supabaseAnonKey && window.supabase)) return false;
+    try { if (localStorage.getItem(LS_TOTEM) === "1") return false; } catch (e) { /* ignora */ }
+    // Já existe sessão guardada neste aparelho? Então não mostra a tela de
+    // entrar nem por um instante — quem já está logado não pode ver um
+    // pedido de senha piscando na cara.
+    try {
+      const temSessao = Object.keys(localStorage)
+        .some((k) => k.indexOf("sb-") === 0 && k.indexOf("-auth-token") > 0 && localStorage.getItem(k));
+      if (temSessao) return false;
+    } catch (e) { /* ignora */ }
+    return true;
+  }
+
   async function start() {
+    const tela = $("#loginScreen");
+    if (tela && talvezPrecisaLogin()) {
+      const sub = $("#loginSub");
+      if (sub) sub.textContent = (window.FILA_CONFIG && window.FILA_CONFIG.restaurante) || "";
+      tela.hidden = false;
+    }
     if (!(await telaEstaAtualizada())) return;
     applyBrand();
     carregarPinLocal();   // PIN da atendente: guardado só neste aparelho

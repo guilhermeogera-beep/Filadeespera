@@ -701,3 +701,10 @@ button{font-family:inherit}
 .mm-mesa.is-junta{border-style:double;border-width:4px}
 /* a mesa que vai receber a arrastada */
 .mm-mesa.is-alvo{outline:3px dashed var(--ink);outline-offset:3px}
+
+/* o botão de sair virou texto: o símbolo ⏻ não existe nas fontes do Android
+   e aparecia como quadradinho */
+.btn-sair{
+  width:auto;padding:0 12px;font-size:.82rem;font-weight:700;
+  letter-spacing:.02em;
+}

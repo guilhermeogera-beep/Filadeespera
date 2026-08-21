@@ -82,6 +82,10 @@ window.FILA_CONFIG = {
   // Tamanhos de mesa da casa: viram os botões do pop-up "Chamar próxima mesa".
   // Dá para mudar pela engrenagem, sem mexer neste arquivo.
   tamanhosMesa: [2, 4, 6, 8],
+
+  // Tamanhos de grupo mais comuns: viram os botões de "Quantas pessoas?"
+  // na entrada da fila. Também dá para mudar pela engrenagem.
+  tamanhosGrupo: [1, 2, 3, 4, 5, 6],
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
 
   // --- Fechamento da fila ---

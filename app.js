@@ -104,7 +104,9 @@
       const alvo = $(`input[name="mesapet"][value="${daMesa.pet ? "sim" : "nao"}"]`);
       if (alvo) alvo.checked = true;
     }
-    modoManual = !tamanhosDaCasa().includes(Number(mesa));
+    // nunca abre no "outro"
+    modoManual = false;
+    if (!daMesa) mesa = valorDaLista(tamanhosDaCasa(), mesa);
     $("#tamanhoMsg").textContent = "";
     $("#staffMsg").textContent = "";
     ajustarBarraStaff();
@@ -142,10 +144,25 @@
 
   function escolherTamanho(v) {
     if (v === "destravar") tamanhoTravado = false;    // correção proposital, não acidental
-    else if (v === "manual") modoManual = true;
+    else if (v === "manual") { modoManual = true; mesa = proximoDepoisDaLista(tamanhosDaCasa()); }
     else { modoManual = false; mesa = Number(v); }
     $("#tamanhoMsg").textContent = "";
     desenharTamanhos();
+  }
+
+  // Primeiro número que os botões não cobrem: com 4, 6 e 8 na lista, é 9.
+  // Serve para o "outro" já abrir num valor útil em vez de repetir o atual.
+  function proximoDepoisDaLista(lista, teto) {
+    const maior = lista.length ? Math.max.apply(null, lista) : MIN_P;
+    const limite = teto || TETO_EQUIPE;
+    return Math.max(MIN_P, Math.min(limite, maior + 1));
+  }
+
+  // Ao ABRIR um pop-up nunca começamos no "outro": se o valor guardado não
+  // está entre os botões, cai no primeiro da lista.
+  function valorDaLista(lista, atual) {
+    if (lista.includes(Number(atual))) return Number(atual);
+    return lista.length ? lista[0] : Number(atual);
   }
 
   // A mesa que a atendente está liberando é da área pet?
@@ -1496,7 +1513,12 @@
     const m = id ? mapa.find((x) => x.id === id) : null;
     mapaEditando = m ? id : null;
     mmLugares = m ? (Number(m.lugares) || 4) : 4;
-    mmManual = !tamanhosDaCasa().includes(mmLugares);
+    if (m) {
+      mmManual = !tamanhosDaCasa().includes(Number(mmLugares));   // respeita o cadastro
+    } else {
+      mmManual = false;
+      mmLugares = valorDaLista(tamanhosDaCasa(), mmLugares);
+    }
     $("#mapaMesaTitulo").textContent = m ? "Mesa " + m.numero : "Nova mesa";
     $("#mmNumero").value = m ? m.numero : "";
     const alvo = $(`input[name="mmpet"][value="${m && m.pet ? "sim" : "nao"}"]`);
@@ -1811,11 +1833,11 @@
     // parar em outra mesa: sem esse botão, a mesa ficaria vermelha até alguém
     // "usar" ou excluir, e ninguém conseguiria oferecê-la a outro grupo
     const soltar = m.reservada_para
-      ? `<button type="button" class="btn btn-primary" data-mlacao="soltar">↩ O cliente sentou em outra mesa</button>` : "";
+      ? `<button type="button" class="btn btn-primary" data-mlacao="soltar">↩️ O cliente sentou em outra mesa</button>` : "";
     $("#mlAcoes").innerHTML = soltar + `
       <button type="button" class="btn ${m.reservada_para ? "btn-neutral" : "btn-primary"}" data-mlacao="usei">✓ Já usei esta mesa</button>
       <button type="button" class="btn btn-edit" data-mlacao="editar">✏️ Corrigir a mesa</button>
-      <button type="button" class="btn btn-danger" data-mlacao="apagar">🗑 Excluir a mesa</button>`;
+      <button type="button" class="btn btn-azul" data-mlacao="apagar">↩️ Voltar para aguardando</button>`;
     $("#mesaLivreModal").hidden = false;
   }
 
@@ -1834,7 +1856,7 @@
       else if (acao === "usei") await usarMesa(id);
       else if (acao === "editar") abrirMesaModal(id);
       else if (acao === "apagar") {
-        if (confirm("Excluir esta mesa da lista de livres?")) await apagarMesa(id);
+        if (confirm("Mover esta mesa de volta para aguardando?")) await apagarMesa(id);
       }
     } catch (e) {
       console.error("Ação na mesa livre falhou:", e);
@@ -2247,7 +2269,7 @@
         ${staff ? `<div class="ci-actions staff-only">
           ${(CFG.whatsAtivo !== false && r.telefone) ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
           <button class="btn btn-sm ci-ok" data-seat="${r.id}">✓ Sentou</button>
-          <button class="btn btn-sm ci-back" data-back="${r.id}">↩ Voltar à fila</button>
+          <button class="btn btn-sm ci-back" data-back="${r.id}">↩️ Voltar à fila</button>
           <button class="btn btn-sm ci-edit" data-edit="${r.id}">✏️ Editar</button>
           ${pedidoBtnHTML(r)}
           <button class="btn btn-sm ci-end" data-toend="${r.id}">⬇ Fim da fila</button>
@@ -2358,7 +2380,7 @@
         </div>
         <div class="mesa-acoes">
           <button class="btn btn-sm btn-edit" data-editmesa="${m.id}" title="Corrigir esta mesa" aria-label="Corrigir esta mesa">✏️</button>
-          <button class="btn btn-sm btn-azul" data-apagarmesa="${m.id}" title="Mover para aguardando" aria-label="Mover para aguardando">🔵</button>
+          <button class="btn btn-sm btn-azul" data-apagarmesa="${m.id}" title="Mover para aguardando" aria-label="Mover para aguardando">↩️</button>
         </div>
       </div>`;
     }).join("");
@@ -2780,7 +2802,15 @@
     numerosNovaMesa = m && m.numeros
       ? String(m.numeros).split("+").map((s) => s.trim()).filter(Boolean)
       : [];
-    modoManualMesa = !tamanhosDaCasa().includes(Number(lugaresNovaMesa));
+    // Corrigindo uma mesa já lançada, o tamanho REAL dela manda — mesmo que
+    // não esteja entre os botões. Forçar para um da lista mudaria o tamanho
+    // sem ninguém pedir. Só numa mesa nova é que começamos por um botão.
+    if (m) {
+      modoManualMesa = !tamanhosDaCasa().includes(Number(lugaresNovaMesa));
+    } else {
+      modoManualMesa = false;
+      lugaresNovaMesa = valorDaLista(tamanhosDaCasa(), lugaresNovaMesa);
+    }
     $("#mLugares").textContent = lugaresNovaMesa;
     const alvo = $(`input[name="mesapetnova"][value="${m && m.pet ? "sim" : "nao"}"]`);
     if (alvo) alvo.checked = true;
@@ -2815,7 +2845,7 @@
   }
 
   function escolherTamanhoMesa(v) {
-    if (v === "manual") modoManualMesa = true;
+    if (v === "manual") { modoManualMesa = true; lugaresNovaMesa = proximoDepoisDaLista(tamanhosDaCasa()); }
     else { modoManualMesa = false; lugaresNovaMesa = Number(v); }
     $("#mMsg").textContent = "";
     desenharTamanhosMesa();
@@ -2850,7 +2880,9 @@
 
   function abrirFormulario() {
     $("#joinForm").reset();
-    pessoas = 2; grupoManual = false; $("#fPessoas").textContent = pessoas;
+    grupoManual = false;
+    pessoas = valorDaLista(tamanhosDeGrupo().filter((n) => n <= (isStaff() ? TETO_EQUIPE : (Number(CFG.maxPessoas) || MAX_P))), 2);
+    $("#fPessoas").textContent = pessoas;
     $('input[name="tipo"][value="normal"]').checked = true;
     $("#fPet").checked = false;
     $("#fSemPet").checked = false;
@@ -3200,7 +3232,7 @@
     $("#mmTamanhos").addEventListener("click", (e) => {
       const b = e.target.closest("[data-mmtam]");
       if (!b) return;
-      if (b.dataset.mmtam === "manual") mmManual = true;
+      if (b.dataset.mmtam === "manual") { mmManual = true; mmLugares = proximoDepoisDaLista(tamanhosDaCasa()); }
       else { mmManual = false; mmLugares = Number(b.dataset.mmtam); }
       desenharLugaresCadastro();
     });
@@ -3222,8 +3254,7 @@
         // começa no primeiro número que os botões não cobrem: com 1..6 na
         // lista, "outro" abre em 7. Voltar para 2 obrigava a subir tudo de novo.
         const teto = isStaff() ? TETO_EQUIPE : (Number(CFG.maxPessoas) || MAX_P);
-        const maior = Math.max.apply(null, tamanhosDeGrupo().filter((n) => n <= teto).concat([MIN_P]));
-        pessoas = Math.min(teto, maior + 1);
+        pessoas = proximoDepoisDaLista(tamanhosDeGrupo().filter((n) => n <= teto), teto);
       } else { grupoManual = false; pessoas = Number(b.dataset.fptam); }
       prepararFormulario();
     });

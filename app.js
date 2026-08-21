@@ -1045,9 +1045,10 @@
   // Quem está sentado nesta mesa agora (para a cor vermelha e o cronômetro)
   function ocupanteDaMesa(m) {
     // depois que o garçom encerra a mesa, quem sentou antes disso não conta mais
-    const corte = m.liberada_em ? new Date(m.liberada_em).getTime() : 0;
+    const bloco = blocoDaMesa(m);
+    const corte = Math.max(...bloco.map((x) => x.liberada_em ? new Date(x.liberada_em).getTime() : 0));
     const candidatos = rows.filter((r) => r.status === STATUS.SENTADO &&
-      numeroBate(m.numero, r.mesa_numero) &&
+      bloco.some((x) => numeroBate(x.numero, r.mesa_numero)) &&
       new Date(r.sentou_em || r.chamado_em || r.criado_em).getTime() > corte);
     // se houver mais de um (mesa reaproveitada), vale o mais recente
     candidatos.sort((a, b) => new Date(b.sentou_em || b.criado_em) - new Date(a.sentou_em || a.criado_em));
@@ -1059,42 +1060,86 @@
     return mesasLivres.some((x) => numeroBate(m.numero, x.numeros || x.identificacao));
   }
 
+  // Mesas juntadas compartilham o mesmo "grupo". Sozinha, a mesa é o
+  // próprio bloco. O bloco é o que conta: lugares somam e a recepção
+  // recebe "12 + 13".
+  function blocoDaMesa(m) {
+    if (!m) return [];
+    if (!m.grupo) return [m];
+    return mapa.filter((x) => x.grupo === m.grupo)
+      .sort((a, b) => String(a.numero).localeCompare(String(b.numero), "pt-BR", { numeric: true }));
+  }
+  function lugaresDoBloco(m) {
+    return blocoDaMesa(m).reduce((s, x) => s + (Number(x.lugares) || 0), 0);
+  }
+  function numerosDoBloco(m) {
+    return blocoDaMesa(m).map((x) => String(x.numero));
+  }
+  function petDoBloco(m) {
+    return blocoDaMesa(m).some((x) => x.pet);
+  }
+
   function estadoDaMesa(m) {
+    const bloco = blocoDaMesa(m);
     if (ocupanteDaMesa(m)) return "ocupada";
-    if (m.status === MAPA.LIMPAR) return "limpar";
-    if (mesaAvisada(m)) return "avisada";
+    if (bloco.some((x) => x.status === MAPA.LIMPAR)) return "limpar";
+    if (bloco.some(mesaAvisada)) return "avisada";
     return "livre";
   }
 
   // Encerrar a mesa: some o cronômetro e ela sai do vermelho.
   // "limpar" deixa amarela; "livre" deixa verde.
   async function encerrarMesaMapa(id, status) {
-    await backend.updateMapa(id, { status, liberada_em: new Date().toISOString() });
+    const agora = new Date().toISOString();
+    const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
+    for (const x of bloco) await backend.updateMapa(x.id, { status, liberada_em: agora });
     await refresh();
   }
 
   // Avisar a recepção: entra na lista de mesas livres, como se o garçom
   // tivesse lançado pelo botão de sempre.
   async function liberarMesaDoMapa(m) {
+    const numeros = numerosDoBloco(m);
+    const lugares = lugaresDoBloco(m);
+    const pet = petDoBloco(m);
+    const jaAvisada = blocoDaMesa(m).some(mesaAvisada);
     await encerrarMesaMapa(m.id, MAPA.LIVRE);
-    if (!mesaAvisada(m)) {
-      await lancarMesa({ lugares: m.lugares, pet: m.pet, identificacao: "", numeros: [String(m.numero)] });
-    }
+    if (!jaAvisada) await lancarMesa({ lugares, pet, identificacao: "", numeros });
   }
 
-  // A atendente toca numa mesa: os campos de "liberar mesa" já ficam prontos
+  // Juntar: a mesa arrastada entra no grupo da mesa de baixo.
+  async function juntarMesas(idArrastada, idDestino) {
+    const a = mapa.find((x) => x.id === idArrastada);
+    const b = mapa.find((x) => x.id === idDestino);
+    if (!a || !b || a.id === b.id) return;
+    if (a.grupo && a.grupo === b.grupo) return;          // já estão juntas
+    const grupo = b.grupo || a.grupo || uuid();
+    // leva junto quem já estava com a mesa arrastada
+    const mover = blocoDaMesa(a).concat(blocoDaMesa(b));
+    for (const x of mover) {
+      if (x.grupo !== grupo) await backend.updateMapa(x.id, { grupo });
+    }
+    await refresh();
+  }
+
+  async function separarMesas(id) {
+    const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
+    for (const x of bloco) await backend.updateMapa(x.id, { grupo: null });
+    await refresh();
+  }
+
+  // A atendente toca numa mesa livre: já abre o pop-up de chamar, com o
+  // tamanho e o pet daquela mesa preenchidos. Um toque a menos no balcão.
   function selecionarMesa(id) {
     const m = mesasLivres.find((x) => x.id === id);
     if (!m) return;
-    mesaSelecionada = (mesaSelecionada === id) ? null : id;
-    if (mesaSelecionada) {
-      mesa = Math.max(MIN_P, Math.min(TETO_EQUIPE, Number(m.lugares) || 2));
-      $("#fMesa").textContent = mesa;
-      const alvo = $(`input[name="mesapet"][value="${m.pet ? "sim" : "nao"}"]`);
-      if (alvo) alvo.checked = true;
-      avisoStaff(`Mesa ${descMesa(m)} escolhida — toque em "Chamar próximo".`, true);
-    }
+    mesaSelecionada = id;
+    mesa = Math.max(MIN_P, Math.min(TETO_EQUIPE, Number(m.lugares) || 2));
+    $("#fMesa").textContent = mesa;
+    const alvo = $(`input[name="mesapet"][value="${m.pet ? "sim" : "nao"}"]`);
+    if (alvo) alvo.checked = true;
     render();
+    abrirTamanho();
   }
 
   // ---------- desenho do mapa ----------
@@ -1104,11 +1149,15 @@
     const est = editando ? "livre" : estadoDaMesa(m);
     const oc = editando ? null : ocupanteDaMesa(m);
     const desde = oc && (oc.sentou_em || oc.chamado_em);
-    return `<button type="button" class="mm-mesa is-${est}${m.pet ? " is-pet" : ""}"
+    const junta = !editando && m.grupo;
+    // numa mesa juntada, os lugares mostrados são os do bloco todo
+    const lugares = junta ? lugaresDoBloco(m) : m.lugares;
+    return `<button type="button" class="mm-mesa is-${est}${m.pet ? " is-pet" : ""}${junta ? " is-junta" : ""}"
       style="left:${Number(m.x) || 50}%;top:${Number(m.y) || 50}%"
       data-mapamesa="${m.id}" title="Mesa ${esc(m.numero)}">
-      <b class="mm-num">${esc(m.numero)}</b>
-      <span class="mm-lug">${m.lugares}${m.pet ? " 🐾" : ""}</span>
+      <b class="mm-num">Mesa ${esc(m.numero)}</b>
+      <span class="mm-lug">${lugares} lug.${m.pet ? " 🐾" : ""}</span>
+      ${junta ? `<span class="mm-junta">${numerosDoBloco(m).join("+")}</span>` : ""}
       ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}
     </button>`;
   }
@@ -1133,10 +1182,17 @@
     mapaMesaAtiva = id;
     const est = estadoDaMesa(m);
     const oc = ocupanteDaMesa(m);
-    $("#mapaAcaoTitulo").textContent = "Mesa " + m.numero;
+    const bloco = blocoDaMesa(m);
+    const juntas = bloco.length > 1;
+    const lugares = lugaresDoBloco(m);
+    $("#mapaAcaoTitulo").textContent = juntas
+      ? "Mesas " + numerosDoBloco(m).join(" + ")
+      : "Mesa " + m.numero;
     const situacao = { ocupada: "🔴 ocupada", limpar: "🟡 precisa limpar",
                        avisada: "🟢 já avisada à recepção", livre: "🟢 livre" }[est];
-    $("#mapaAcaoInfo").innerHTML = `${m.lugares} ${m.lugares === 1 ? "lugar" : "lugares"}${m.pet ? " • 🐾 área pet" : ""} — ${situacao}` +
+    $("#mapaAcaoInfo").innerHTML =
+      `${lugares} ${lugares === 1 ? "lugar" : "lugares"}${juntas ? ` (${bloco.map((x) => x.lugares).join(" + ")})` : ""}` +
+      `${petDoBloco(m) ? " • 🐾 área pet" : ""} — ${situacao}` +
       (oc ? `<br><b>${esc(firstName(oc.nome))}</b> sentou às ${fmtClock(oc.sentou_em)} (há <b data-since="${oc.sentou_em}">agora</b>)` : "");
     const btns = [];
     if (est === "ocupada" || est === "limpar") {
@@ -1148,6 +1204,7 @@
       btns.push(`<button type="button" class="btn btn-primary" data-macao="liberar">🔔 Liberar para a recepção</button>`);
       btns.push(`<button type="button" class="btn btn-amarelo" data-macao="limpar">🧽 Marcar para limpar</button>`);
     }
+    if (juntas) btns.push(`<button type="button" class="btn btn-neutral" data-macao="separar">✂ Separar as mesas</button>`);
     $("#mapaAcoes").innerHTML = btns.join("");
     $("#mapaAcaoMsg").textContent = "";
     $("#mapaAcaoModal").hidden = false;
@@ -1160,6 +1217,7 @@
     msg.textContent = "Salvando…"; msg.className = "form-msg";
     try {
       if (acao === "limpar") await encerrarMesaMapa(m.id, MAPA.LIMPAR);
+      else if (acao === "separar") await separarMesas(m.id);
       else await liberarMesaDoMapa(m);
       $("#mapaAcaoModal").hidden = true;
       mapaMesaAtiva = null;
@@ -1277,15 +1335,40 @@
 
   // ---------- arrastar as mesas no editor ----------
   // Trabalha com pointer events: funciona igual no mouse e no toque.
-  function ligarArrasto() {
-    const piso = $("#mapaEditPiso");
+  // Arrastar mesas. Serve para duas coisas diferentes:
+  //   - no EDITOR (engrenagem): move a mesa e guarda a posição
+  //   - no MAPA do garçom: solta em cima de outra mesa para JUNTAR
+  //     (soltar em espaço vazio não muda nada, a mesa volta ao lugar)
+  function ligarArrasto(seletor, modo) {
+    const piso = $(seletor);
     if (!piso) return;
-    let alvo = null, moveu = false, dx = 0, dy = 0;
+    let alvo = null, moveu = false, dx = 0, dy = 0, posOriginal = null;
+
+    // Qual mesa está embaixo da que está sendo arrastada. Comparo as
+    // posições no lugar de perguntar ao navegador quem está sob o dedo:
+    // com o dedo, o ponto exato erra muito; o centro da mesa não.
+    const soltoEmCima = () => {
+      if (!alvo) return null;
+      const r = alvo.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let melhor = null, menor = Infinity;
+      $$(seletor + " .mm-mesa").forEach((el) => {
+        if (el === alvo) return;
+        const o = el.getBoundingClientRect();
+        const ox = o.left + o.width / 2, oy = o.top + o.height / 2;
+        const dist = Math.hypot(cx - ox, cy - oy);
+        // precisa estar realmente encostada: metade da largura das duas
+        const limite = (r.width + o.width) / 2;
+        if (dist < limite && dist < menor) { menor = dist; melhor = el; }
+      });
+      return melhor;
+    };
 
     piso.addEventListener("pointerdown", (e) => {
       const el = e.target.closest("[data-mapamesa]");
       if (!el) return;
       alvo = el; moveu = false;
+      posOriginal = { left: el.style.left, top: el.style.top };
       const r = el.getBoundingClientRect();
       dx = e.clientX - (r.left + r.width / 2);
       dy = e.clientY - (r.top + r.height / 2);
@@ -1296,26 +1379,53 @@
     piso.addEventListener("pointermove", (e) => {
       if (!alvo) return;
       const p = piso.getBoundingClientRect();
+      if (!p.width || !p.height) return;
       const x = ((e.clientX - dx - p.left) / p.width) * 100;
       const y = ((e.clientY - dy - p.top) / p.height) * 100;
-      // 4 dedos de folga nas bordas para a mesa não sair do piso
+      // uma folga nas bordas para a mesa não sair do piso
       alvo.style.left = Math.max(4, Math.min(96, x)) + "%";
       alvo.style.top = Math.max(6, Math.min(94, y)) + "%";
-      if (Math.abs(e.clientX - dx - p.left - (parseFloat(alvo.style.left) / 100) * p.width) > 0) moveu = true;
       moveu = true;
+      if (modo === "juntar") {
+        const outra = soltoEmCima();
+        $$(seletor + " .mm-mesa").forEach((x2) => x2.classList.toggle("is-alvo", x2 === outra));
+      }
     });
 
     piso.addEventListener("pointerup", async (e) => {
       if (!alvo) return;
       const el = alvo, arrastou = moveu;
+      const outra = modo === "juntar" && arrastou ? soltoEmCima() : null;
       alvo = null;
       el.classList.remove("is-arrastando");
+      $$(seletor + " .mm-mesa").forEach((x2) => x2.classList.remove("is-alvo"));
       const id = el.dataset.mapamesa;
-      if (!arrastou) { abrirMesaCadastro(id); return; }   // foi um toque, não um arrasto
+
+      // toque simples: no editor abre o cadastro, no mapa abre as ações
+      if (!arrastou) {
+        if (modo === "juntar") acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(id))();
+        else abrirMesaCadastro(id);
+        return;
+      }
+
+      if (modo === "juntar") {
+        // o mapa do garçom não muda a planta: a mesa sempre volta ao lugar
+        el.style.left = posOriginal.left;
+        el.style.top = posOriginal.top;
+        if (!outra) return;
+        try { await juntarMesas(id, outra.dataset.mapamesa); }
+        catch (err) {
+          console.error("Erro ao juntar mesas:", err);
+          avisoStaff("Não deu para juntar as mesas — verifique a internet.");
+        }
+        return;
+      }
+
+      // editor: guarda a posição nova
       const x = Math.round(parseFloat(el.style.left) * 10) / 10;
       const y = Math.round(parseFloat(el.style.top) * 10) / 10;
       const m = mapa.find((v) => v.id === id);
-      if (m) { m.x = x; m.y = y; }                        // desenho já fica no lugar
+      if (m) { m.x = x; m.y = y; }
       try { await backend.updateMapa(id, { x, y }); }
       catch (err) {
         console.error("Erro ao mover a mesa:", err);
@@ -2529,11 +2639,6 @@
       smsg.textContent = "";
       openCallConfirm(chosen, aceitaPet);
     }));
-    // mapa do salão: tocar numa mesa abre as ações do garçom
-    $("#mapaPiso").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-mapamesa]");
-      if (b) acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(b.dataset.mapamesa))();
-    });
     $("#mapaAcoes").addEventListener("click", (e) => {
       const b = e.target.closest("[data-macao]");
       if (b) acaoNaMesa(b.dataset.macao);
@@ -2557,7 +2662,8 @@
         $("#mmLugares").textContent = mmLugares;
       })
     );
-    ligarArrasto();
+    ligarArrasto("#mapaEditPiso", "editar");
+    ligarArrasto("#mapaPiso", "juntar");
 
     $("#tmTamanhos").addEventListener("click", (e) => {
       const b = e.target.closest("[data-tam]");
@@ -2656,6 +2762,9 @@
       if (!m) return;
       m.hidden = true;
       if (m.id === "callModal") pendingCall = null;
+      // fechar o pop-up de chamar solta a mesa que estava escolhida: senão ela
+      // ficaria grudada numa chamada feita depois, por outro motivo
+      if (m.id === "tamanhoModal" && mesaSelecionada) { mesaSelecionada = null; render(); }
     }
     document.addEventListener("click", (e) => {
       const x = e.target.closest("[data-close]");

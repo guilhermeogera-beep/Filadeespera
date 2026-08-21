@@ -690,3 +690,14 @@ button{font-family:inherit}
 /* editor */
 .modal-wide .modal-box{max-width:760px;width:min(760px, 94vw)}
 .mapa-edit-barra{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+
+/* mesas juntadas e alvo do arrasto */
+.mm-mesa{min-width:74px}
+.mm-num{font-size:.86rem;font-weight:800;white-space:nowrap}
+.mm-junta{
+  font-size:.68rem;font-weight:700;margin-top:1px;
+  padding:1px 5px;border-radius:999px;background:rgba(0,0,0,.10);white-space:nowrap;
+}
+.mm-mesa.is-junta{border-style:double;border-width:4px}
+/* a mesa que vai receber a arrastada */
+.mm-mesa.is-alvo{outline:3px dashed var(--ink);outline-offset:3px}

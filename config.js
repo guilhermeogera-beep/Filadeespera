@@ -36,11 +36,16 @@ window.FILA_CONFIG = {
   // Estabelecimento (mostrado como subtítulo)
   restaurante: "Quinta do Aveiro",
 
-  // PIN para desbloquear a área da ATENDENTE (troque para o que quiser)
-  pinAtendente: "4321",
-
-  // Senha para abrir as CONFIGURAÇÕES (pedida toda vez que clicar na engrenagem)
-  pinConfig: "12345678",
+  // ATENÇÃO: este arquivo vai para o ar junto com o app. Qualquer pessoa que
+  // abra o endereço consegue ler tudo o que está escrito aqui — por isso não
+  // guardamos nenhuma senha nele. Quem protege as abas hoje é o LOGIN POR
+  // PERFIL (loginAtivo, mais abaixo), que confere a senha no servidor.
+  //
+  // Os PINs abaixo só entram em cena se você DESLIGAR o login. Nesse caso,
+  // defina-os na própria engrenagem (⚙ -> Equipe e acesso): ficam guardados
+  // no aparelho, sem passar por este arquivo. Vazio = abre sem PIN.
+  pinAtendente: "",
+  pinConfig: "",
 
   // --- Chamada das mesas ---
   regraTamanho: "exato",  // "exato" = só chama grupos com o número exato de lugares
@@ -72,6 +77,10 @@ window.FILA_CONFIG = {
   mostrarTempoEspera: true, // mostra "esperando há X" no totem e na página do cliente
   mostrarMedia: true,     // mostra o tempo médio de espera no TOTEM (na atendente aparece sempre)
   maxPessoas: 20,         // máximo de pessoas por grupo
+
+  // Tamanhos de mesa da casa: viram os botões do pop-up "Chamar próxima mesa".
+  // Dá para mudar pela engrenagem, sem mexer neste arquivo.
+  tamanhosMesa: [2, 4, 6, 8],
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
 
   // --- Fechamento da fila ---
@@ -111,7 +120,7 @@ window.FILA_CONFIG = {
 
   // --- Aba do GARÇOM (lança as mesas que vagaram) ---
   garcomAtivo: true,      // mostra a aba "Garçom" e o painel de mesas livres
-  pinGarcom: "4321",      // PIN da aba do garçom (deixe vazio para abrir sem senha)
+  pinGarcom: "",          // veja a observação sobre PINs no topo do arquivo
 
   // --- Aviso de "pedido pronto" (botão na aba da atendente) ---
   avisoPedido: true,      // mostra o botão "🍽 Pedido pronto" junto de Chamar/Sentou/Saiu

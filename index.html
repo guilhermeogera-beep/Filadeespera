@@ -91,35 +91,12 @@
     <!-- ============ CONTROLES DA ATENDENTE (antes da fila; só na aba atendente) ============ -->
     <section class="card staff-bar" id="staffBar" hidden>
       <div class="staff-head">
-        <h2 class="card-title">Liberar mesa</h2>
+        <h2 class="card-title">Chamar próxima mesa</h2>
         <div class="staff-head-actions">
           <button id="installBtn" class="btn btn-neutral btn-sm" hidden>⬇ Instalar</button>
         </div>
       </div>
-      <div class="free-row">
-        <div class="field free-field">
-          <span>Mesa para quantas pessoas?</span>
-          <div class="stepper">
-            <button type="button" class="step-btn" data-freestep="-1" aria-label="Menos">−</button>
-            <output id="fMesa" class="step-val">2</output>
-            <button type="button" class="step-btn" data-freestep="1" aria-label="Mais">+</button>
-          </div>
-        </div>
-        <div class="field free-field" id="mesaPetField">
-          <span>Esta mesa aceita pet?</span>
-          <div class="segmented segmented-sm">
-            <label class="seg">
-              <input type="radio" name="mesapet" value="nao" checked />
-              <span>Não</span>
-            </label>
-            <label class="seg seg-pet">
-              <input type="radio" name="mesapet" value="sim" />
-              <span>🐾 Sim</span>
-            </label>
-          </div>
-        </div>
-        <button type="button" class="btn btn-accent btn-big" id="freeTableBtn">🔔 Chamar próximo</button>
-      </div>
+      <button type="button" class="btn btn-accent btn-big btn-chamar-mesa" id="freeTableBtn">🔔 Chamar próxima mesa</button>
       <p class="form-msg" id="staffMsg" role="status"></p>
     </section>
 
@@ -338,6 +315,46 @@
   </div>
 
   <!-- ============ MODAL: CONFIRMAR CHAMADA ============ -->
+  <!-- ============ MODAL: QUE MESA VAGOU (atendente) ============ -->
+  <div class="modal" id="tamanhoModal" hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>🔔 Chamar próxima mesa</h3>
+
+      <span class="tm-tit">Mesa para quantas pessoas?</span>
+      <div class="tm-tamanhos" id="tmTamanhos"></div>
+
+      <label class="field tm-manual" id="tmManualField" hidden>
+        <span>Quantas pessoas?</span>
+        <div class="stepper">
+          <button type="button" class="step-btn" data-freestep="-1" aria-label="Menos">−</button>
+          <output id="fMesa" class="step-val">2</output>
+          <button type="button" class="step-btn" data-freestep="1" aria-label="Mais">+</button>
+        </div>
+      </label>
+
+      <div class="field" id="mesaPetField">
+        <span>Esta mesa aceita pet?</span>
+        <div class="segmented segmented-sm">
+          <label class="seg">
+            <input type="radio" name="mesapet" value="nao" checked />
+            <span>Não</span>
+          </label>
+          <label class="seg seg-pet">
+            <input type="radio" name="mesapet" value="sim" />
+            <span>🐾 Sim</span>
+          </label>
+        </div>
+      </div>
+
+      <p class="form-msg" id="tamanhoMsg" role="status"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Cancelar</button>
+        <button class="btn btn-accent" id="tamanhoOk">🔔 Chamar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="callModal" hidden>
     <div class="modal-box">
       <button class="modal-x" data-close aria-label="Fechar">×</button>
@@ -555,6 +572,11 @@
             <option value="3:1">3 preferenciais : 1 normal</option>
             <option value="pref">Preferencial sempre primeiro</option>
           </select>
+        </label>
+        <label class="field">
+          <span>Tamanhos de mesa da casa</span>
+          <input id="cfgTamanhos" type="text" inputmode="numeric" placeholder="ex.: 2, 4, 6, 8" />
+          <small class="hint">Viram os botões do pop-up "Chamar próxima mesa". Separe por vírgula.</small>
         </label>
         <label class="field">
           <span>Tipo de chamado (tamanho da mesa)</span>

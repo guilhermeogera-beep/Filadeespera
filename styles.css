@@ -600,3 +600,23 @@ button{font-family:inherit}
   border-color:var(--ink);background:var(--ink);color:#fff;
 }
 .sm-mesa.is-sel .sm-lug,.sm-mesa.is-sel .sm-pet{color:#fff}
+
+/* ---- pop-up "Chamar próxima mesa" ------------------------------------
+   A tela principal ficou só com o botão; o tamanho da mesa é escolhido aqui. */
+.tm-tit{display:block;font-weight:600;font-size:.95rem;margin:0 0 10px;color:var(--ink)}
+.tm-tamanhos{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
+.tm-btn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  min-width:78px;padding:12px 10px;cursor:pointer;
+  background:var(--card);color:var(--ink);
+  border:2px solid var(--line);border-radius:14px;font-family:inherit;line-height:1.1;
+}
+.tm-btn:hover{border-color:var(--ink)}
+.tm-btn b{font-size:1.5rem;font-weight:700}
+.tm-btn span{font-size:.78rem;color:var(--muted)}
+.tm-btn.is-sel{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tm-btn.is-sel span{color:#fff}
+.tm-outro b{font-size:1.25rem}
+.tm-manual{margin:0 0 16px}
+/* o botão único da tela da atendente */
+.btn-chamar-mesa{width:100%}

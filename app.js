@@ -43,10 +43,53 @@
   let pendingCall = null;   // linha aguardando confirmação de chamada
   let mesasLivres = [];     // mesas que o garçom liberou e ainda não foram usadas
   let mesaSelecionada = null; // mesa que a atendente escolheu para a próxima chamada
+  let modoManual = false;   // true = a atendente está digitando um tamanho fora da lista
   let lugaresNovaMesa = 2;  // stepper do pop-up do garçom
   let numerosNovaMesa = []; // números das mesas juntadas (ex.: 12 + 13)
   let editandoMesaId = null; // mesa que o garçom está corrigindo (null = nova)
   let semTabelaMesas = false; // true se a tabela `mesas_livres` ainda não existe no banco
+
+  // Os tamanhos de mesa que a casa trabalha (viram os botões do pop-up).
+  // Sem nada configurado, usa os quatro mais comuns.
+  function tamanhosDaCasa() {
+    const bruto = Array.isArray(CFG.tamanhosMesa) ? CFG.tamanhosMesa
+      : String(CFG.tamanhosMesa || "").split(/[^0-9]+/);
+    const nums = bruto.map(Number).filter((n) => n >= 1 && n <= 99);
+    const unicos = Array.from(new Set(nums)).sort((a, b) => a - b);
+    return unicos.length ? unicos : [2, 4, 6, 8];
+  }
+
+  // Abre o pop-up "que mesa vagou". A tela principal fica só com o botão.
+  function abrirTamanho() {
+    // se a atendente escolheu uma mesa no painel do garçom, já vem marcada
+    const daMesa = mesasLivres.find((m) => m.id === mesaSelecionada);
+    if (daMesa) mesa = Math.max(MIN_P, Math.min(TETO_EQUIPE, Number(daMesa.lugares) || 2));
+    modoManual = !tamanhosDaCasa().includes(Number(mesa));
+    $("#mesaPetField").hidden = CFG.petAtivo === false;
+    $("#tamanhoMsg").textContent = "";
+    $("#staffMsg").textContent = "";
+    desenharTamanhos();
+    $("#tamanhoModal").hidden = false;
+  }
+
+  function desenharTamanhos() {
+    $("#tmTamanhos").innerHTML =
+      tamanhosDaCasa().map((n) => `<button type="button" class="tm-btn${!modoManual && Number(mesa) === n ? " is-sel" : ""}" data-tam="${n}">
+        <b>${n}</b><span>${n === 1 ? "pessoa" : "pessoas"}</span>
+      </button>`).join("") +
+      `<button type="button" class="tm-btn tm-outro${modoManual ? " is-sel" : ""}" data-tam="manual">
+        <b>✎</b><span>outro</span>
+      </button>`;
+    $("#tmManualField").hidden = !modoManual;
+    $("#fMesa").textContent = mesa;
+  }
+
+  function escolherTamanho(v) {
+    if (v === "manual") modoManual = true;
+    else { modoManual = false; mesa = Number(v); }
+    $("#tamanhoMsg").textContent = "";
+    desenharTamanhos();
+  }
 
   // A mesa que a atendente está liberando é da área pet?
   function mesaAceitaPet() {
@@ -1641,7 +1684,7 @@
     if (loginLigado()) {
       if (!podeVer(v)) return;
     } else {
-      if (v === "staff" && sessionStorage.getItem(SESSION_PIN) !== "1") {
+      if (v === "staff" && String(CFG.pinAtendente || "") && sessionStorage.getItem(SESSION_PIN) !== "1") {
         openPin("staff");
         return;
       }
@@ -1948,7 +1991,7 @@
     // PIN
     $("#pinOk").addEventListener("click", () => {
       const garcom = pinAlvo === "garcom";
-      const certo = garcom ? String(CFG.pinGarcom || "") : String(CFG.pinAtendente || "4321");
+      const certo = garcom ? String(CFG.pinGarcom || "") : String(CFG.pinAtendente || "");
       if ($("#pinInput").value === certo) {
         sessionStorage.setItem(garcom ? SESSION_PIN_G : SESSION_PIN, "1");
         closePin();
@@ -2054,8 +2097,10 @@
     // copiar o link de acompanhamento
     $("#joinedCopy").addEventListener("click", () => copiarLink($("#joinedCopy").dataset.link, $("#joinedMsg")));
 
-    // atendente: liberar mesa -> escolher próximo
-    $("#freeTableBtn").addEventListener("click", acaoSegura("chamar próximo", () => {
+    // atendente: o botão da tela só abre o pop-up de "que mesa vagou"
+    $("#freeTableBtn").addEventListener("click", acaoSegura("chamar próxima mesa", abrirTamanho));
+    $("#tamanhoOk").addEventListener("click", acaoSegura("chamar próxima mesa", () => {
+      $("#tamanhoModal").hidden = true;
       const smsg = $("#staffMsg");
       const aceitaPet = mesaAceitaPet();
       const chosen = pickNext(mesa, null, aceitaPet);
@@ -2077,6 +2122,11 @@
       smsg.textContent = "";
       openCallConfirm(chosen, aceitaPet);
     }));
+    $("#tmTamanhos").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-tam]");
+      if (!b) return;
+      escolherTamanho(b.dataset.tam === "manual" ? "manual" : Number(b.dataset.tam));
+    });
     $("#callCancel").addEventListener("click", () => { $("#callModal").hidden = true; pendingCall = null; });
     $("#callConfirm").addEventListener("click", async () => {
       const p = pendingCall;
@@ -2228,14 +2278,14 @@
       // Com login ligado, quem chegou aqui já é o administrador — e a senha das
       // configurações fica escrita no config.js (que é público). Então não faz
       // sentido pedi-la: o login é a garantia.
-      if (loginLigado()) { openCfg(); return; }
+      if (loginLigado() || !String(CFG.pinConfig || "")) { openCfg(); return; }
       $("#cfgPinInput").value = "";
       $("#cfgPinMsg").textContent = "";
       $("#cfgPinModal").hidden = false;
       setTimeout(() => $("#cfgPinInput").focus(), 50);
     });
     $("#cfgPinOk").addEventListener("click", () => {
-      if ($("#cfgPinInput").value === String(CFG.pinConfig || "12345678")) {
+      if ($("#cfgPinInput").value === String(CFG.pinConfig || "")) {
         $("#cfgPinModal").hidden = true;
         openCfg();
       } else {
@@ -2485,7 +2535,7 @@
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
     "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
-    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "boasVindas",
+    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "tamanhosMesa", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
@@ -2605,6 +2655,7 @@
     $("#cfgAutoFim").value = CFG.autoFimDaFila === false ? "nao" : "sim";
     $("#cfgAlt").value = CFG.alternancia || "1:1";
     $("#cfgRegra").value = CFG.regraTamanho || "exato";
+    $("#cfgTamanhos").value = tamanhosDaCasa().join(", ");
     $("#cfgSom").value = CFG.somAtivo === false ? "nao" : "sim";
 
     $("#cfgMesoAtiva").value = CFG.mesonaAtiva === true ? "sim" : "nao";
@@ -2664,6 +2715,9 @@
       autoFimDaFila: $("#cfgAutoFim").value === "sim",
       alternancia: $("#cfgAlt").value,
       regraTamanho: $("#cfgRegra").value,
+      // guarda já limpo (números, sem repetir, em ordem)
+      tamanhosMesa: Array.from(new Set($("#cfgTamanhos").value.split(/[^0-9]+/).map(Number)
+        .filter((n) => n >= 1 && n <= 99))).sort((a, b) => a - b),
       somAtivo: $("#cfgSom").value === "sim",
 
       mesonaAtiva: $("#cfgMesoAtiva").value === "sim",
@@ -2727,7 +2781,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

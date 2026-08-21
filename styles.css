@@ -883,3 +883,24 @@ button{font-family:inherit}
   #app[data-view="totem"] .brand-txt strong{font-size:1.45rem}
   #app[data-view="totem"] .brand-sub{font-size:1rem}
 }
+
+/* ---- painel "Chamando" no totem: é o que o salão inteiro precisa ler ----
+   Três vezes o tamanho da tela da equipe. */
+#app[data-view="totem"] .call-panel{padding:34px;min-height:240px;border-radius:24px}
+#app[data-view="totem"] .call-list{gap:26px}
+#app[data-view="totem"] .call-item{padding:30px 40px;border-radius:26px;gap:6px;flex:1 1 480px}
+#app[data-view="totem"] .call-item .ci-label{font-size:2.4rem}
+#app[data-view="totem"] .call-item .ci-name{font-size:clamp(4rem, 11vw, 7rem);line-height:1.02}
+#app[data-view="totem"] .call-item .ci-meta{font-size:2.6rem}
+#app[data-view="totem"] .call-item .ci-chips{font-size:2.2rem;padding:6px 22px;margin-top:10px}
+#app[data-view="totem"] .call-empty{font-size:2.6rem;padding:34px 0}
+
+@media (max-width: 900px){
+  #app[data-view="totem"] .call-panel{padding:18px;min-height:120px;border-radius:var(--radius)}
+  #app[data-view="totem"] .call-item{padding:16px 22px;flex:1 1 220px}
+  #app[data-view="totem"] .call-item .ci-label{font-size:1.2rem}
+  #app[data-view="totem"] .call-item .ci-name{font-size:clamp(2rem, 8vw, 3rem)}
+  #app[data-view="totem"] .call-item .ci-meta{font-size:1.3rem}
+  #app[data-view="totem"] .call-item .ci-chips{font-size:1.15rem}
+  #app[data-view="totem"] .call-empty{font-size:1.4rem}
+}

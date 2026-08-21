@@ -620,3 +620,17 @@ button{font-family:inherit}
 .tm-manual{margin:0 0 16px}
 /* o botão único da tela da atendente */
 .btn-chamar-mesa{width:100%}
+
+/* ---- filas lado a lado na tela da atendente --------------------------
+   Configurável na engrenagem. No celular volta a empilhar sozinho. */
+.queue-groups.is-colunas{
+  display:grid;gap:14px;
+  grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+  align-items:start;
+}
+.queue-groups.is-colunas .queue-group{margin:0}
+/* média de cada fila, no cabeçalho do grupo */
+.qg-avg{
+  margin-left:auto;margin-right:10px;
+  font-size:.78rem;font-weight:600;opacity:.75;white-space:nowrap;
+}

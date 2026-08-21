@@ -71,6 +71,7 @@ window.FILA_CONFIG = {
   campoSemPet: true,      // mostra "não sentar na área pet" (alergia/receio de animais)
   campoEmail: "nao",      // "nao" | "opcional" | "obrigatorio" — pede o e-mail do cliente
   campoAniversario: "nao", // "nao" | "opcional" | "obrigatorio" — pede dia e mês de aniversário
+  filasColunas: true,   // true = filas lado a lado na tela da atendente
   filasJuntas: true,      // true = totem e página do cliente mostram TUDO numa lista só
                           // (a atendente vê sempre separado: mesas grandes / preferencial / normal)
   mostrarHoraEntrada: true, // mostra "entrou HH:MM" no totem e na página do cliente

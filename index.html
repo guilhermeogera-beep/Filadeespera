@@ -124,6 +124,7 @@
         </div>
       </div>
 
+      <div class="queue-groups" id="queueGroups">
       <!-- MODO "TUDO JUNTO": uma lista só, na ordem de chegada (totem; nunca na atendente) -->
       <div class="queue-group" id="groupTodas" hidden>
         <ol class="queue-list" id="queueListTodas"></ol>
@@ -133,7 +134,7 @@
       <!-- Mesas grandes ("mesonas"): aparecem separadas, mas seguem a mesma ordem de chegada -->
       <div class="queue-group" id="groupMesona" hidden>
         <div class="qg-head qg-meso">
-          <span id="mesoTitle">🍽 Mesas grandes</span><span class="qg-count" id="statMeso">0</span>
+          <span id="mesoTitle">🍽 Mesas grandes</span><span class="qg-avg" id="avgMeso" hidden></span><span class="qg-count" id="statMeso">0</span>
         </div>
         <ol class="queue-list" id="queueListMeso"></ol>
         <div class="queue-empty" id="emptyMeso">Nenhuma mesa grande na fila</div>
@@ -141,7 +142,7 @@
 
       <div class="queue-group" id="groupPref">
         <div class="qg-head qg-pref">
-          <span>★ Preferencial</span><span class="qg-count" id="statPref">0</span>
+          <span>★ Preferencial</span><span class="qg-avg" id="avgPref" hidden></span><span class="qg-count" id="statPref">0</span>
         </div>
         <ol class="queue-list" id="queueListPref"></ol>
         <div class="queue-empty" id="emptyPref">Nenhum preferencial na fila</div>
@@ -149,10 +150,11 @@
 
       <div class="queue-group" id="groupNorm">
         <div class="qg-head qg-norm">
-          <span>Normal</span><span class="qg-count" id="statNorm">0</span>
+          <span>Normal</span><span class="qg-avg" id="avgNorm" hidden></span><span class="qg-count" id="statNorm">0</span>
         </div>
         <ol class="queue-list" id="queueListNorm"></ol>
         <div class="queue-empty" id="emptyNorm">Ninguém na fila normal</div>
+      </div>
       </div>
     </section>
 
@@ -404,6 +406,11 @@
       <div class="join-form">
         <div class="field">
           <span>Quantos lugares tem a mesa?</span>
+          <div class="tm-tamanhos" id="mTamanhos"></div>
+        </div>
+
+        <div class="field" id="mLugaresField" hidden>
+          <span>Quantos lugares?</span>
           <div class="stepper">
             <button type="button" class="step-btn" data-mesastep="-1" aria-label="Menos">−</button>
             <output id="mLugares" class="step-val">2</output>
@@ -567,11 +574,22 @@
         <label class="field">
           <span>Prioridade do atendimento</span>
           <select id="cfgAlt">
-            <option value="1:1">1 preferencial : 1 normal</option>
-            <option value="2:1">2 preferenciais : 1 normal</option>
-            <option value="3:1">3 preferenciais : 1 normal</option>
             <option value="pref">Preferencial sempre primeiro</option>
+            <option value="3:1">3 preferenciais : 1 normal</option>
+            <option value="2:1">2 preferenciais : 1 normal</option>
+            <option value="1:1">1 preferencial : 1 normal</option>
+            <option value="1:2">1 preferencial : 2 normais</option>
+            <option value="1:3">1 preferencial : 3 normais</option>
+            <option value="normal">Fila normal sempre primeiro</option>
           </select>
+        </label>
+        <label class="field">
+          <span>Filas na tela da atendente</span>
+          <select id="cfgFilasColunas">
+            <option value="colunas">Lado a lado, em colunas</option>
+            <option value="lista">Uma embaixo da outra</option>
+          </select>
+          <small class="hint">Em colunas cabe mais na tela. No celular elas se empilham sozinhas.</small>
         </label>
         <label class="field">
           <span>Tamanhos de mesa da casa</span>

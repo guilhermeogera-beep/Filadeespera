@@ -47,6 +47,7 @@
   let lugaresNovaMesa = 2;  // stepper do pop-up do garçom
   let numerosNovaMesa = []; // números das mesas juntadas (ex.: 12 + 13)
   let editandoMesaId = null; // mesa que o garçom está corrigindo (null = nova)
+  let modoManualMesa = false; // true = o garçom está digitando um tamanho fora da lista
   let semTabelaMesas = false; // true se a tabela `mesas_livres` ainda não existe no banco
 
   // Os tamanhos de mesa que a casa trabalha (viram os botões do pop-up).
@@ -464,10 +465,12 @@
   function getMediaReset() {
     return localStorage.getItem("fila_media_reset") || "1970-01-01T00:00:00.000Z";
   }
-  // Tempo médio de espera (entrada → chamada) de todos os chamados desde o último reset
-  function avgWaitMs() {
+  // Tempo médio de espera (entrada -> chamada) desde o último reset.
+  // Com um filtro, mede só um pedaço da fila (mesas grandes, preferencial, normal).
+  function avgWaitMs(filtro) {
     const rp = new Date(getMediaReset()).getTime();
-    const done = rows.filter((r) => r.chamado_em && new Date(r.chamado_em).getTime() >= rp);
+    let done = rows.filter((r) => r.chamado_em && new Date(r.chamado_em).getTime() >= rp);
+    if (filtro) done = done.filter(filtro);
     if (!done.length) return null;
     const sum = done.reduce((a, r) => a + Math.max(0, new Date(r.chamado_em) - new Date(entradaEm(r))), 0);
     return sum / done.length;
@@ -481,10 +484,13 @@
   // Decide se o próximo a chamar deve ser PREFERENCIAL (true) ou NORMAL (false)
   function wantPreferential() {
     const alt = String(CFG.alternancia || "1:1");
-    if (alt === "pref") return true;
+    if (alt === "pref") return true;      // preferencial sempre na frente
+    if (alt === "normal") return false;   // fila normal sempre na frente
     const hist = rows.filter((r) => r.chamado_em)
       .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em));
-    if (!hist.length) return true; // começa pelo preferencial
+    const inicio = alt.split(":").map((v) => parseInt(v, 10));
+    // começa pelo lado que a regra favorece (1:2 começa pela fila normal)
+    if (!hist.length) return (inicio[0] || 1) >= (inicio[1] || 1);
     const parts = alt.split(":").map((n) => parseInt(n, 10));
     const p = parts[0] || 1, n = parts[1] || 1;
     const lastPref = !!hist[0].preferencial;
@@ -1284,6 +1290,21 @@
     $("#statAvg").textContent = avg == null ? "—" : "~" + fmtElapsed(avg);
     $("#statAvgWrap").hidden = !staff && CFG.mostrarMedia === false;
 
+    // filas lado a lado (só na tela da atendente; o celular empilha sozinho)
+    $("#queueGroups").classList.toggle("is-colunas", staff && CFG.filasColunas !== false);
+
+    // média de cada fila, para a atendente enxergar onde está apertando
+    const media = (el, filtro) => {
+      const box = $(el);
+      if (!box) return;
+      const m = staff ? avgWaitMs(filtro) : null;
+      box.hidden = m == null;
+      if (m != null) box.textContent = "⏱ ~" + fmtElapsed(m);
+    };
+    media("#avgMeso", (r) => isMesona(r));
+    media("#avgPref", (r) => r.preferencial && !isMesona(r));
+    media("#avgNorm", (r) => !r.preferencial && !isMesona(r));
+
     // -------- painel "chamando" (mostra TODAS as mesas chamadas) --------
     const callList = $("#callList");
     const callEmpty = $("#callEmpty");
@@ -1806,6 +1827,7 @@
     numerosNovaMesa = m && m.numeros
       ? String(m.numeros).split("+").map((s) => s.trim()).filter(Boolean)
       : [];
+    modoManualMesa = !tamanhosDaCasa().includes(Number(lugaresNovaMesa));
     $("#mLugares").textContent = lugaresNovaMesa;
     const alvo = $(`input[name="mesapetnova"][value="${m && m.pet ? "sim" : "nao"}"]`);
     if (alvo) alvo.checked = true;
@@ -1815,9 +1837,31 @@
     $("#mPetField").hidden = CFG.petAtivo === false;
     $("#mesaTitulo").textContent = m ? "✏️ Corrigir mesa" : "🍽 Lançar mesa livre";
     $("#mSalvar").textContent = m ? "Salvar alterações" : "🍽 Liberar esta mesa";
+    desenharTamanhosMesa();
     renderNumChips();
     $("#mesaModal").hidden = false;
     setTimeout(() => $("#mNumero").focus(), 60);
+  }
+
+  // Os mesmos tamanhos configurados na engrenagem viram botões aqui também,
+  // para o garçom lançar a mesa num toque em vez de ficar no contador.
+  function desenharTamanhosMesa() {
+    $("#mTamanhos").innerHTML =
+      tamanhosDaCasa().map((n) => `<button type="button" class="tm-btn${!modoManualMesa && Number(lugaresNovaMesa) === n ? " is-sel" : ""}" data-mtam="${n}">
+        <b>${n}</b><span>${n === 1 ? "lugar" : "lugares"}</span>
+      </button>`).join("") +
+      `<button type="button" class="tm-btn tm-outro${modoManualMesa ? " is-sel" : ""}" data-mtam="manual">
+        <b>✎</b><span>outro</span>
+      </button>`;
+    $("#mLugaresField").hidden = !modoManualMesa;
+    $("#mLugares").textContent = lugaresNovaMesa;
+  }
+
+  function escolherTamanhoMesa(v) {
+    if (v === "manual") modoManualMesa = true;
+    else { modoManualMesa = false; lugaresNovaMesa = Number(v); }
+    $("#mMsg").textContent = "";
+    desenharTamanhosMesa();
   }
 
   // Números já adicionados (quando o garçom junta duas ou mais mesas)
@@ -1903,6 +1947,11 @@
 
     // ---- mesas livres ----
     // stepper de lugares (pop-up do garçom)
+    $("#mTamanhos").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mtam]");
+      if (!b) return;
+      escolherTamanhoMesa(b.dataset.mtam === "manual" ? "manual" : Number(b.dataset.mtam));
+    });
     $$(".step-btn[data-mesastep]").forEach((b) =>
       b.addEventListener("click", () => {
         const max = TETO_EQUIPE;
@@ -1949,15 +1998,13 @@
         };
         if (editandoMesaId) await corrigirMesa(editandoMesaId, dados);
         else await lancarMesa(dados);
-        const corrigiu = !!editandoMesaId;
         editandoMesaId = null;
         $("#mesaModal").hidden = true;
         msg.textContent = "";
+        // sem mensagem de confirmação: o cartão aparecendo na lista já diz tudo,
+        // e a tela do garçom fica limpa
         const m = $("#mesasMsg");
-        if (m) {
-          m.textContent = corrigiu ? "✅ Mesa corrigida." : "✅ Mesa liberada — a recepção já está vendo.";
-          m.className = "form-msg ok";
-        }
+        if (m) { m.textContent = ""; m.className = "form-msg"; }
       } catch (e) {
         console.error("Erro ao lançar mesa:", e);
         msg.textContent = semTabelaMesas
@@ -2535,7 +2582,7 @@
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
     "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
-    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "tamanhosMesa", "boasVindas",
+    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "tamanhosMesa", "filasColunas", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
@@ -2656,6 +2703,7 @@
     $("#cfgAlt").value = CFG.alternancia || "1:1";
     $("#cfgRegra").value = CFG.regraTamanho || "exato";
     $("#cfgTamanhos").value = tamanhosDaCasa().join(", ");
+    $("#cfgFilasColunas").value = CFG.filasColunas === false ? "lista" : "colunas";
     $("#cfgSom").value = CFG.somAtivo === false ? "nao" : "sim";
 
     $("#cfgMesoAtiva").value = CFG.mesonaAtiva === true ? "sim" : "nao";
@@ -2716,6 +2764,7 @@
       alternancia: $("#cfgAlt").value,
       regraTamanho: $("#cfgRegra").value,
       // guarda já limpo (números, sem repetir, em ordem)
+      filasColunas: $("#cfgFilasColunas").value === "colunas",
       tamanhosMesa: Array.from(new Set($("#cfgTamanhos").value.split(/[^0-9]+/).map(Number)
         .filter((n) => n >= 1 && n <= 99))).sort((a, b) => a - b),
       somAtivo: $("#cfgSom").value === "sim",
@@ -2781,7 +2830,8 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
+    "queueGroups", "avgPref", "cfgFilasColunas",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

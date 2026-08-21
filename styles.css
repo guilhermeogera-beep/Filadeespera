@@ -644,7 +644,10 @@ button{font-family:inherit}
     linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/8.33% 100%,
     #FAFAF8;
   border:2px solid var(--line);border-radius:var(--radius);
-  overflow:hidden;touch-action:none;
+  overflow:hidden;
+  /* o dedo precisa poder rolar a página passando por cima do mapa; só quando
+     o garçom SEGURA uma mesa é que o mapa toma conta do gesto */
+  touch-action:pan-y;
 }
 .mapa-piso.is-edit{cursor:grab}
 .mapa-vazio{
@@ -757,3 +760,16 @@ button{font-family:inherit}
   color:var(--muted);font-family:inherit;font-size:.8rem;text-decoration:underline;cursor:pointer;
 }
 .tm-destravar:hover{color:var(--ink)}
+
+/* vagas: onde dá para soltar a mesa para juntar (aparecem ao segurar) */
+.mm-vaga{
+  position:absolute;transform:translate(-50%, -50%);
+  border:2px dashed var(--junta);border-radius:12px;
+  background:rgba(37,99,235,.06);pointer-events:none;z-index:1;
+}
+.mm-vaga.is-perto{
+  background:rgba(37,99,235,.20);border-style:solid;
+}
+
+/* enquanto uma mesa está sendo arrastada, o mapa segura o gesto */
+.mapa-piso.is-pegando{touch-action:none}

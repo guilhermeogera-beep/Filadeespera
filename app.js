@@ -1477,6 +1477,17 @@
   // O gesto é: TOQUE simples abre; PRESSIONAR E SEGURAR libera o arrasto.
   // Sem isso, no celular qualquer tremida do dedo virava arrasto e o pop-up
   // não abria — foi o que travou o garçom.
+  // Trava/destrava a rolagem da página (usada enquanto uma mesa está na mão)
+  let _rolagemAntes = "";
+  function travarRolagem(travar) {
+    if (travar) {
+      _rolagemAntes = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = _rolagemAntes || "";
+    }
+  }
+
   function ligarArrasto(seletor, modo) {
     const piso = $(seletor);
     if (!piso) return;
@@ -1485,7 +1496,39 @@
     const SEGURAR = 350;   // ms de dedo parado para liberar o arrasto
     const FOLGA = 10;      // px de tremida que ainda contam como "parado"
 
+    // Mostra onde dá para soltar: quatro tracejados em volta de cada mesa,
+    // um de cada lado. Sem isso o garçom não tem como adivinhar o alcance.
+    const mostrarVagas = () => {
+      if (!alvo || piso.querySelector(".mm-vaga")) return;
+      const p = piso.getBoundingClientRect();
+      const r = alvo.getBoundingClientRect();
+      if (!p.width || !r.width) return;
+      const lg = (r.width / p.width) * 100, at = (r.height / p.height) * 100;
+      const meuGrupo = (mapa.find((m) => m.id === alvo.dataset.mapamesa) || {}).grupo;
+      $$(seletor + " .mm-mesa").forEach((el) => {
+        if (el === alvo) return;
+        const m = mapa.find((x) => x.id === el.dataset.mapamesa);
+        if (!m) return;
+        if (meuGrupo && m.grupo === meuGrupo) return;      // já estão juntas
+        [[lg, 0], [-lg, 0], [0, at], [0, -at]].forEach(([dx2, dy2]) => {
+          const vx = Number(m.x) + dx2, vy = Number(m.y) + dy2;
+          if (vx < 4 || vx > 96 || vy < 6 || vy > 94) return;   // fora do piso
+          const v = document.createElement("div");
+          v.className = "mm-vaga";
+          v.style.left = vx + "%";
+          v.style.top = vy + "%";
+          v.style.width = lg + "%";
+          v.style.height = at + "%";
+          piso.appendChild(v);
+        });
+      });
+    };
+    const limparVagas = () => $$(seletor + " .mm-vaga").forEach((v) => v.remove());
+
     const soltar = () => {
+      limparVagas();
+      piso.classList.remove("is-pegando");
+      travarRolagem(false);
       clearTimeout(relogio);
       if (alvo) alvo.classList.remove("is-arrastando", "is-pronto");
       $$(seletor + " .mm-mesa").forEach((x) => x.classList.remove("is-alvo"));
@@ -1505,7 +1548,9 @@
         const o = el.getBoundingClientRect();
         const ox = o.left + o.width / 2, oy = o.top + o.height / 2;
         const dist = Math.hypot(cx - ox, cy - oy);
-        const limite = (r.width + o.width) / 2;   // precisa estar encostada
+        // as vagas tracejadas ficam a uma mesa de distância: o alcance precisa
+        // passar disso, senão soltar em cima da vaga não juntaria
+        const limite = (r.width + o.width) / 2 * 1.35;
         if (dist < limite && dist < menor) { menor = dist; melhor = el; }
       });
       return melhor;
@@ -1524,6 +1569,13 @@
       relogio = setTimeout(() => {
         podeArrastar = true;
         el.classList.add("is-pronto");
+        // Só agora o mapa toma conta do dedo. O touch-action sozinho não
+        // resolveria: o Android decide se o gesto é rolagem no primeiro
+        // toque e ignora a mudança depois. Travar a rolagem da página
+        // enquanto a mesa está na mão é o que funciona nos dois.
+        piso.classList.add("is-pegando");
+        travarRolagem(true);
+        if (modo === "juntar") mostrarVagas();
         // um toque de vibração avisa que já pode arrastar
         if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) { /* ignora */ } }
       }, SEGURAR);
@@ -1549,6 +1601,18 @@
       if (modo === "juntar") {
         const outra = soltoEmCima();
         $$(seletor + " .mm-mesa").forEach((x2) => x2.classList.toggle("is-alvo", x2 === outra));
+        // acende a vaga mais perto do dedo, para ficar claro onde vai encostar
+        const r2 = alvo.getBoundingClientRect();
+        const cx2 = r2.left + r2.width / 2, cy2 = r2.top + r2.height / 2;
+        let perto = null, dmin = Infinity;
+        if (outra) {
+          $$(seletor + " .mm-vaga").forEach((v) => {
+            const o = v.getBoundingClientRect();
+            const d = Math.hypot(cx2 - (o.left + o.width / 2), cy2 - (o.top + o.height / 2));
+            if (d < dmin) { dmin = d; perto = v; }
+          });
+        }
+        $$(seletor + " .mm-vaga").forEach((v) => v.classList.toggle("is-perto", v === perto));
       }
     });
 

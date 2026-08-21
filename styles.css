@@ -698,7 +698,6 @@ button{font-family:inherit}
   font-size:.68rem;font-weight:700;margin-top:1px;
   padding:1px 5px;border-radius:999px;background:rgba(0,0,0,.10);white-space:nowrap;
 }
-.mm-mesa.is-junta{border-style:double;border-width:4px}
 /* a mesa que vai receber a arrastada */
 .mm-mesa.is-alvo{outline:3px dashed var(--ink);outline-offset:3px}
 
@@ -707,4 +706,27 @@ button{font-family:inherit}
 .btn-sair{
   width:auto;padding:0 12px;font-size:.82rem;font-weight:700;
   letter-spacing:.02em;
+}
+
+/* mesas juntadas: anel azul em volta do bloco */
+:root{ --junta:#2563EB; }
+.mm-mesa.is-junta{
+  border-style:solid;border-width:2px;
+  outline:3px solid var(--junta);outline-offset:2px;
+}
+.mm-junta{background:var(--junta);color:#fff}
+/* pressionou e segurou: a mesa avisa que já pode ser arrastada */
+.mm-mesa.is-pronto{
+  transform:translate(-50%, -50%) scale(1.08);
+  box-shadow:0 8px 20px rgba(0,0,0,.28);z-index:6;
+}
+.mm-mesa.is-arrastando{opacity:.9}
+
+/* mesa chamada, esperando o cliente sentar: fica na lista, mas em vermelho */
+.mesa-item.is-reservada{
+  border-color:#B3261E;background:#FBE3E1;opacity:.95;cursor:default;
+}
+.mesa-item.is-reservada .mesa-lug{color:#8C1D18}
+.mesa-reserva{
+  display:block;margin-top:4px;font-size:.78rem;font-weight:700;color:#8C1D18;
 }

@@ -86,6 +86,10 @@ window.FILA_CONFIG = {
   // Tamanhos de grupo mais comuns: viram os botões de "Quantas pessoas?"
   // na entrada da fila. Também dá para mudar pela engrenagem.
   tamanhosGrupo: [1, 2, 3, 4, 5, 6],
+
+  // Mapa do salão: dá para ocultar por perfil (o cadastro continua na engrenagem)
+  mapaGarcom: true,
+  mapaAdm: true,
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
 
   // --- Fechamento da fila ---

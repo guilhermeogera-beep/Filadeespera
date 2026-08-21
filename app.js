@@ -2706,6 +2706,7 @@
         aplicarPermissoes();
         setView(abaInicial());
         await refresh();
+        ligarRelogios();
       } catch (err) {
         console.warn("Login:", err);
         const m = String((err && err.message) || "");
@@ -4153,6 +4154,17 @@
 
     await refresh();
 
+    ligarRelogios();
+  }
+
+  // Os relógios do app: tempos ao vivo, prazos, e as recargas de segurança.
+  // Ficam numa função à parte porque precisam ser ligados nos DOIS caminhos —
+  // quem já entra com sessão e quem digita a senha na tela de login. Antes só
+  // o primeiro ligava, e quem fazia login ficava com os tempos parados.
+  let _relogiosLigados = false;
+  function ligarRelogios() {
+    if (_relogiosLigados) return;
+    _relogiosLigados = true;
     setInterval(tickTimes, 1000);          // tempos ao vivo
     setInterval(checkExpired, 3000);       // move sozinho quem estourou o prazo
     setInterval(refresh, 15000);           // rede de segurança da FILA

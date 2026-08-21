@@ -828,3 +828,45 @@ button{font-family:inherit}
 }
 /* botão de liberar todas, acima do mapa */
 .btn-liberar-todas{width:100%;margin:0 0 12px}
+
+/* ======================================================================
+   TOTEM EM TELA GRANDE (40")
+   O totem é lido de pé, a metros de distância. Tudo o que o cliente
+   precisa enxergar tem o dobro do tamanho da tela da equipe.
+   ====================================================================== */
+#app[data-view="totem"] .welcome{
+  font-size:2.4rem;padding:26px 28px;text-align:center;line-height:1.25;
+}
+#app[data-view="totem"] .card-title{font-size:2.3rem;margin-bottom:20px}
+#app[data-view="totem"] .stat{font-size:1.7rem;padding:9px 20px}
+#app[data-view="totem"] .queue-stats{gap:14px}
+#app[data-view="totem"] .qg-head{font-size:1.64rem;padding-bottom:12px;margin-bottom:16px}
+#app[data-view="totem"] .qg-count{font-size:1.5rem;padding:4px 14px}
+#app[data-view="totem"] .q-pos{width:76px;height:76px;font-size:2.1rem;border-radius:16px}
+#app[data-view="totem"] .q-name{font-size:2.1rem;gap:12px}
+#app[data-view="totem"] .q-sub{font-size:1.72rem;gap:20px;margin-top:6px}
+#app[data-view="totem"] .q-tag{font-size:1.4rem;padding:4px 14px}
+#app[data-view="totem"] .q-chip{font-size:1.6rem;padding:4px 16px}
+#app[data-view="totem"] .q-item{padding:18px 16px;gap:16px}
+#app[data-view="totem"] .queue-empty{font-size:1.7rem;padding:26px 12px}
+#app[data-view="totem"] .closed-banner{font-size:1.9rem;padding:22px 24px}
+/* o botão de entrar é o alvo principal: dobro de tudo */
+#app[data-view="totem"] .add-bar .btn{font-size:2.2rem;padding:30px 24px;border-radius:20px}
+#app[data-view="totem"] .add-bar{padding:18px 20px calc(20px + env(safe-area-inset-bottom))}
+
+/* em telas menores (tablet de balcão fazendo as vezes de totem) o dobro
+   não cabe: volta a crescer proporcional ao espaço */
+@media (max-width: 900px){
+  #app[data-view="totem"] .welcome{font-size:1.5rem;padding:16px 18px}
+  #app[data-view="totem"] .card-title{font-size:1.5rem}
+  #app[data-view="totem"] .q-pos{width:52px;height:52px;font-size:1.4rem}
+  #app[data-view="totem"] .q-name{font-size:1.4rem}
+  #app[data-view="totem"] .q-sub{font-size:1.15rem}
+  #app[data-view="totem"] .q-tag{font-size:.95rem}
+  #app[data-view="totem"] .q-chip{font-size:1.05rem}
+  #app[data-view="totem"] .qg-head{font-size:1.15rem}
+  #app[data-view="totem"] .stat{font-size:1.1rem}
+  #app[data-view="totem"] .add-bar .btn{font-size:1.5rem;padding:20px}
+}
+/* na tela do totem o botão pode ser mais largo: é o alvo do dedo à distância */
+#app[data-view="totem"] .add-bar .btn{max-width:900px}

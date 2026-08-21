@@ -2370,7 +2370,13 @@
 
     // boas-vindas (totem) e estado do botão de adicionar (fila fechada)
     const wb = $("#welcomeBanner");
-    if (wb) { const txt = (CFG.boasVindas || "").trim(); wb.textContent = txt; wb.hidden = !txt; }
+    // No totem a faixa é a chamada principal: se ninguém escreveu nada na
+    // engrenagem, ela mesma convida a entrar na fila
+    if (wb) {
+      const txt = (CFG.boasVindas || "").trim() || "Entre na fila aqui 👇";
+      wb.textContent = txt;
+      wb.hidden = false;
+    }
     const cb = $("#closedBanner");
     if (cb) {
       const fechada = CFG.filaFechada === true;

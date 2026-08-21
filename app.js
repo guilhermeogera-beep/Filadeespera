@@ -728,7 +728,6 @@
       status: STATUS.CHAMADO,
       chamado_em: new Date().toISOString(),
     }, extras || {}));
-    await refresh();
   }
   async function seatPerson(id, mesaNumero) {
     const patch = { status: STATUS.SENTADO, sentou_em: new Date().toISOString() };
@@ -1056,9 +1055,10 @@
 
   async function refresh() {
     try {
-      rows = await backend.list();
-      await carregarMesas();
-      await carregarMapa();
+      // as três consultas vão JUNTAS: em sequência eram três idas ao servidor,
+      // uma esperando a outra, e a tela só respondia no fim
+      const [lista] = await Promise.all([backend.list(), carregarMesas(), carregarMapa()]);
+      rows = lista;
       render();
       checkAutoClose();
     } catch (e) {
@@ -1137,7 +1137,6 @@
       console.warn("Mesas: sem a coluna reservada_para (rode o SQL). A mesa não fica marcada.");
     }
     mesaSelecionada = null;
-    await refresh();
   }
 
   // O cliente não apareceu (voltou para a fila, saiu, foi para o fim):
@@ -1259,6 +1258,44 @@
     renderMapa();
     for (const x of bloco) await backend.updateMapa(x.id, { status, liberada_em: agora });
     await refresh();
+  }
+
+  // O botão "liberar todas" fica disponível para o garçom só nas pontas do
+  // dia: antes do horário de "até" e depois do de "volta". No meio do
+  // movimento ele some, para ninguém liberar o salão inteiro sem querer.
+  function dentroDaJanelaLiberar() {
+    const ate = String(CFG.liberarAte || "11:00");
+    const volta = String(CFG.liberarVolta || "17:00");
+    const agora = new Date();
+    const min = agora.getHours() * 60 + agora.getMinutes();
+    const emMin = (t) => {
+      const p = String(t).split(":");
+      return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+    };
+    return min < emMin(ate) || min >= emMin(volta);
+  }
+
+  // Libera de uma vez todas as mesas que estão aguardando. Não mexe nas
+  // ocupadas nem nas que precisam de limpeza: liberar mesa suja ou com gente
+  // sentada mandaria a recepção para o lugar errado.
+  async function liberarTodasAsMesas() {
+    const alvos = [];
+    const vistos = new Set();
+    for (const m of mapa) {
+      if (vistos.has(m.id)) continue;
+      blocoDaMesa(m).forEach((x) => vistos.add(x.id));
+      if (estadoDaMesa(m) === "livre") alvos.push(m);
+    }
+    let ok = 0;
+    for (const m of alvos) {
+      try { await liberarMesaDoMapa(m); ok++; }
+      catch (e) { console.warn("Não deu para liberar a mesa " + m.numero, e); }
+    }
+    const pulou = mapa.length - ok;
+    avisoStaff(ok
+      ? ok + (ok === 1 ? " mesa liberada" : " mesas liberadas") + " para a recepção" +
+        (pulou ? " • " + pulou + (pulou === 1 ? " ficou de fora" : " ficaram de fora") + " (ocupada, suja ou já liberada)" : "")
+      : "Nenhuma mesa aguardando para liberar.", !!ok);
   }
 
   // Marca a mesa como ocupada na mão (cliente que sentou sem passar pela fila)
@@ -1426,6 +1463,8 @@
     card.hidden = CFG.garcomAtivo === false || vista !== "garcom" ||
       semTabelaMapa || !mapaVisivelPara();
     if (card.hidden) return;
+    const lt = $("#liberarTodasBtn");
+    if (lt) lt.hidden = !mapa.length || !(ehAdm() || dentroDaJanelaLiberar());
     $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, false)).join("");
     $("#mapaVazio").hidden = mapa.length > 0;
   }
@@ -1628,6 +1667,8 @@
     // o menu de "copiar" do Android aparece ao segurar: aqui ele só atrapalha
     piso.addEventListener("contextmenu", (e) => e.preventDefault());
     let alvo = null, podeArrastar = false, moveu = false, vagaAcesa = null;
+    let tocouEm = 0;          // hora do toque, para separar toque de arrasto
+    let houveGesto = false;   // true = segurou/arrastou; o clique que vem depois não abre
     let dx = 0, dy = 0, posOriginal = null, xInicial = 0, yInicial = 0, relogio = null;
     const SEGURAR = 350;   // ms de dedo parado para liberar o arrasto
     const FOLGA = 10;      // px de tremida que ainda contam como "parado"
@@ -1703,7 +1744,8 @@
     piso.addEventListener("pointerdown", (e) => {
       const el = e.target.closest("[data-mapamesa]");
       if (!el) return;
-      alvo = el; podeArrastar = false; moveu = false;
+      alvo = el; podeArrastar = false; moveu = false; houveGesto = false;
+      tocouEm = e.timeStamp || 0;
       xInicial = e.clientX; yInicial = e.clientY;
       posOriginal = { left: el.style.left, top: el.style.top };
       const r = el.getBoundingClientRect();
@@ -1717,6 +1759,7 @@
       }
       relogio = setTimeout(() => {
         podeArrastar = true;
+        houveGesto = true;
         el.classList.add("is-pronto");
         // Só agora o mapa toma conta do dedo. O touch-action sozinho não
         // resolveria: o Android decide se o gesto é rolagem no primeiro
@@ -1773,16 +1816,22 @@
       // a vaga acesa diz em qual lado da mesa o garçom encostou
       const vaga = vagaAcesa && outra && vagaAcesa.dataset.dono === outra.dataset.mapamesa
         ? { x: Number(vagaAcesa.dataset.vx), y: Number(vagaAcesa.dataset.vy) } : null;
-      const eraToque = !podeArrastar && !moveu;
+      // No Android o dedo quase nunca fica parado: um toque comum escorrega
+      // alguns pixels. Se foi rápido e perto do ponto inicial, é toque.
+      const dt = (e && e.timeStamp ? e.timeStamp : 0) - tocouEm;
+      const dist = e ? Math.hypot((e.clientX || 0) - xInicial, (e.clientY || 0) - yInicial) : 0;
+      const eraToque = !podeArrastar && (dt <= 0 || dt < SEGURAR + 150) && dist < 24;
       const id = el.dataset.mapamesa;
       soltar();
 
       if (eraToque) {
+        houveGesto = true;               // o clique que vem a seguir não repete
         if (modo === "juntar") acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(id))();
         else abrirMesaCadastro(id);
         return;
       }
       if (!arrastou) return;                     // segurou e soltou sem mover
+      houveGesto = true;
 
       if (modo === "juntar") {
         // solta no vazio: volta ao lugar. Sobre uma vaga: o juntar coloca a
@@ -1813,6 +1862,18 @@
 
     piso.addEventListener("pointerup", fim);
     piso.addEventListener("pointercancel", () => soltar());
+
+    // Rede de segurança: se o navegador cancelar os eventos de dedo no meio
+    // (acontece no Android quando ele acha que o gesto virou rolagem), o
+    // clique ainda chega. Sem isto, o toque simples às vezes não abria nada.
+    piso.addEventListener("click", (e) => {
+      const el = e.target.closest("[data-mapamesa]");
+      if (!el) return;
+      if (houveGesto) { houveGesto = false; return; }   // veio de um arrasto
+      const id = el.dataset.mapamesa;
+      if (modo === "juntar") acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(id))();
+      else abrirMesaCadastro(id);
+    });
   }
 
   // Pop-up de ações de uma mesa livre (abre ao segurar o cartão na atendente)
@@ -2602,6 +2663,9 @@
     if (cb) cb.hidden = !ehAdm();
     const rb = $("#relBtn");
     if (rb) rb.hidden = !ehAdm();
+    // zerar a média mexe no número que todo mundo vê: só o administrador
+    const ra = $("#resetAvgBtn");
+    if (ra) ra.hidden = !ehAdm();
     // o administrador mantém os controles do cabeçalho em qualquer aba
     appEl.setAttribute("data-papel", (ligado && usuario && usuario.papel) || "");
 
@@ -3224,6 +3288,15 @@
       if (b) acaoNaMesa(b.dataset.macao);
     });
     // cadastro do mapa (pela engrenagem)
+    $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {
+      const quantas = mapa.filter((m) => estadoDaMesa(m) === "livre").length;
+      if (!quantas) { avisoStaff("Nenhuma mesa aguardando para liberar."); return; }
+      // ação em lote: sempre confirma, para os dois perfis
+      if (!confirm("Liberar " + quantas + (quantas === 1 ? " mesa" : " mesas") + " para a recepção?")) return;
+      const b = $("#liberarTodasBtn");
+      b.disabled = true;
+      try { await liberarTodasAsMesas(); } finally { b.disabled = false; }
+    }));
     $("#cfgMapaBtn").addEventListener("click", acaoSegura("configurar o mapa", abrirEditorMapa));
     $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));
     $("#mmSalvar").addEventListener("click", salvarMesaCadastro);
@@ -3274,14 +3347,21 @@
       const cmsg = $("#callMsg");
       btn.disabled = true;
       if (cmsg) { cmsg.textContent = "Salvando…"; cmsg.className = "form-msg"; }
+
+      // se a chamada saiu de uma mesa do garçom, já guarda o número dela:
+      // na hora do "Sentou" o campo vem preenchido sozinho
+      const mesaEscolhida = mesasLivres.find((m) => m.id === mesaSelecionada);
+      const numeroDaMesa = (mesaEscolhida && (mesaEscolhida.numeros || mesaEscolhida.identificacao)) || p.mesa_numero || null;
       try {
-        // GRAVA PRIMEIRO: nunca avisar o cliente de uma mesa que não foi registrada
-        // se a chamada saiu de uma mesa do garçom, já guarda o número dela:
-        // na hora do "Sentou" o campo vem preenchido sozinho
-        const mesaEscolhida = mesasLivres.find((m) => m.id === mesaSelecionada);
-        await callPerson(p.id, {
-          mesa_numero: (mesaEscolhida && (mesaEscolhida.numeros || mesaEscolhida.identificacao)) || p.mesa_numero || null,
-        });
+        // GRAVA PRIMEIRO: nunca avisar o cliente de uma mesa que não foi
+        // registrada. A gravação da chamada e a reserva da mesa vão JUNTAS —
+        // em sequência eram duas esperas somadas para a atendente.
+        await Promise.all([
+          callPerson(p.id, { mesa_numero: numeroDaMesa }),
+          mesaSelecionada ? reservarMesa(mesaSelecionada, p.id).catch((e) => {
+            console.warn("Não deu para reservar a mesa:", e);
+          }) : Promise.resolve(),
+        ]);
       } catch (e) {
         console.error("Erro ao gravar a chamada:", e);
         // NÃO fecha o pop-up: a atendente vê o erro e tenta de novo sem redigitar nada
@@ -3296,16 +3376,17 @@
       if (cmsg) cmsg.textContent = "";
       $("#callModal").hidden = true;
       pendingCall = null;
-      if (mesaSelecionada) {
-        // a mesa NÃO sai da lista agora: fica reservada, em vermelho, até a
-        // atendente confirmar que o cliente sentou. Se ele não aparecer, a
-        // mesa continua lá para ser dada a outro.
-        try {
-          await reservarMesa(mesaSelecionada, p.id);
-        } catch (e) {
-          console.warn("Não deu para reservar a mesa:", e);
-        }
+
+      // A tela já mostra o resultado sem esperar a releitura: o cliente sai da
+      // fila e vai para o painel "Chamando" na hora.
+      const linha = rows.find((r) => r.id === p.id);
+      if (linha) {
+        linha.status = STATUS.CHAMADO;
+        linha.chamado_em = new Date().toISOString();
+        if (numeroDaMesa) linha.mesa_numero = numeroDaMesa;
       }
+      render();
+
       // só depois de gravado, abre o WhatsApp já com a mensagem pronta
       if (CFG.whatsAtivo !== false && CFG.whatsAuto && p.telefone) {
         const link = waLink(p);
@@ -3314,6 +3395,7 @@
           if (!aba) avisoStaff("Chamada registrada. O navegador bloqueou o WhatsApp — toque em 📲 WhatsApp no cartão.");
         }
       }
+      refresh();      // confere com o servidor em segundo plano
     });
 
     // tocar no cartão da fila abre a ficha do cliente
@@ -3692,7 +3774,7 @@
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
-    "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa", "mesaNumObrigatorio",
+    "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa", "mesaNumObrigatorio", "liberarAte", "liberarVolta",
   ];
 
   // O PIN da atendente fica guardado só NESTE aparelho (não sobe para a nuvem)
@@ -3828,6 +3910,8 @@
     $("#cfgFilasColunas").value = CFG.filasColunas === false ? "lista" : "colunas";
     $("#cfgMapaGarcom").value = CFG.mapaGarcom === false ? "nao" : "sim";
     $("#cfgMapaAdm").value = CFG.mapaAdm === false ? "nao" : "sim";
+    $("#cfgLiberarAte").value = CFG.liberarAte || "11:00";
+    $("#cfgLiberarVolta").value = CFG.liberarVolta || "17:00";
     $("#cfgSom").value = CFG.somAtivo === false ? "nao" : "sim";
 
     $("#cfgMesoAtiva").value = CFG.mesonaAtiva === true ? "sim" : "nao";
@@ -3892,6 +3976,8 @@
       filasColunas: $("#cfgFilasColunas").value === "colunas",
       mapaGarcom: $("#cfgMapaGarcom").value === "sim",
       mapaAdm: $("#cfgMapaAdm").value === "sim",
+      liberarAte: $("#cfgLiberarAte").value || "11:00",
+      liberarVolta: $("#cfgLiberarVolta").value || "17:00",
       tamanhosGrupo: Array.from(new Set($("#cfgTamanhosGrupo").value.split(/[^0-9]+/).map(Number)
         .filter((n) => n >= 1 && n <= 99))).sort((a, b) => a - b),
       tamanhosMesa: Array.from(new Set($("#cfgTamanhos").value.split(/[^0-9]+/).map(Number)

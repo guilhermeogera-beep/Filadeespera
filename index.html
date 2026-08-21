@@ -99,6 +99,9 @@
           <span class="ml ocupada">ocupada</span>
         </div>
       </div>
+      <button type="button" class="btn btn-verde btn-liberar-todas" id="liberarTodasBtn" hidden>
+        🟢 Liberar todas as mesas
+      </button>
       <div class="mapa-piso" id="mapaPiso"></div>
       <div class="mapa-vazio" id="mapaVazio" hidden>
         Nenhuma mesa cadastrada ainda. O cadastro fica na engrenagem, em
@@ -713,6 +716,20 @@
           </select>
           <small class="hint">O cadastro do mapa continua aqui na engrenagem, mesmo com o mapa oculto.</small>
         </label>
+        <div class="field">
+          <span>"Liberar todas as mesas" para o garçom</span>
+          <div class="two-cols">
+            <label class="field">
+              <span>Disponível até</span>
+              <input id="cfgLiberarAte" type="time" />
+            </label>
+            <label class="field">
+              <span>Volta às</span>
+              <input id="cfgLiberarVolta" type="time" />
+            </label>
+          </div>
+          <small class="hint">Entre um horário e outro o botão some para o garçom. Para o administrador ele fica sempre visível.</small>
+        </div>
         <label class="field">
           <span>Filas na tela da atendente</span>
           <select id="cfgFilasColunas">

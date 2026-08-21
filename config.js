@@ -93,6 +93,11 @@ window.FILA_CONFIG = {
 
   // O garçom precisa informar o número da mesa ao liberar?
   mesaNumObrigatorio: true,
+
+  // Janela em que o garçom enxerga o botão "liberar todas as mesas"
+  // (fora dela o botão some para ele; para o adm fica sempre visível)
+  liberarAte: "11:00",
+  liberarVolta: "17:00",
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
 
   // --- Fechamento da fila ---

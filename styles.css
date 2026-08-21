@@ -826,3 +826,5 @@ button{font-family:inherit}
   -webkit-touch-callout:none;      /* iOS: sem o balãozinho de copiar */
   -webkit-tap-highlight-color:transparent;
 }
+/* botão de liberar todas, acima do mapa */
+.btn-liberar-todas{width:100%;margin:0 0 12px}

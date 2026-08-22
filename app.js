@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v93";
+  const VERSAO = "v94";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1648,9 +1648,27 @@
     const z = Number(localStorage.getItem(LS_ZOOM));
     return z >= 0.6 && z <= 3 ? z : 1;
   }
+  // Na aba do Mapa a planta ocupa TODA a tela que sobra abaixo dos botões.
+  // Num tablet em pé isso é o que o garçom quer: o salão inteiro à vista,
+  // sem rolar. O zoom multiplica esse tamanho (aí sim rola, se passar).
   function aplicarZoom() {
-    const piso = $("#mapaPiso");
-    if (piso) piso.style.width = Math.round(zoomDoMapa() * 100) + "%";
+    const piso = $("#mapaPiso"), rol = $("#mapaRolagem");
+    if (!piso || !rol) return;
+    const z = Math.round(zoomDoMapa() * 100);
+    piso.style.aspectRatio = "auto";
+    piso.style.width = z + "%";
+    piso.style.height = z + "%";
+    // A planta ocupa toda a tela que sobra abaixo dos botões: num tablet em
+    // pé o salão inteiro fica à vista, sem rolar. Mede, ajusta e confere se
+    // ainda sobrou alguma coisa embaixo (margens, barra do sistema).
+    const ajusta = () => {
+      const topo = rol.getBoundingClientRect().top;
+      let alvo = Math.round(window.innerHeight - topo - 12);
+      rol.style.height = Math.max(220, alvo) + "px";
+      const sobra = document.documentElement.scrollHeight - window.innerHeight;
+      if (sobra > 0) rol.style.height = Math.max(220, alvo - sobra) + "px";
+    };
+    ajusta();
   }
   function mudarZoom(passo) {
     const nova = Math.round((zoomDoMapa() + passo) * 10) / 10;
@@ -4367,6 +4385,10 @@
   function ligarRelogios() {
     if (_relogiosLigados) return;
     _relogiosLigados = true;
+    // a planta se reajusta quando a tela gira ou muda de tamanho
+    window.addEventListener("resize", () => aplicarZoom());
+    window.addEventListener("orientationchange", () => setTimeout(aplicarZoom, 250));
+
     setInterval(tickTimes, 1000);          // tempos ao vivo
     setInterval(checkExpired, 3000);       // move sozinho quem estourou o prazo
     setInterval(refresh, 15000);           // rede de segurança da FILA

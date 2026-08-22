@@ -962,3 +962,10 @@ button{font-family:inherit}
 #app[data-view="mapa"] .add-bar,
 #app[data-view="mapa"] #callPanel{display:none !important}
 #app[data-view="mapa"] .mapa-card{margin-top:0}
+
+/* aba do Mapa: a planta preenche a tela e não rola a página */
+#app[data-view="mapa"]{overflow:hidden}
+#app[data-view="mapa"] .content{padding-bottom:8px}
+#app[data-view="mapa"] .mapa-card{margin-bottom:0}
+#app[data-view="mapa"] .mapa-rolagem{max-height:none}
+#app[data-view="mapa"] .mesas-head{margin-bottom:8px}

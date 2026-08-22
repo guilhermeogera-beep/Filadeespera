@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v117";
+  const VERSAO = "v118";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2879,7 +2879,7 @@
     const tg = $("#tabGarcom");
     if (tg) tg.hidden = CFG.garcomAtivo === false || !podeVer("garcom");
     const tm = $("#tabMapa");
-    if (tm) tm.hidden = CFG.garcomAtivo === false || !podeVer("mapa") || !mapaVisivelPara();
+    if (tm) tm.hidden = CFG.garcomAtivo === false || !podeVer("mapa") || !mapaVisivelPara();   // idem: independe da aba do garçom
 
     tickTimes();
     maybeBeep(c);
@@ -3177,9 +3177,10 @@
   function aplicarPermissoes() {
     const ligado = loginLigado();
     const podeGarcom = CFG.garcomAtivo !== false && podeVer("garcom");
-    // o mapa tem aba própria e obedece à mesma chave do garçom, mais a
-    // escolha de "mostrar o mapa" para o perfil de quem está usando
-    const podeMapa = podeGarcom && podeVer("mapa") && mapaVisivelPara();
+    // O mapa tem aba própria. Depende do recurso do salão estar ligado e do
+    // perfil alcançar a aba — mas NÃO de ter a aba "Garçom": a atendente vê o
+    // mapa (na versão travada) sem ter nada a ver com a tela do salão.
+    const podeMapa = CFG.garcomAtivo !== false && podeVer("mapa") && mapaVisivelPara();
     const map = { totem: "#tabTotem", staff: "#tabStaff", garcom: "#tabGarcom", mapa: "#tabMapa" };
     Object.keys(map).forEach((v) => {
       const b = $(map[v]);

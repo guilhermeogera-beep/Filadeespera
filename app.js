@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v112";
+  const VERSAO = "v113";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1772,23 +1772,29 @@
     const card = $("#mapaCard");
     if (!card) return;
     if (_dedoNoMapa) { _mapaPendente = true; return; }
-    // o mapa é ferramenta do salão: aparece na aba do garçom
+    // O mapa é ferramenta do salão (aba do garçom), mas a atendente também
+    // ganha uma versão em FAIXA — uma tira fina entre as mesas livres e a
+    // fila, só para ela bater o olho no salão sem trocar de tela.
     const vista = appEl.getAttribute("data-view");
-    card.hidden = CFG.garcomAtivo === false || vista !== "mapa" ||
-      semTabelaMapa || !mapaVisivelPara();
+    const naFaixa = vista === "staff";
+    card.classList.toggle("em-faixa", naFaixa);
+    card.hidden = CFG.garcomAtivo === false || (vista !== "mapa" && !naFaixa) ||
+      semTabelaMapa || (!naFaixa && !mapaVisivelPara());
     if (card.hidden) { modoEdicaoMapa = false; return; }
 
     // quem pode mexer no cadastro é quem pode mexer na engrenagem
     const podeEditar = ehAdm();
-    if (!podeEditar) modoEdicaoMapa = false;
+    if (!podeEditar || naFaixa) modoEdicaoMapa = false;
     const editando = modoEdicaoMapa;
 
-    const podeLote = mapa.length && !editando && (ehAdm() || dentroDaJanelaLiberar());
+    // na faixa da atendente não entram os botões em lote nem o editor: ela é
+    // só para consultar, e o objetivo é não carregar a tela
+    const podeLote = mapa.length && !editando && !naFaixa && (ehAdm() || dentroDaJanelaLiberar());
     const mostrar = (id, cond) => { const b = $(id); if (b) b.hidden = !cond; };
     mostrar("#liberarTodasBtn", podeLote);
     mostrar("#aguardarTodasBtn", podeLote);
     mostrar("#limparTodasBtn", podeLote);
-    mostrar("#mapaEditarBtn", podeEditar && !editando);
+    mostrar("#mapaEditarBtn", podeEditar && !editando && !naFaixa);
     mostrar("#mapaNova", editando);
     mostrar("#mapaConcluir", editando);
 
@@ -1816,6 +1822,8 @@
   let mapaMesaAtiva = null;
 
   function abrirAcaoMesa(id) {
+    // na faixa da atendente o mapa é só visualização: nenhum comando
+    if (appEl.getAttribute("data-view") === "staff") return;
     const m = mapa.find((x) => x.id === id);
     if (!m) return;
     mapaMesaAtiva = id;
@@ -1893,6 +1901,16 @@
   function aplicarZoom() {
     const piso = $("#mapaPiso"), rol = $("#mapaRolagem");
     if (!piso || !rol) return;
+    const card = $("#mapaCard");
+    // Na faixa da atendente a planta NÃO cresce nem tem zoom: é uma tira fina
+    // com o salão inteiro reduzido, um relance — o tamanho vem todo do CSS.
+    if (card && card.classList.contains("em-faixa")) {
+      piso.style.aspectRatio = "";
+      piso.style.width = "";
+      piso.style.height = "";
+      rol.style.height = "";
+      return;
+    }
     const z = Math.round(zoomDoMapa() * 100);
     piso.style.aspectRatio = "auto";
     piso.style.width = z + "%";
@@ -1912,9 +1930,15 @@
   // Dobrar o cabeçalho do mapa: título, legenda e botões saem da tela e a
   // planta cresce para ocupar o espaço. Fica guardado neste aparelho — quem
   // usa o tablet o dia todo não quer reabrir isso a cada troca de aba.
+  // a faixa da atendente guarda a escolha dela separada da aba do Mapa:
+  // esconder a tira na recepção não pode apagar o mapa do salão
   const LS_MAPA_DOBRADO = "fila_mapa_dobrado";
+  function chaveDaDobra() {
+    return appEl.getAttribute("data-view") === "staff"
+      ? LS_MAPA_DOBRADO + "_faixa" : LS_MAPA_DOBRADO;
+  }
   function mapaDobrado() {
-    return localStorage.getItem(LS_MAPA_DOBRADO) === "1";
+    return localStorage.getItem(chaveDaDobra()) === "1";
   }
   // `forcarAberto` = modo de edição: o cabeçalho reaparece porque é lá que
   // estão os botões, mas a preferência guardada não muda — ao concluir a
@@ -1932,7 +1956,7 @@
     aplicarZoom();
   }
   function alternarDobraDoMapa() {
-    try { localStorage.setItem(LS_MAPA_DOBRADO, mapaDobrado() ? "0" : "1"); } catch (e) { /* ignora */ }
+    try { localStorage.setItem(chaveDaDobra(), mapaDobrado() ? "0" : "1"); } catch (e) { /* ignora */ }
     aplicarDobraDoMapa();
   }
 

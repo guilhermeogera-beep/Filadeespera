@@ -654,10 +654,7 @@ button{font-family:inherit}
    então a planta fica igual em qualquer tela. */
 .mapa-piso{
   position:relative;width:100%;aspect-ratio:3/2;
-  background:
-    linear-gradient(var(--line) 1px, transparent 1px) 0 0/100% 12.5%,
-    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/8.33% 100%,
-    #FAFAF8;
+  background:#FAFAF8;
   border:2px solid var(--line);border-radius:var(--radius);
   overflow:hidden;
   /* o dedo precisa poder rolar a página passando por cima do mapa; só quando
@@ -1065,3 +1062,18 @@ button{font-family:inherit}
 .mm-cadeiras i.r{right:-9px}
 /* mesa juntada: o anel do bloco não deve cortar as cadeiras */
 .mm-mesa.is-junta{outline-offset:11px}
+
+/* ---- Mesas juntadas ----
+   Um contorno só por trás do bloco inteiro (as quinas viram uma), bem
+   discreto, e o texto aparece uma vez só — na primeira mesa do bloco. */
+.mm-bloco{
+  position:absolute;border-radius:18px;pointer-events:none;
+  background:rgba(37,99,235,.07);border:2px solid rgba(37,99,235,.34);
+}
+.mm-bloco.is-ocupada{background:rgba(179,38,30,.06);border-color:rgba(179,38,30,.32)}
+.mm-bloco.is-limpar {background:rgba(201,134,31,.08);border-color:rgba(201,134,31,.34)}
+.mm-bloco.is-avisada{background:rgba(30,122,82,.07);border-color:rgba(30,122,82,.32)}
+/* o anel por mesa sai de cena: quem marca o bloco agora é o contorno */
+.mm-mesa.is-junta{outline:none}
+/* a mesa sem texto mantém a MESMA altura da outra: é isso que faz as bordas
+   coincidirem quando elas se encaixam */

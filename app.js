@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v108";
+  const VERSAO = "v109";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1440,6 +1440,25 @@
   // Juntar: a mesa arrastada entra no grupo da mesa de destino e FICA ONDE FOI
   // SOLTA. O garçom monta a formação que quiser (em linha, em L, em U) e o
   // desenho no mapa fica igual ao arranjo real do salão.
+  // Encaixe: ao soltar, a mesa não fica torta onde o dedo largou — ela cola
+  // certinho no lado da mesa de destino, borda com borda. O lado é escolhido
+  // pela direção em que ela foi solta (direita, esquerda, acima, abaixo).
+  function encaixarNaMesa(a, b, ondeSoltou) {
+    const ta = tamanhoDaMesaPct(a), tb = tamanhoDaMesaPct(b);
+    if (!ta || !tb || !ondeSoltou) return null;
+    const piso = $("#mapaPiso").getBoundingClientRect();
+    // compara em PIXELS: o piso não é quadrado, 1% na largura não é 1% na altura
+    const px = ((ondeSoltou.x - (Number(b.x) || 0)) / 100) * piso.width;
+    const py = ((ondeSoltou.y - (Number(b.y) || 0)) / 100) * piso.height;
+    const limita = (v) => Math.max(2, Math.min(98, v));
+    if (Math.abs(px) >= Math.abs(py)) {
+      const lado = px >= 0 ? 1 : -1;
+      return { x: limita((Number(b.x) || 0) + lado * (ta.w + tb.w) / 2), y: Number(b.y) || 0 };
+    }
+    const lado = py >= 0 ? 1 : -1;
+    return { x: Number(b.x) || 0, y: limita((Number(b.y) || 0) + lado * (ta.h + tb.h) / 2) };
+  }
+
   async function juntarMesas(idArrastada, idDestino, ondeSoltou) {
     const a = mapa.find((x) => x.id === idArrastada);
     const b = mapa.find((x) => x.id === idDestino);
@@ -1462,7 +1481,10 @@
       const patch = { grupo };
       if (precisaLimpar) patch.status = MAPA.LIMPAR;
       if (m.x_ant == null) { patch.x_ant = m.x; patch.y_ant = m.y; }
-      if (m.id === a.id && ondeSoltou) { patch.x = ondeSoltou.x; patch.y = ondeSoltou.y; }
+      if (m.id === a.id && ondeSoltou) {
+        const enc = encaixarNaMesa(a, b, ondeSoltou) || ondeSoltou;
+        patch.x = enc.x; patch.y = enc.y;
+      }
       Object.assign(m, patch);                            // desenho já fica certo
       await backend.updateMapa(m.id, patch);
     }
@@ -1550,9 +1572,61 @@
     return { topo: Math.ceil(resto / 2), base: Math.floor(resto / 2), esq: 1, dir: 1 };
   }
 
-  function cadeirasHTML(n) {
+  // Tamanho do desenho da mesa, em pixels — é o mesmo cálculo do CSS.
+  // Serve para encaixar uma mesa na outra e para desenhar o contorno do bloco.
+  const CADEIRA_FORA = 9;   // o quanto a cadeira avança para fora do tampo
+  function tamanhoDaMesaPx(m) {
+    const c = cadeirasDaMesa(m.lugares);
+    const lados = Math.max(c.topo, c.base);
+    return {
+      w: Math.max(66, 30 + lados * 22),
+      h: c.esq + c.dir > 0 ? 64 : 52,
+    };
+  }
+
+  // Converte o tamanho da mesa para % do piso (o piso muda de tamanho com o
+  // zoom e com a tela, então a conta precisa ser feita na hora).
+  function tamanhoDaMesaPct(m) {
+    const piso = $("#mapaPiso");
+    const r = piso && piso.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return null;
+    const t = tamanhoDaMesaPx(m);
+    return { w: (t.w / r.width) * 100, h: (t.h / r.height) * 100 };
+  }
+
+  // Lados em que esta mesa está encostada em outra do MESMO bloco. Ali não
+  // desenhamos cadeira: no salão ninguém senta na emenda de duas mesas.
+  function ladosColados(m) {
+    if (!m.grupo) return "";
+    const meu = tamanhoDaMesaPct(m);
+    if (!meu) return "";
+    let lados = "";
+    for (const o of blocoDaMesa(m)) {
+      if (o.id === m.id) continue;
+      const dele = tamanhoDaMesaPct(o);
+      if (!dele) continue;
+      const dx = (Number(o.x) || 0) - (Number(m.x) || 0);
+      const dy = (Number(o.y) || 0) - (Number(m.y) || 0);
+      const larg = (meu.w + dele.w) / 2;
+      const alt = (meu.h + dele.h) / 2;
+      const folgaX = larg * 0.35 + 0.5;
+      const folgaY = alt * 0.35 + 0.5;
+      // encostada na horizontal: distância ≈ metade de cada largura e as
+      // alturas se sobrepondo
+      if (Math.abs(Math.abs(dx) - larg) <= folgaX && Math.abs(dy) < alt * 0.9) {
+        lados += dx > 0 ? "r" : "l";
+      } else if (Math.abs(Math.abs(dy) - alt) <= folgaY && Math.abs(dx) < larg * 0.9) {
+        lados += dy > 0 ? "b" : "t";
+      }
+    }
+    return lados;
+  }
+
+  function cadeirasHTML(n, esconder) {
     const c = cadeirasDaMesa(n);
+    const pula = String(esconder || "");
     const fila = (qtd, lado) => {
+      if (pula.indexOf(lado) >= 0) return "";
       let h = "";
       for (let i = 0; i < qtd; i++) {
         const p = ((i + 1) / (qtd + 1)) * 100;
@@ -1565,23 +1639,59 @@
       fila(c.topo, "t") + fila(c.base, "b") + fila(c.esq, "l") + fila(c.dir, "r")}</span>`;
   }
 
+  // Contorno do bloco: em vez de um anel em volta de CADA mesa juntada (que
+  // deixava linhas no meio da emenda), desenha-se uma única forma arredondada
+  // por trás do bloco inteiro. As quinas viram uma só.
+  function blocosHTML() {
+    const grupos = new Map();
+    mapa.forEach((m) => {
+      if (!m.grupo) return;
+      if (!grupos.has(m.grupo)) grupos.set(m.grupo, []);
+      grupos.get(m.grupo).push(m);
+    });
+    let html = "";
+    grupos.forEach((ms) => {
+      if (ms.length < 2) return;
+      let x1 = 999, y1 = 999, x2 = -999, y2 = -999;
+      for (const m of ms) {
+        const t = tamanhoDaMesaPct(m);
+        if (!t) return;
+        const x = Number(m.x) || 50, y = Number(m.y) || 50;
+        x1 = Math.min(x1, x - t.w / 2); x2 = Math.max(x2, x + t.w / 2);
+        y1 = Math.min(y1, y - t.h / 2); y2 = Math.max(y2, y + t.h / 2);
+      }
+      // os 12px de folga cobrem as cadeiras, que avançam para fora do tampo
+      const est = estadoDaMesa(ms[0]);
+      html += `<div class="mm-bloco is-${est}" aria-hidden="true" style="` +
+        `left:calc(${x1.toFixed(2)}% - 12px);top:calc(${y1.toFixed(2)}% - 12px);` +
+        `width:calc(${(x2 - x1).toFixed(2)}% + 24px);height:calc(${(y2 - y1).toFixed(2)}% + 24px)"></div>`;
+    });
+    return html;
+  }
+
   function mesaMapaHTML(m, editando) {
     const est = editando ? "livre" : estadoDaMesa(m);
     const oc = editando ? null : ocupanteDaMesa(m);
     const desde = oc && (oc.sentou_em || oc.chamado_em);
     const junta = !editando && m.grupo;
-    // numa mesa juntada, os lugares mostrados são os do bloco todo
+    // Num bloco de mesas juntadas o texto aparece UMA vez só, na primeira mesa
+    // do bloco: "Mesa 1+4 / 8 lug. / tempo". As outras ficam só com o tampo,
+    // senão o mesmo dado aparece repetido dentro do mesmo desenho.
+    const bloco = junta ? blocoDaMesa(m) : [m];
+    const dono = !junta || bloco[0].id === m.id;
     const lugares = junta ? lugaresDoBloco(m) : m.lugares;
-    const miolo = `
-      ${cadeirasHTML(lugares)}
-      <b class="mm-num">Mesa ${esc(m.numero)}</b>
-      <span class="mm-lug">${lugares} lug.${m.pet ? " 🐾" : ""}</span>
-      ${junta ? `<span class="mm-junta">${numerosDoBloco(m).join("+")}</span>` : ""}
-      ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}`;
-    const classes = `mm-mesa is-${est}${m.pet ? " is-pet" : ""}${junta ? " is-junta" : ""}`;
+    const rotulo = junta ? "Mesa " + esc(numerosDoBloco(m).join("+")) : "Mesa " + esc(m.numero);
+    const petBloco = junta ? petDoBloco(m) : m.pet;
+    const texto = dono ? `
+      <b class="mm-num">${rotulo}</b>
+      <span class="mm-lug">${lugares} lug.${petBloco ? " 🐾" : ""}</span>
+      ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}` : "";
+    // as cadeiras são as DESTA mesa (o bloco soma no texto, não no desenho)
+    const miolo = cadeirasHTML(m.lugares, junta ? ladosColados(m) : "") + texto;
+    const classes = `mm-mesa is-${est}${m.pet ? " is-pet" : ""}${junta ? " is-junta" : ""}${junta && !dono ? " is-mudo" : ""}`;
     // `--lados` é quantas cadeiras cabem no lado comprido: é o que dá a largura
     // da mesa no desenho, para uma de 8 lugares ser visivelmente maior que uma de 4
-    const cad = cadeirasDaMesa(lugares);
+    const cad = cadeirasDaMesa(m.lugares);
     const lados = Math.max(cad.topo, cad.base);
     const altas = cad.esq + cad.dir > 0 ? " tem-pontas" : "";
     const posicao = `style="left:${Number(m.x) || 50}%;top:${Number(m.y) || 50}%;--lados:${lados}"`;
@@ -1648,7 +1758,8 @@
     // altura sairia curta, deixando um vazio embaixo
     requestAnimationFrame(aplicarZoom);
     setTimeout(aplicarZoom, 300);
-    $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, editando)).join("");
+    $("#mapaPiso").innerHTML = (editando ? "" : blocosHTML()) +
+      mapa.map((m) => mesaMapaHTML(m, editando)).join("");
     $("#mapaVazio").hidden = mapa.length > 0;
     _mapaPendente = false;
   }

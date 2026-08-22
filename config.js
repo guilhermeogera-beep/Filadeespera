@@ -62,6 +62,7 @@ window.FILA_CONFIG = {
   // --- Alerta de espera das outras filas (0 = não colorir) ---
   prefPrazo: 0,           // minutos até a fila PREFERENCIAL ficar vermelha
   normalPrazo: 0,         // minutos até a fila NORMAL ficar vermelha
+  resumoAlerta: 30,       // minutos até o grupo ficar destacado na fila do garçom
 
   // --- Entrada na fila (totem) ---
   telObrigatorio: true,   // exige telefone para entrar na fila

@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v98";
+  const VERSAO = "v100";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2330,6 +2330,13 @@
   // Em quantos minutos esta pessoa deveria ter sido chamada. É o que define a
   // cor do item na tela da atendente (verde no começo, vermelho ao estourar).
   // 0 ou vazio = essa fila não usa o semáforo.
+  // Minutos até um grupo ser considerado "ficando para trás" na fila resumida
+  // do garçom. Vale para qualquer grupo, preferencial ou não.
+  function alertaDoResumo() {
+    const v = Number(CFG.resumoAlerta);
+    return isNaN(v) || v < 0 ? 30 : v;
+  }
+
   function prazoDaFila(r) {
     if (isMesona(r)) return Number(CFG.mesonaPrazo) || 0;
     if (r.preferencial) return Number(CFG.prefPrazo) || 0;
@@ -2583,17 +2590,25 @@
     const vista = appEl.getAttribute("data-view");
     card.hidden = vista !== "garcom" || CFG.garcomAtivo === false;
     if (card.hidden) return;
-    const fila = waiting();
+    // Aqui a ordem NÃO é a da chamada: é pelo tempo de espera, quem espera há
+    // mais tempo fica em cima. Assim, se um grupo começa a ficar para trás
+    // (porque a mesa do tamanho dele não vaga), ele sobe sozinho na lista e
+    // o semáforo de cor vai esquentando até o vermelho.
+    const fila = waiting()
+      .slice()
+      .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+    // o semáforo aqui é o mesmo para todos: o que importa é o tempo de espera,
+    // não o tipo da fila
+    const alerta = alertaDoResumo();
     $("#resumoCount").textContent = fila.length;
     $("#resumoVazio").hidden = fila.length > 0;
     $("#resumoLista").innerHTML = fila.map((r) => `
-      <div class="resumo-item${isMesona(r) ? " is-meso" : ""}"
-           ${prazoDaFila(r) ? `data-espera-since="${r.criado_em}" data-espera-prazo="${prazoDaFila(r)}"` : ""}>
+      <div class="resumo-item"
+           ${alerta ? `data-espera-since="${r.criado_em}" data-espera-prazo="${alerta}"` : ""}>
         <b class="resumo-pes">${r.pessoas}</b>
         <span class="resumo-txt">
           <span class="resumo-lab">${r.pessoas === 1 ? "Pessoa" : "Pessoas"}${r.pet ? " 🐾" : ""}</span>
           <span class="resumo-tempo">⏱️ <b data-since="${r.criado_em}">agora</b></span>
-          ${isMesona(r) ? `<span class="resumo-meso">🍽 Mesa grande</span>` : ""}
         </span>
       </div>`).join("");
   }
@@ -4030,7 +4045,7 @@
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
-    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
+    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta",
     "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa", "mesaNumObrigatorio", "liberarAte", "liberarVolta",
   ];
 
@@ -4210,6 +4225,7 @@
     $("#cfgPinAtend").value = CFG.pinAtendente || "";
     $("#cfgPerguntarMesa").value = CFG.perguntarMesa || "opcional";
     $("#cfgMesaNumObr").value = CFG.mesaNumObrigatorio === false ? "nao" : "sim";
+    $("#cfgResumoAlerta").value = alertaDoResumo();
     $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
     $("#cfgPinGarcom").value = CFG.pinGarcom || "";
 
@@ -4281,6 +4297,7 @@
       garcomAtivo: $("#cfgGarcomOn").value === "sim",
       perguntarMesa: $("#cfgPerguntarMesa").value,
       mesaNumObrigatorio: $("#cfgMesaNumObr").value === "sim",
+      resumoAlerta: num("#cfgResumoAlerta", 0, 600, 30),
 
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
     };
@@ -4316,7 +4333,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior",
-    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

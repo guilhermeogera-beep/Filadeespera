@@ -983,17 +983,15 @@ button{font-family:inherit}
   background:var(--brand);color:#fff;font-weight:800;font-size:1.15rem;
   display:flex;align-items:center;justify-content:center;
 }
-.resumo-item.is-meso .resumo-pes{background:var(--meso)}
 .resumo-txt{display:flex;flex-direction:column;line-height:1.15}
 .resumo-lab{font-size:.78rem;color:var(--muted);font-weight:600}
 .resumo-tempo{font-size:.92rem;font-weight:700}
-/* Mesa grande na fila resumida. O FUNDO do cartão é do semáforo de espera
-   (verde a vermelho conforme o tempo), então o destaque vem do número e do
-   selo — senão um sobrescreveria o outro. */
-.resumo-item.is-meso{border-width:2px;border-color:var(--meso)}
-.resumo-item.is-meso .resumo-pes{background:var(--meso) !important;box-shadow:0 0 0 3px var(--meso-soft)}
-.resumo-meso{
-  font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
-  color:#fff;background:var(--meso);border-radius:999px;padding:2px 8px;margin-top:3px;
-  align-self:flex-start;
+/* Quem espera há mais tempo fica no topo. O destaque de "ficando para trás"
+   vem do semáforo (fundo verde -> vermelho, aplicado em tickTimes); quando
+   passa do prazo, o cartão ganha borda vermelha grossa e um leve pulsar. */
+.resumo-item.meso-urgente{
+  border-width:2.5px;box-shadow:0 0 0 3px rgba(231,76,60,.28);
+  animation:resumoPulsa 1.6s ease-in-out infinite;
 }
+@keyframes resumoPulsa{50%{box-shadow:0 0 0 7px rgba(231,76,60,.12)}}
+@media (prefers-reduced-motion: reduce){.resumo-item.meso-urgente{animation:none}}

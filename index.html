@@ -1003,6 +1003,11 @@
         <div class="cfg-sec">Equipe e acesso</div>
 
         <label class="field">
+          <span>Destacar na fila do garçom depois de (min)</span>
+          <input id="cfgResumoAlerta" type="number" min="0" max="600" step="5" />
+          <small class="hint">Na fila resumida do garçom quem espera há mais tempo fica no topo; passando desse tempo o cartão fica vermelho e pulsa. 0 desliga o destaque.</small>
+        </label>
+        <label class="field">
           <span>Número da mesa ao liberar (garçom)</span>
           <select id="cfgMesaNumObr">
             <option value="sim">Obrigatório</option>

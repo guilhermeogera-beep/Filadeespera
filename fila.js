@@ -7,7 +7,7 @@
   "use strict";
 
   const CFG = window.FILA_CONFIG || {};
-  const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado" };
+  const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado" };
   const LS_KEY = "fila_espera_v1";
   const T = "fila_publica";   // a "vitrine": fila sem telefone e só com o primeiro nome
 
@@ -20,7 +20,10 @@
 
   // A vitrine (view) já entrega só o primeiro nome e nada de telefone,
   // comanda ou pager — a proteção está no banco, não só nesta tela.
-  const COLS_FILA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
+  // sentou_em e pedido_em entram para a página avisar quando o pedido fica
+  // pronto; se a vitrine do banco ainda não os tiver, o app segue sem eles
+  const COLS_FILA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,sentou_em,pedido_em,pet";
+  const COLS_ANTIGAS = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
 
   // Só estas configurações interessam a quem acompanha a fila. Copiar `dados`
   // inteiro traria junto qualquer ajuste interno guardado na configuração.
@@ -62,6 +65,20 @@
   }
 
   // ---------- dados ----------
+
+  // Se a vitrine do banco ainda for a antiga (sem sentou_em/pedido_em), o
+  // PostgREST devolve erro 42703; nesse caso repetimos sem as colunas novas
+  // e a página funciona como antes, só sem o aviso de pedido pronto.
+  let colunasDaFila = COLS_FILA;
+  async function buscar(monta) {
+    let r = await monta(client.from(T).select(colunasDaFila));
+    if (r.error && r.error.code === "42703" && colunasDaFila !== COLS_ANTIGAS) {
+      colunasDaFila = COLS_ANTIGAS;
+      r = await monta(client.from(T).select(colunasDaFila));
+    }
+    return r;
+  }
+
   async function carregar() {
     if (!client) {
       try { rows = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { rows = []; }
@@ -69,14 +86,14 @@
     }
     // Lê a "vitrine" (view fila_publica): a fila já vem sem telefone, sem
     // comanda e só com o primeiro nome — nem o banco entrega mais que isso.
-    const ativos = await client.from(T).select(COLS_FILA)
+    const ativos = await buscar((q) => q
       .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO])
-      .order("criado_em", { ascending: true }).limit(PAGINA);
+      .order("criado_em", { ascending: true }).limit(PAGINA));
     if (ativos.error) throw ativos.error;
     const desde = new Date(Date.now() - JANELA_HIST_MS).toISOString();
-    const hist = await client.from(T).select(COLS_FILA)
+    const hist = await buscar((q) => q
       .gte("criado_em", desde)
-      .order("criado_em", { ascending: false }).limit(PAGINA);
+      .order("criado_em", { ascending: false }).limit(PAGINA));
     if (hist.error) throw hist.error;
 
     const mapa = new Map();
@@ -138,6 +155,13 @@
           <div class="me-sub">${frente}${
             CFG.mostrarTempoEspera !== false ? ` • esperando há <b data-since="${me.criado_em}">agora</b>` : ""}</div>
           <div class="me-note">A ordem pode mudar conforme o tamanho das mesas que vagam.</div>`;
+      } else if (me.pedido_em) {
+        // o mesmo aviso que sai pelo WhatsApp, para quem acompanha pelo link
+        corpo = `<div class="me-big">🍽️ Seu pedido está pronto!</div>
+          <div class="me-sub">Pode retirar no balcão. Avisamos às ${fmtClock(me.pedido_em)}.</div>`;
+      } else if (me.status === STATUS.SENTADO) {
+        corpo = `<div class="me-big">✅ Bom apetite!</div>
+          <div class="me-sub">Você já está na mesa${me.sentou_em ? " desde as " + fmtClock(me.sentou_em) : ""}. Avisamos aqui assim que o pedido ficar pronto.</div>`;
       } else {
         corpo = `<div class="me-big">Atendimento encerrado</div>
           <div class="me-sub">Este código não está mais na fila. Bom apetite! 🍽️</div>`;

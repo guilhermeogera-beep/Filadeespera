@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v118";
+  const VERSAO = "v119";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -850,6 +850,37 @@
     finally { _autoFechando = false; }
   }
 
+  // Mesas que a atendente pode escolher na hora de chamar alguém pela lista.
+  // É o caminho inverso do "tocar na mesa primeiro": ela escolhe a pessoa e
+  // diz para qual mesa vai mandar. A mesa escolhida fica reservada (vermelha
+  // na lista) até o cliente sentar, exatamente como no outro caminho.
+  function mesasParaEscolher(chosen) {
+    const livres = mesasLivres.filter((m) => !m.reservada_para);
+    if (!livres.length) return "";
+    const cabe = (m) => Number(m.lugares) >= Number(chosen.pessoas);
+    const ordenadas = livres.slice().sort((a, b) => {
+      if (cabe(a) !== cabe(b)) return cabe(a) ? -1 : 1;    // as que servem primeiro
+      return Number(a.lugares) - Number(b.lugares);        // e a menor que serve, antes
+    });
+    return `
+      <div class="cc-mesas">
+        <div class="cc-mesas-tit">Qual mesa vai usar? <small>(opcional)</small></div>
+        <div class="cc-mesas-lista">
+          ${ordenadas.map((m) => {
+            const num = String(m.numeros || m.identificacao || "").trim();
+            const rotulo = num ? "Mesa " + esc(num) : "sem número";
+            const sel = mesaSelecionada === m.id ? " is-sel" : "";
+            return `<button type="button" class="sm-mesa${cabe(m) ? "" : " is-aperta"}${sel}"
+              data-callmesa="${m.id}">
+              <b class="sm-num">${rotulo}</b>
+              <span class="sm-lug">${m.lugares} ${Number(m.lugares) === 1 ? "lugar" : "lugares"}</span>
+              ${m.pet ? `<span class="sm-pet">🐾 área pet</span>` : ""}
+            </button>`;
+          }).join("")}
+        </div>
+      </div>`;
+  }
+
   // Abre o pop-up de confirmação de chamada para uma pessoa escolhida
   // aceitaPet: passado quando a chamada veio do botão "Chamar mesa" (a atendente
   // já disse se a mesa é da área pet). undefined = chamada manual, pela lista.
@@ -875,7 +906,8 @@
     $("#callModalBody").innerHTML = `
       <div class="cc-name">${esc(chosen.nome)} ${chosen.preferencial ? "★" : ""}</div>
       <div class="cc-meta">${chosen.pessoas} ${chosen.pessoas === 1 ? "pessoa" : "pessoas"}${chosen.preferencial ? " • Preferencial" : ""}${isMesona(chosen) ? " • 🍽 mesa grande" : ""}${selos} • entrou ${fmtClock(chosen.criado_em)} • esperando há ${fmtElapsed(Date.now() - new Date(chosen.criado_em).getTime())}</div>
-      ${mesaTxt}${alerta}`;
+      ${mesaTxt}${alerta}
+      ${aceitaPet === undefined ? mesasParaEscolher(chosen) : ""}`;
     $("#callMsg").textContent = "";
     $("#callModal").hidden = false;
   }
@@ -4071,6 +4103,18 @@
 
     // em qual mesa o cliente sentou
     $("#sentouOk").addEventListener("click", confirmarSentou);
+    // escolher a mesa dentro do pop-up de chamada: um toque marca, outro
+    // desmarca. Só depois de confirmar é que a mesa fica reservada de verdade.
+    $("#callModalBody").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-callmesa]");
+      if (!b) return;
+      const id = b.dataset.callmesa;
+      const jaEra = mesaSelecionada === id;
+      mesaSelecionada = jaEra ? null : id;
+      $$("#callModalBody .sm-mesa").forEach((x) => x.classList.remove("is-sel"));
+      if (!jaEra) b.classList.add("is-sel");
+      renderMesas();     // a lista atrás do pop-up acompanha a escolha
+    });
     // tocar numa mesa livre preenche o número — sem ninguém decorar nada
     $("#sentouMesas").addEventListener("click", (e) => {
       const b = e.target.closest("[data-sentoumesa]");

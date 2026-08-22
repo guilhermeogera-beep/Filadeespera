@@ -1098,3 +1098,12 @@ button{font-family:inherit}
 .mapa-card.so-olhar .mapa-botoes{display:none}
 .mapa-card.so-olhar .mm-mesa{pointer-events:none;cursor:default}
 .mapa-card.so-olhar .mapa-piso{touch-action:pan-y;cursor:default}
+
+/* ---- Escolher a mesa dentro do pop-up de chamada ----
+   Caminho inverso do "tocar na mesa primeiro": escolhe-se a pessoa e depois
+   a mesa. Confirmada a chamada, a mesa fica reservada — vermelha na lista —
+   até o cliente sentar. */
+.cc-mesas{margin-top:12px;border-top:1.5px dashed var(--line);padding-top:10px}
+.cc-mesas-tit{font-size:.85rem;font-weight:700;color:var(--muted);margin-bottom:6px}
+.cc-mesas-tit small{font-weight:600;opacity:.8}
+.cc-mesas-lista{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-height:33vh;overflow-y:auto}

@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v95";
+  const VERSAO = "v96";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1564,6 +1564,11 @@
 
     card.classList.toggle("is-editando", editando);
     aplicarZoom();
+    // mede de novo no quadro seguinte: na primeira pintada a tela ainda pode
+    // estar se acomodando (fonte carregando, barra do sistema aparecendo) e a
+    // altura sairia curta, deixando um vazio embaixo
+    requestAnimationFrame(aplicarZoom);
+    setTimeout(aplicarZoom, 300);
     $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, editando)).join("");
     $("#mapaVazio").hidden = mapa.length > 0;
     _mapaPendente = false;

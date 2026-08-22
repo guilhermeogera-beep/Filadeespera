@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v88";
+  const VERSAO = "v91";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1500,14 +1500,28 @@
     const junta = !editando && m.grupo;
     // numa mesa juntada, os lugares mostrados são os do bloco todo
     const lugares = junta ? lugaresDoBloco(m) : m.lugares;
-    return `<button type="button" class="mm-mesa is-${est}${m.pet ? " is-pet" : ""}${junta ? " is-junta" : ""}"
-      style="left:${Number(m.x) || 50}%;top:${Number(m.y) || 50}%"
-      data-mapamesa="${m.id}" title="Mesa ${esc(m.numero)}">
+    const miolo = `
       <b class="mm-num">Mesa ${esc(m.numero)}</b>
       <span class="mm-lug">${lugares} lug.${m.pet ? " 🐾" : ""}</span>
       ${junta ? `<span class="mm-junta">${numerosDoBloco(m).join("+")}</span>` : ""}
-      ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}
-    </button>`;
+      ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}`;
+    const classes = `mm-mesa is-${est}${m.pet ? " is-pet" : ""}${junta ? " is-junta" : ""}`;
+    const posicao = `style="left:${Number(m.x) || 50}%;top:${Number(m.y) || 50}%"`;
+
+    // No editor a mesa é uma caixa (não um <button>), para poder ter os dois
+    // botõezinhos dentro — botão dentro de botão o navegador não aceita.
+    if (editando) {
+      return `<div class="${classes} is-edit" ${posicao} data-mapamesa="${m.id}"
+        role="button" tabindex="0" title="Mesa ${esc(m.numero)}">
+        ${miolo}
+        <span class="mm-tools">
+          <button type="button" class="mm-tool" data-mmedit="${m.id}" title="Editar a mesa" aria-label="Editar a mesa">✏️</button>
+          <button type="button" class="mm-tool mm-tool-x" data-mmdel="${m.id}" title="Excluir a mesa" aria-label="Excluir a mesa">🗑</button>
+        </span>
+      </div>`;
+    }
+    return `<button type="button" class="${classes}" ${posicao}
+      data-mapamesa="${m.id}" title="Mesa ${esc(m.numero)}">${miolo}</button>`;
   }
 
   // O mapa pode ser desligado por perfil: tem casa que quer o mapa só na
@@ -1533,14 +1547,24 @@
     const vista = appEl.getAttribute("data-view");
     card.hidden = CFG.garcomAtivo === false || vista !== "garcom" ||
       semTabelaMapa || !mapaVisivelPara();
-    if (card.hidden) return;
-    const podeLote = mapa.length && (ehAdm() || dentroDaJanelaLiberar());
-    const lt = $("#liberarTodasBtn");
-    if (lt) lt.hidden = !podeLote;
-    const at = $("#aguardarTodasBtn");
-    if (at) at.hidden = !podeLote;
-    aplicarProporcao();
-    $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, false)).join("");
+    if (card.hidden) { modoEdicaoMapa = false; return; }
+
+    // quem pode mexer no cadastro é quem pode mexer na engrenagem
+    const podeEditar = ehAdm();
+    if (!podeEditar) modoEdicaoMapa = false;
+    const editando = modoEdicaoMapa;
+
+    const podeLote = mapa.length && !editando && (ehAdm() || dentroDaJanelaLiberar());
+    const mostrar = (id, cond) => { const b = $(id); if (b) b.hidden = !cond; };
+    mostrar("#liberarTodasBtn", podeLote);
+    mostrar("#aguardarTodasBtn", podeLote);
+    mostrar("#mapaEditarBtn", podeEditar && !editando);
+    mostrar("#mapaNova", editando);
+    mostrar("#mapaConcluir", editando);
+
+    card.classList.toggle("is-editando", editando);
+    aplicarZoom();
+    $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, editando)).join("");
     $("#mapaVazio").hidden = mapa.length > 0;
     _mapaPendente = false;
   }
@@ -1615,47 +1639,42 @@
   let mmLugares = 4;
   let mmManual = false;
 
-  // Formato do salão: quanto a planta é mais larga que alta. 1.5 = 3 por 2.
-  // Fica na engrenagem, então vale para todos os aparelhos.
-  function proporcaoDoMapa() {
-    const p = Number(CFG.mapaProporcao);
-    return p >= 0.5 && p <= 3 ? p : 1.5;
+  // Zoom do mapa: o desenho inteiro cresce ou encolhe, sem esticar nada.
+  // Mudar a PROPORÇÃO deformava o salão, porque as mesas são guardadas em
+  // porcentagem: alongar a planta alongava junto o arranjo das mesas.
+  // Fica guardado neste aparelho: cada tela tem um tamanho.
+  const LS_ZOOM = "fila_mapa_zoom";
+  function zoomDoMapa() {
+    const z = Number(localStorage.getItem(LS_ZOOM));
+    return z >= 0.6 && z <= 3 ? z : 1;
   }
-  function aplicarProporcao() {
+  function aplicarZoom() {
     const piso = $("#mapaPiso");
-    if (piso) piso.style.aspectRatio = String(proporcaoDoMapa());
+    if (piso) piso.style.width = Math.round(zoomDoMapa() * 100) + "%";
   }
-  async function mudarProporcao(passo) {
-    const nova = Math.round((proporcaoDoMapa() + passo) * 10) / 10;
-    if (nova < 0.5 || nova > 3) return;
-    await saveSettings({ mapaProporcao: nova });
-    aplicarProporcao();
-    $("#mapaEditInfo").textContent = infoDoEditor();
+  function mudarZoom(passo) {
+    const nova = Math.round((zoomDoMapa() + passo) * 10) / 10;
+    if (nova < 0.6 || nova > 3) return;
+    try { localStorage.setItem(LS_ZOOM, String(nova)); } catch (e) { /* ignora */ }
+    aplicarZoom();
   }
 
-  function infoDoEditor() {
-    const n = mapa.length;
-    return (n ? n + (n === 1 ? " mesa cadastrada" : " mesas cadastradas") : "Nenhuma mesa ainda — toque em “Nova mesa”.") +
-      " • formato " + proporcaoDoMapa().toFixed(1) + " (largura ÷ altura)";
-  }
+  // Modo de edição do mapa: acontece na PRÓPRIA tela do garçom, para o que
+  // se monta ser exatamente o que se vê depois.
+  let modoEdicaoMapa = false;
 
   function abrirEditorMapa() {
     $("#cfgModal").hidden = true;
-    $("#mapaEditMsg").textContent = "";
-    desenharEditorMapa();
-    $("#mapaEditModal").hidden = false;
+    modoEdicaoMapa = true;
+    setView("garcom");
+    renderMapa();
   }
-
-  // Sair do editor: volta para a engrenagem, de onde se veio
   function fecharEditorMapa() {
-    $("#mapaEditModal").hidden = true;
-    $("#cfgModal").hidden = false;
+    modoEdicaoMapa = false;
+    $("#mapaEditMsg").textContent = "";
+    renderMapa();
   }
-
-  function desenharEditorMapa() {
-    $("#mapaEditPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, true)).join("");
-    $("#mapaEditInfo").textContent = infoDoEditor();
-  }
+  function desenharEditorMapa() { renderMapa(); }
 
   // pop-up de uma mesa do cadastro (nova ou existente)
   function abrirMesaCadastro(id) {
@@ -1732,6 +1751,22 @@
     return { x: 50, y: 50 };
   }
 
+  // Excluir direto pelo botãozinho da mesa, no editor
+  async function excluirMesaDoMapa(id) {
+    const m = mapa.find((x) => x.id === id);
+    if (!m) return;
+    if (!confirm("Excluir a mesa " + m.numero + " do mapa?")) return;
+    try {
+      await backend.removeMapa(id);
+      await refresh();
+      desenharEditorMapa();
+    } catch (e) {
+      console.error("Erro ao excluir a mesa do mapa:", e);
+      $("#mapaEditMsg").textContent = "Não deu para excluir — verifique a internet.";
+      $("#mapaEditMsg").className = "form-msg err";
+    }
+  }
+
   async function apagarMesaCadastro() {
     if (!mapaEditando) return;
     try {
@@ -1771,12 +1806,15 @@
     }
   }
 
-  function ligarArrasto(seletor, modo) {
+  function ligarArrasto(seletor, modoBase) {
+    // O mesmo piso serve para os dois usos: no dia a dia arrastar JUNTA mesas;
+    // no modo de edição arrastar POSICIONA. Por isso o modo é lido na hora.
+    const modo = () => (modoBase === "juntar" && modoEdicaoMapa ? "editar" : modoBase);
     const piso = $(seletor);
     if (!piso) return;
     // o menu de "copiar" do Android aparece ao segurar: aqui ele só atrapalha
     piso.addEventListener("contextmenu", (e) => e.preventDefault());
-    let alvo = null, podeArrastar = false, moveu = false, vagaAcesa = null;
+    let alvo = null, podeArrastar = false, moveu = false;
     let tocouEm = 0;          // hora do toque, para separar toque de arrasto
     // O Android manda os eventos em ordens diferentes conforme a versão
     // (ponteiro, toque, clique) e às vezes engole alguns. Em vez de depender
@@ -1787,43 +1825,6 @@
     const SEGURAR = 350;   // ms de dedo parado para liberar o arrasto
     const FOLGA = 10;      // px de tremida que ainda contam como "parado"
 
-    // Mostra onde dá para soltar: quatro tracejados em volta de cada mesa,
-    // um de cada lado. Sem isso o garçom não tem como adivinhar o alcance.
-    const mostrarVagas = () => {
-      if (!alvo || piso.querySelector(".mm-vaga")) return;
-      const p = piso.getBoundingClientRect();
-      const r = alvo.getBoundingClientRect();
-      if (!p.width || !r.width) return;
-      const lg = (r.width / p.width) * 100, at = (r.height / p.height) * 100;
-      const meuGrupo = (mapa.find((m) => m.id === alvo.dataset.mapamesa) || {}).grupo;
-      $$(seletor + " .mm-mesa").forEach((el) => {
-        if (el === alvo) return;
-        const m = mapa.find((x) => x.id === el.dataset.mapamesa);
-        if (!m) return;
-        if (meuGrupo && m.grupo === meuGrupo) return;      // já estão juntas
-        if (!podeJuntar(m)) return;      // liberada ou ocupada não recebe mesa
-        // mede a mesa de DESTINO: a arrastada está aumentada pelo efeito de
-        // "pronta para arrastar" e daria uma folga maior que a pedida
-        const rd = el.getBoundingClientRect();
-        [[lg, 0], [-lg, 0], [0, at], [0, -at]].forEach(([dx2, dy2]) => {
-          const vx = Number(m.x) + dx2, vy = Number(m.y) + dy2;
-          if (vx < 4 || vx > 96 || vy < 6 || vy > 94) return;   // fora do piso
-          const v = document.createElement("div");
-          v.className = "mm-vaga";
-          v.dataset.vx = vx;
-          v.dataset.vy = vy;
-          v.dataset.dono = m.id;
-          v.style.left = vx + "%";
-          v.style.top = vy + "%";
-          // a vaga tem o tamanho da mesa com 2mm de folga: dá para ver que a
-          // mesa cabe exatamente ali
-          v.style.width = "calc(" + Math.round(rd.width) + "px + 2mm)";
-          v.style.height = "calc(" + Math.round(rd.height) + "px + 2mm)";
-          piso.appendChild(v);
-        });
-      });
-    };
-    const limparVagas = () => $$(seletor + " .mm-vaga").forEach((v) => v.remove());
 
     // Qual mesa está neste ponto da tela. Serve de plano B: se o mapa foi
     // redesenhado entre o toque e o clique, o elemento antigo não existe mais,
@@ -1845,19 +1846,18 @@
       const agora = Date.now();
       if (agora - ultimoToque < 500) return;
       ultimoToque = agora;
-      if (modo === "juntar") acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(id))();
+      if (modo() === "juntar") acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(id))();
       else abrirMesaCadastro(id);
     };
 
     const soltar = () => {
-      limparVagas();
       piso.classList.remove("is-pegando");
       travarRolagem(false);
-      if (modo === "juntar") setTimeout(liberarDesenhoDoMapa, 600);
+      setTimeout(liberarDesenhoDoMapa, 600);
       clearTimeout(relogio);
       if (alvo) alvo.classList.remove("is-arrastando", "is-pronto");
       $$(seletor + " .mm-mesa").forEach((x) => x.classList.remove("is-alvo"));
-      alvo = null; podeArrastar = false; moveu = false; vagaAcesa = null;
+      alvo = null; podeArrastar = false; moveu = false;
     };
 
     // Qual mesa está embaixo da que está sendo arrastada. Comparo as posições
@@ -1870,15 +1870,15 @@
       let melhor = null, menor = Infinity;
       $$(seletor + " .mm-mesa").forEach((el) => {
         if (el === alvo) return;
-        if (modo === "juntar") {
+        if (modo() === "juntar") {
           const m = mapa.find((x) => x.id === el.dataset.mapamesa);
           if (m && !podeJuntar(m)) return;
         }
         const o = el.getBoundingClientRect();
         const ox = o.left + o.width / 2, oy = o.top + o.height / 2;
         const dist = Math.hypot(cx - ox, cy - oy);
-        // as vagas tracejadas ficam a uma mesa de distância: o alcance precisa
-        // passar disso, senão soltar em cima da vaga não juntaria
+        // precisa estar encostada, com uma folga para o dedo não ter que ser
+        // exato: até uma mesa e um terço de distância entre os centros
         const limite = (r.width + o.width) / 2 * 1.35;
         if (dist < limite && dist < menor) { menor = dist; melhor = el; }
       });
@@ -1886,10 +1886,12 @@
     };
 
     piso.addEventListener("pointerdown", (e) => {
+      // os botõezinhos de editar/excluir não arrastam nem abrem a mesa
+      if (e.target.closest("[data-mmedit],[data-mmdel]")) return;
       const el = e.target.closest("[data-mapamesa]");
       if (!el) return;
       alvo = el; podeArrastar = false; moveu = false;
-      if (modo === "juntar") _dedoNoMapa = true;   // segura o redesenho
+      _dedoNoMapa = true;   // segura o redesenho em qualquer modo
       tocouEm = e.timeStamp || 0;
       xInicial = e.clientX; yInicial = e.clientY;
       posOriginal = { left: el.style.left, top: el.style.top };
@@ -1898,7 +1900,7 @@
       dy = e.clientY - (r.top + r.height / 2);
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* sem pointer real */ }
       // liberada ou ocupada não sai do lugar: arrastar não faria sentido
-      if (modo === "juntar") {
+      if (modo() === "juntar") {
         const eu = mapa.find((x) => x.id === el.dataset.mapamesa);
         if (eu && !podeJuntar(eu)) return;
       }
@@ -1912,7 +1914,6 @@
         // enquanto a mesa está na mão é o que funciona nos dois.
         piso.classList.add("is-pegando");
         travarRolagem(true);
-        if (modo === "juntar") mostrarVagas();
         // um toque de vibração avisa que já pode arrastar
         if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) { /* ignora */ } }
       }, SEGURAR);
@@ -1935,32 +1936,17 @@
       alvo.style.left = Math.max(4, Math.min(96, x)) + "%";
       alvo.style.top = Math.max(6, Math.min(94, y)) + "%";
       alvo.classList.add("is-arrastando");
-      if (modo === "juntar") {
+      if (modo() === "juntar") {
+        // a mesa de destino se acende quando a arrastada chega perto
         const outra = soltoEmCima();
         $$(seletor + " .mm-mesa").forEach((x2) => x2.classList.toggle("is-alvo", x2 === outra));
-        // acende a vaga mais perto do dedo, para ficar claro onde vai encostar
-        const r2 = alvo.getBoundingClientRect();
-        const cx2 = r2.left + r2.width / 2, cy2 = r2.top + r2.height / 2;
-        let perto = null, dmin = Infinity;
-        if (outra) {
-          $$(seletor + " .mm-vaga").forEach((v) => {
-            const o = v.getBoundingClientRect();
-            const d = Math.hypot(cx2 - (o.left + o.width / 2), cy2 - (o.top + o.height / 2));
-            if (d < dmin) { dmin = d; perto = v; }
-          });
-        }
-        vagaAcesa = perto;
-        $$(seletor + " .mm-vaga").forEach((v) => v.classList.toggle("is-perto", v === perto));
       }
     });
 
     const fim = async (e) => {
       if (!alvo) return;
       const el = alvo, arrastou = podeArrastar && moveu;
-      const outra = modo === "juntar" && arrastou ? soltoEmCima() : null;
-      // a vaga acesa diz em qual lado da mesa o garçom encostou
-      const vaga = vagaAcesa && outra && vagaAcesa.dataset.dono === outra.dataset.mapamesa
-        ? { x: Number(vagaAcesa.dataset.vx), y: Number(vagaAcesa.dataset.vy) } : null;
+      const outra = modo() === "juntar" && arrastou ? soltoEmCima() : null;
       // No Android o dedo quase nunca fica parado: um toque comum escorrega
       // alguns pixels. Se foi rápido e perto do ponto inicial, é toque.
       const dt = (e && e.timeStamp ? e.timeStamp : 0) - tocouEm;
@@ -1973,13 +1959,16 @@
       if (!arrastou) return;                     // segurou e soltou sem mover
       ultimoToque = Date.now();
 
-      if (modo === "juntar") {
-        // solta no vazio: volta ao lugar. Sobre uma vaga: o juntar coloca a
-        // mesa exatamente naquele lado, mantendo a formação que o garçom fez
-        el.style.left = posOriginal.left;
-        el.style.top = posOriginal.top;
-        if (!outra) return;
-        try { await juntarMesas(id, outra.dataset.mapamesa, vaga); }
+      if (modo() === "juntar") {
+        // soltou no vazio: a mesa volta para onde estava
+        if (!outra) {
+          el.style.left = posOriginal.left;
+          el.style.top = posOriginal.top;
+          return;
+        }
+        const px = Math.round(parseFloat(el.style.left) * 10) / 10;
+        const py = Math.round(parseFloat(el.style.top) * 10) / 10;
+        try { await juntarMesas(id, outra.dataset.mapamesa, { x: px, y: py }); }
         catch (err) {
           console.error("Erro ao juntar mesas:", err);
           avisoStaff("Não deu para juntar as mesas — verifique a internet.");
@@ -2017,6 +2006,10 @@
     // (acontece no Android quando ele acha que o gesto virou rolagem), o
     // clique ainda chega. Sem isto, o toque simples às vezes não abria nada.
     piso.addEventListener("click", (e) => {
+      const edit = e.target.closest("[data-mmedit]");
+      if (edit) { e.stopPropagation(); abrirMesaCadastro(edit.dataset.mmedit); return; }
+      const del = e.target.closest("[data-mmdel]");
+      if (del) { e.stopPropagation(); excluirMesaDoMapa(del.dataset.mmdel); return; }
       const el = e.target.closest("[data-mapamesa]") || mesaNoPonto(e.clientX, e.clientY);
       if (el) abrirPorToque(el.dataset.mapamesa);
     });
@@ -3476,8 +3469,12 @@
     $("#cfgMapaBtn").addEventListener("click", acaoSegura("configurar o mapa", abrirEditorMapa));
     $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));
     $("#mapaConcluir").addEventListener("click", fecharEditorMapa);
-    $("#mapaMaisAlto").addEventListener("click", () => mudarProporcao(-0.1));   // menor razão = mais alto
-    $("#mapaMaisBaixo").addEventListener("click", () => mudarProporcao(0.1));
+    $("#mapaMaior").addEventListener("click", () => mudarZoom(0.2));
+    $("#mapaMenor").addEventListener("click", () => mudarZoom(-0.2));
+    $("#mapaEditarBtn").addEventListener("click", acaoSegura("editar o mapa", () => {
+      modoEdicaoMapa = true;
+      renderMapa();
+    }));
     $("#mmSalvar").addEventListener("click", salvarMesaCadastro);
     $("#mmApagar").addEventListener("click", apagarMesaCadastro);
     $("#mmNumero").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#mmSalvar").click(); });
@@ -3494,7 +3491,6 @@
         $("#mmLugares").textContent = mmLugares;
       })
     );
-    ligarArrasto("#mapaEditPiso", "editar");
     ligarArrasto("#mapaPiso", "juntar");
 
     // botões de "Quantas pessoas?" na entrada da fila
@@ -3661,8 +3657,7 @@
         // fecha só o pop-up que está por cima
         const abertos = $$(".modal").filter((m) => !m.hidden);
         if (abertos.length) { closeModal(abertos[abertos.length - 1]); return; }
-        const ed = $("#mapaEditModal");
-        if (ed && !ed.hidden) fecharEditorMapa();
+        if (modoEdicaoMapa) fecharEditorMapa();
       }
     });
 
@@ -3967,7 +3962,7 @@
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
     "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
-    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "mapaProporcao", "boasVindas",
+    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
@@ -4255,7 +4250,7 @@
     "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
-    "mapaCard", "mapaPiso", "mapaEditModal", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaMaisAlto",
+    "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr",
     "loginScreen", "relBtn", "sairBtn",
   ];

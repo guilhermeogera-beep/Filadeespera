@@ -99,6 +99,7 @@
           <span class="ml ocupada">ocupada</span>
         </div>
       </div>
+
       <div class="mapa-botoes">
         <button type="button" class="btn btn-verde btn-liberar-todas" id="liberarTodasBtn" hidden>
           🟢 Liberar todas
@@ -106,11 +107,28 @@
         <button type="button" class="btn btn-azul btn-liberar-todas" id="aguardarTodasBtn" hidden>
           🔵 Todas aguardando
         </button>
+        <button type="button" class="btn btn-neutral btn-liberar-todas" id="mapaEditarBtn" hidden>
+          ✏️ Editar mapa
+        </button>
+        <button type="button" class="btn btn-primary btn-liberar-todas" id="mapaNova" hidden>
+          ➕ Nova mesa
+        </button>
+        <button type="button" class="btn btn-verde btn-liberar-todas" id="mapaConcluir" hidden>
+          ✓ Concluir
+        </button>
+        <span class="mapa-zoom">
+          <button type="button" class="em-zoom" id="mapaMenor" title="Diminuir o mapa" aria-label="Diminuir o mapa">－</button>
+          <button type="button" class="em-zoom" id="mapaMaior" title="Aumentar o mapa" aria-label="Aumentar o mapa">＋</button>
+        </span>
       </div>
-      <div class="mapa-piso" id="mapaPiso"></div>
+
+      <div class="mapa-rolagem" id="mapaRolagem">
+        <div class="mapa-piso" id="mapaPiso"></div>
+      </div>
+      <p class="form-msg" id="mapaEditMsg" role="status"></p>
       <div class="mapa-vazio" id="mapaVazio" hidden>
-        Nenhuma mesa cadastrada ainda. O cadastro fica na engrenagem, em
-        <b>"Configurar mapa de mesas"</b>.
+        Nenhuma mesa cadastrada ainda. Toque em <b>"✏️ Editar mapa"</b> e depois
+        em <b>"➕ Nova mesa"</b>.
       </div>
     </section>
 
@@ -343,34 +361,6 @@
 
   <!-- ============ MODAL: CONFIRMAR CHAMADA ============ -->
   <!-- ============ MODAL: CADASTRO DO MAPA (adm/atendente) ============ -->
-  <!-- Editor do mapa: tela cheia, para a planta ficar do tamanho real de uso -->
-  <div class="editor-mapa" id="mapaEditModal" hidden>
-    <header class="em-topo">
-      <div>
-        <strong>🗺 Mapa do salão</strong>
-        <span class="em-dica">Segure e arraste para posicionar. Toque numa mesa para editar.</span>
-      </div>
-      <div class="em-acoes">
-        <button type="button" class="btn btn-primary btn-sm" id="mapaNova">➕ Nova mesa</button>
-        <button type="button" class="btn btn-verde btn-sm" id="mapaConcluir">✓ Concluir</button>
-      </div>
-    </header>
-
-    <div class="em-palco">
-      <div class="mapa-piso is-edit" id="mapaEditPiso"></div>
-
-      <!-- lateral direita: estica ou encolhe a planta -->
-      <div class="em-lado em-lado-dir">
-        <button type="button" class="em-zoom" id="mapaMaisAlto" title="Salão mais alto" aria-label="Salão mais alto">＋</button>
-        <button type="button" class="em-zoom" id="mapaMaisBaixo" title="Salão mais baixo" aria-label="Salão mais baixo">－</button>
-      </div>
-    </div>
-
-    <footer class="em-rodape">
-      <span class="hint" id="mapaEditInfo"></span>
-      <p class="form-msg" id="mapaEditMsg" role="status"></p>
-    </footer>
-  </div>
 
   <!-- ============ MODAL: UMA MESA DO CADASTRO ============ -->
   <div class="modal" id="mapaMesaModal" data-fixo hidden>
@@ -718,7 +708,7 @@
         <label class="field">
           <span>Mapa do salão</span>
           <button type="button" class="btn btn-neutral" id="cfgMapaBtn">🗺 Configurar mapa de mesas</button>
-          <small class="hint">Cadastre as mesas da casa e arraste para montar a planta. O mapa aparece na aba do garçom.</small>
+          <small class="hint">Abre o mapa na aba do garçom, em modo de edição — você monta a planta na mesma tela em que ela vai ser usada.</small>
         </label>
         <label class="field">
           <span>Mostrar o mapa para o garçom</span>

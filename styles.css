@@ -1044,3 +1044,24 @@ button{font-family:inherit}
 .mapa-card.mapa-dobrado .mapa-legenda,
 .mapa-card.mapa-dobrado .mapa-botoes{display:none}
 .mapa-card.mapa-dobrado .mesas-head{margin-bottom:6px}
+
+/* ---- Desenho da mesa no mapa ----
+   O retângulo é o tampo; os risquinhos em volta são as cadeiras. A largura
+   cresce com o número de lugares (--lados = cadeiras do lado comprido), então
+   uma mesa de 8 é visivelmente maior que uma de 4 — dá para ler o salão de
+   longe, sem precisar do texto. */
+.mm-mesa{
+  width:calc(30px + var(--lados, 2) * 22px);
+  min-width:66px;
+}
+.mm-mesa.tem-pontas{min-height:64px}
+.mm-cadeiras{position:absolute;inset:0;pointer-events:none}
+.mm-cadeiras i{position:absolute;background:currentColor;opacity:.45;border-radius:3px}
+.mm-cadeiras i.t,.mm-cadeiras i.b{width:15px;height:6px;margin-left:-7.5px}
+.mm-cadeiras i.t{top:-9px}
+.mm-cadeiras i.b{bottom:-9px}
+.mm-cadeiras i.l,.mm-cadeiras i.r{width:6px;height:15px;margin-top:-7.5px}
+.mm-cadeiras i.l{left:-9px}
+.mm-cadeiras i.r{right:-9px}
+/* mesa juntada: o anel do bloco não deve cortar as cadeiras */
+.mm-mesa.is-junta{outline-offset:11px}

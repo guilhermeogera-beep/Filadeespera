@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v107";
+  const VERSAO = "v108";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1535,6 +1535,36 @@
   // ---------- desenho do mapa ----------
   // Uma mesa do mapa vira um quadradinho posicionado em % do piso, para
   // ficar igual em qualquer tela.
+  // Desenho da mesa: o retângulo é o tampo e os risquinhos em volta são as
+  // cadeiras. Até 6 lugares todo mundo senta nos lados compridos; de 7 em
+  // diante entram as duas cabeceiras — é como as mesas ficam no salão.
+  function cadeirasDaMesa(n) {
+    const t = Math.max(1, Math.min(24, Number(n) || 1));
+    // até 6 lugares a mesa é um retângulo com todo mundo nos lados compridos
+    // (é como as mesas de 4 e de 6 ficam no salão); de 7 em diante entram as
+    // duas cabeceiras e o resto se divide entre os lados
+    if (t <= 2) return { topo: 1, base: t - 1, esq: 0, dir: 0 };
+    if (t === 3) return { topo: 2, base: 1, esq: 0, dir: 0 };
+    if (t <= 6) return { topo: Math.ceil(t / 2), base: Math.floor(t / 2), esq: 0, dir: 0 };
+    const resto = t - 2; // as duas cabeceiras
+    return { topo: Math.ceil(resto / 2), base: Math.floor(resto / 2), esq: 1, dir: 1 };
+  }
+
+  function cadeirasHTML(n) {
+    const c = cadeirasDaMesa(n);
+    const fila = (qtd, lado) => {
+      let h = "";
+      for (let i = 0; i < qtd; i++) {
+        const p = ((i + 1) / (qtd + 1)) * 100;
+        const eixo = (lado === "t" || lado === "b") ? "left" : "top";
+        h += `<i class="${lado}" style="${eixo}:${p.toFixed(1)}%"></i>`;
+      }
+      return h;
+    };
+    return `<span class="mm-cadeiras" aria-hidden="true">${
+      fila(c.topo, "t") + fila(c.base, "b") + fila(c.esq, "l") + fila(c.dir, "r")}</span>`;
+  }
+
   function mesaMapaHTML(m, editando) {
     const est = editando ? "livre" : estadoDaMesa(m);
     const oc = editando ? null : ocupanteDaMesa(m);
@@ -1543,17 +1573,23 @@
     // numa mesa juntada, os lugares mostrados são os do bloco todo
     const lugares = junta ? lugaresDoBloco(m) : m.lugares;
     const miolo = `
+      ${cadeirasHTML(lugares)}
       <b class="mm-num">Mesa ${esc(m.numero)}</b>
       <span class="mm-lug">${lugares} lug.${m.pet ? " 🐾" : ""}</span>
       ${junta ? `<span class="mm-junta">${numerosDoBloco(m).join("+")}</span>` : ""}
       ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}`;
     const classes = `mm-mesa is-${est}${m.pet ? " is-pet" : ""}${junta ? " is-junta" : ""}`;
-    const posicao = `style="left:${Number(m.x) || 50}%;top:${Number(m.y) || 50}%"`;
+    // `--lados` é quantas cadeiras cabem no lado comprido: é o que dá a largura
+    // da mesa no desenho, para uma de 8 lugares ser visivelmente maior que uma de 4
+    const cad = cadeirasDaMesa(lugares);
+    const lados = Math.max(cad.topo, cad.base);
+    const altas = cad.esq + cad.dir > 0 ? " tem-pontas" : "";
+    const posicao = `style="left:${Number(m.x) || 50}%;top:${Number(m.y) || 50}%;--lados:${lados}"`;
 
     // No editor a mesa é uma caixa (não um <button>), para poder ter os dois
     // botõezinhos dentro — botão dentro de botão o navegador não aceita.
     if (editando) {
-      return `<div class="${classes} is-edit" ${posicao} data-mapamesa="${m.id}"
+      return `<div class="${classes}${altas} is-edit" ${posicao} data-mapamesa="${m.id}"
         role="button" tabindex="0" title="Mesa ${esc(m.numero)}">
         ${miolo}
         <span class="mm-tools">
@@ -1562,7 +1598,7 @@
         </span>
       </div>`;
     }
-    return `<button type="button" class="${classes}" ${posicao}
+    return `<button type="button" class="${classes}${altas}" ${posicao}
       data-mapamesa="${m.id}" title="Mesa ${esc(m.numero)}">${miolo}</button>`;
   }
 

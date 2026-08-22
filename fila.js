@@ -137,7 +137,14 @@
     if (me) {
       const pos = w.findIndex((r) => r.id === me.id) + 1;
       let corpo;
-      if (me.status === STATUS.CHAMADO) {
+      // O pedido pronto vem na frente de tudo: se ele já ficou pronto, é isso
+      // que o cliente precisa ler, mesmo que a linha dele ainda esteja como
+      // "aguardando" ou "chamado" na fila.
+      if (me.pedido_em) {
+        // o mesmo aviso que sai pelo WhatsApp, para quem acompanha pelo link
+        corpo = `<div class="me-big">🍽️ Seu pedido está pronto!</div>
+          <div class="me-sub">Pode retirar no balcão. Avisamos às ${fmtClock(me.pedido_em)}.</div>`;
+      } else if (me.status === STATUS.CHAMADO) {
         corpo = `<div class="me-big">🔔 É a sua vez!</div>
           <div class="me-sub">Dirija-se à recepção agora. Você foi chamado às ${fmtClock(me.chamado_em)}
           e tem até ${esc(String(CFG.prazoComparecer || 5))} minutos para comparecer.</div>`;
@@ -155,10 +162,6 @@
           <div class="me-sub">${frente}${
             CFG.mostrarTempoEspera !== false ? ` • esperando há <b data-since="${me.criado_em}">agora</b>` : ""}</div>
           <div class="me-note">A ordem pode mudar conforme o tamanho das mesas que vagam.</div>`;
-      } else if (me.pedido_em) {
-        // o mesmo aviso que sai pelo WhatsApp, para quem acompanha pelo link
-        corpo = `<div class="me-big">🍽️ Seu pedido está pronto!</div>
-          <div class="me-sub">Pode retirar no balcão. Avisamos às ${fmtClock(me.pedido_em)}.</div>`;
       } else if (me.status === STATUS.SENTADO) {
         corpo = `<div class="me-big">✅ Bom apetite!</div>
           <div class="me-sub">Você já está na mesa${me.sentou_em ? " desde as " + fmtClock(me.sentou_em) : ""}. Avisamos aqui assim que o pedido ficar pronto.</div>`;

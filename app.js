@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v106";
+  const VERSAO = "v107";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1605,6 +1605,7 @@
     mostrar("#mapaConcluir", editando);
 
     card.classList.toggle("is-editando", editando);
+    aplicarDobraDoMapa(editando);
     aplicarZoom();
     // mede de novo no quadro seguinte: na primeira pintada a tela ainda pode
     // estar se acomodando (fonte carregando, barra do sistema aparecendo) e a
@@ -1717,6 +1718,33 @@
     };
     ajusta();
   }
+  // Dobrar o cabeçalho do mapa: título, legenda e botões saem da tela e a
+  // planta cresce para ocupar o espaço. Fica guardado neste aparelho — quem
+  // usa o tablet o dia todo não quer reabrir isso a cada troca de aba.
+  const LS_MAPA_DOBRADO = "fila_mapa_dobrado";
+  function mapaDobrado() {
+    return localStorage.getItem(LS_MAPA_DOBRADO) === "1";
+  }
+  // `forcarAberto` = modo de edição: o cabeçalho reaparece porque é lá que
+  // estão os botões, mas a preferência guardada não muda — ao concluir a
+  // edição o mapa volta a ficar dobrado como estava.
+  function aplicarDobraDoMapa(forcarAberto) {
+    const card = $("#mapaCard"), bt = $("#mapaDobrarBtn");
+    if (!card || !bt) return;
+    const dobrado = mapaDobrado() && !forcarAberto;
+    card.classList.toggle("mapa-dobrado", dobrado);
+    bt.textContent = dobrado ? "▸" : "▾";
+    bt.setAttribute("aria-expanded", dobrado ? "false" : "true");
+    const rotulo = dobrado ? "Mostrar o cabeçalho do mapa" : "Esconder o cabeçalho do mapa";
+    bt.title = rotulo;
+    bt.setAttribute("aria-label", rotulo);
+    aplicarZoom();
+  }
+  function alternarDobraDoMapa() {
+    try { localStorage.setItem(LS_MAPA_DOBRADO, mapaDobrado() ? "0" : "1"); } catch (e) { /* ignora */ }
+    aplicarDobraDoMapa();
+  }
+
   function mudarZoom(passo) {
     const nova = Math.round((zoomDoMapa() + passo) * 10) / 10;
     if (nova < 0.6 || nova > 3) return;
@@ -2640,12 +2668,18 @@
   // Fila resumida para o garçom: ele não precisa de nomes nem telefones —
   // precisa saber de que tamanho são os grupos e há quanto tempo esperam,
   // para escolher quais mesas liberar primeiro.
+  // Quantos grupos cabem na faixa da aba do Mapa: lá a fila é um resumo de
+  // relance, numa linha só, para não roubar altura da planta do salão.
+  const RESUMO_NO_MAPA = 6;
+
   function renderResumoFila() {
     const card = $("#filaResumoCard");
     if (!card) return;
     const vista = appEl.getAttribute("data-view");
-    card.hidden = vista !== "garcom" || CFG.garcomAtivo === false;
+    const noMapa = vista === "mapa";
+    card.hidden = (vista !== "garcom" && !noMapa) || CFG.garcomAtivo === false;
     if (card.hidden) return;
+    card.classList.toggle("em-faixa", noMapa);
     // Aqui a ordem NÃO é a da chamada: é pelo tempo de espera, quem espera há
     // mais tempo fica em cima. Assim, se um grupo começa a ficar para trás
     // (porque a mesa do tamanho dele não vaga), ele sobe sozinho na lista e
@@ -2653,12 +2687,16 @@
     const fila = waiting()
       .slice()
       .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+    // na aba do Mapa entram só os primeiros — os que esperam há mais tempo,
+    // que são justamente os que interessam na hora de liberar uma mesa
+    const mostrados = noMapa ? fila.slice(0, RESUMO_NO_MAPA) : fila;
+    const sobraram = fila.length - mostrados.length;
     // o semáforo aqui é o mesmo para todos: o que importa é o tempo de espera,
     // não o tipo da fila
     const alerta = alertaDoResumo();
     $("#resumoCount").textContent = fila.length;
     $("#resumoVazio").hidden = fila.length > 0;
-    $("#resumoLista").innerHTML = fila.map((r) => `
+    $("#resumoLista").innerHTML = mostrados.map((r) => `
       <div class="resumo-item"
            ${alerta ? `data-espera-since="${r.criado_em}" data-espera-prazo="${alerta}"` : ""}>
         <b class="resumo-pes">${r.pessoas}</b>
@@ -2666,7 +2704,8 @@
           <span class="resumo-lab">${r.pessoas === 1 ? "Pessoa" : "Pessoas"}${r.pet ? " 🐾" : ""}</span>
           <span class="resumo-tempo">⏱️ <b data-since="${r.criado_em}">agora</b></span>
         </span>
-      </div>`).join("");
+      </div>`).join("") +
+      (sobraram > 0 ? `<div class="resumo-mais">+${sobraram}<small>na fila</small></div>` : "");
   }
 
   // Painel das mesas livres: a atendente escolhe, o garçom acompanha o que lançou
@@ -3604,6 +3643,7 @@
     $("#cfgMapaBtn").addEventListener("click", acaoSegura("configurar o mapa", abrirEditorMapa));
     $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));
     $("#mapaConcluir").addEventListener("click", fecharEditorMapa);
+    $("#mapaDobrarBtn").addEventListener("click", alternarDobraDoMapa);
     $("#mapaMaior").addEventListener("click", () => mudarZoom(0.2));
     $("#mapaMenor").addEventListener("click", () => mudarZoom(-0.2));
     $("#mapaEditarBtn").addEventListener("click", acaoSegura("editar o mapa", () => {
@@ -4396,7 +4436,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior",
-    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

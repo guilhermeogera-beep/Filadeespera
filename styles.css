@@ -1008,3 +1008,39 @@ button{font-family:inherit}
 }
 @keyframes resumoPulsa{50%{box-shadow:0 0 0 7px rgba(231,76,60,.12)}}
 @media (prefers-reduced-motion: reduce){.resumo-item.meso-urgente{animation:none}}
+
+/* ---- Fila resumida na aba do Mapa: uma faixa fina no topo ----
+   Aqui a planta do salão é a estrela; a fila entra só de relance, numa linha
+   só. O que não coube vira um "+N" no fim — o garçom abre a aba do garçom
+   quando quiser a lista inteira. */
+.fila-resumo.em-faixa{padding:10px 12px;gap:8px;margin-bottom:10px}
+.fila-resumo.em-faixa .mesas-head{margin-bottom:0}
+.fila-resumo.em-faixa .card-title{font-size:1rem}
+.fila-resumo.em-faixa .resumo-lista{
+  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;padding-bottom:2px;
+}
+.fila-resumo.em-faixa .resumo-item{padding:4px 10px 4px 4px;gap:7px}
+.fila-resumo.em-faixa .resumo-pes{width:32px;height:32px;font-size:1rem}
+.fila-resumo.em-faixa .resumo-lab{font-size:.72rem}
+.fila-resumo.em-faixa .resumo-tempo{font-size:.86rem}
+.resumo-mais{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  flex:0 0 auto;padding:4px 12px;border:1.5px dashed var(--line);border-radius:12px;
+  font-weight:800;color:var(--muted);line-height:1.1;
+}
+.resumo-mais small{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+
+/* ---- Dobrar o cabeçalho do mapa ----
+   Uma seta à esquerda esconde título, legenda e botões; a planta cresce e
+   ocupa a tela toda. É o modo "só o salão" para o tablet do salão. */
+.mapa-head{align-items:center;gap:10px}
+.mapa-dobrar{
+  flex:0 0 auto;width:34px;height:34px;border:1.5px solid var(--line);background:#fff;
+  border-radius:10px;font-size:1rem;line-height:1;cursor:pointer;color:var(--muted);
+}
+.mapa-dobrar:hover{background:var(--brand-soft)}
+.mapa-card.mapa-dobrado .mapa-titulo,
+.mapa-card.mapa-dobrado .mapa-legenda,
+.mapa-card.mapa-dobrado .mapa-botoes{display:none}
+.mapa-card.mapa-dobrado .mesas-head{margin-bottom:6px}

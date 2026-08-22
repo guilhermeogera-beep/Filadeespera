@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v84";
+  const VERSAO = "v85";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1783,8 +1783,9 @@
           v.dataset.dono = m.id;
           v.style.left = vx + "%";
           v.style.top = vy + "%";
-          v.style.width = lg + "%";
-          v.style.height = at + "%";
+          // marca só o lado, sem tapar o mapa: um terço do tamanho da mesa
+          v.style.width = (lg / 3) + "%";
+          v.style.height = (at / 3) + "%";
           piso.appendChild(v);
         });
       });

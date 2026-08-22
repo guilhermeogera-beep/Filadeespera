@@ -767,8 +767,8 @@ button{font-family:inherit}
 /* vagas: onde dá para soltar a mesa para juntar (aparecem ao segurar) */
 .mm-vaga{
   position:absolute;transform:translate(-50%, -50%);
-  border:2px dashed var(--junta);border-radius:12px;
-  background:rgba(37,99,235,.06);pointer-events:none;z-index:1;
+  border:2px dashed var(--junta);border-radius:8px;
+  background:rgba(37,99,235,.10);pointer-events:none;z-index:1;
 }
 .mm-vaga.is-perto{
   background:rgba(37,99,235,.20);border-style:solid;

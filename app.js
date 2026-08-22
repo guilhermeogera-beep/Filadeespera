@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v96";
+  const VERSAO = "v98";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -820,7 +820,7 @@
   }
 
   // Abre o pop-up de confirmação de chamada para uma pessoa escolhida
-  // aceitaPet: passado quando a chamada veio do botão "Chamar próximo" (a atendente
+  // aceitaPet: passado quando a chamada veio do botão "Chamar mesa" (a atendente
   // já disse se a mesa é da área pet). undefined = chamada manual, pela lista.
   function openCallConfirm(chosen, aceitaPet) {
     pendingCall = chosen;
@@ -2591,8 +2591,9 @@
            ${prazoDaFila(r) ? `data-espera-since="${r.criado_em}" data-espera-prazo="${prazoDaFila(r)}"` : ""}>
         <b class="resumo-pes">${r.pessoas}</b>
         <span class="resumo-txt">
-          <span class="resumo-lab">${r.pessoas === 1 ? "pessoa" : "pessoas"}${r.pet ? " 🐾" : ""}</span>
+          <span class="resumo-lab">${r.pessoas === 1 ? "Pessoa" : "Pessoas"}${r.pet ? " 🐾" : ""}</span>
           <span class="resumo-tempo">⏱️ <b data-since="${r.criado_em}">agora</b></span>
+          ${isMesona(r) ? `<span class="resumo-meso">🍽 Mesa grande</span>` : ""}
         </span>
       </div>`).join("");
   }
@@ -3921,13 +3922,14 @@
       return;
     }
     const min = (ms) => (ms == null ? "" : String(Math.round(ms / 60000)).replace(".", ","));
-    const cab = ["Nome", "Telefone", "E-mail", "Aniversario", "Idade", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
-      "Mesa", "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera ate chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situacao"];
+    // o arquivo leva BOM, então os acentos abrem certo no Excel
+    const cab = ["Nome", "Telefone", "E-mail", "Aniversário", "Idade", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
+      "Mesa", "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera até chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situação"];
     const linhas = relCache.map((r) => [
       r.nome, r.telefone || "", r.email || "", r.aniversario || "", (idadeDe(r.aniversario) == null ? "" : idadeDe(r.aniversario)), r.pessoas,
       r.preferencial ? "Preferencial" : "Normal",
-      isMesona(r) ? "Sim" : "Nao",
-      r.pet ? "Sim" : (r.sem_area_pet ? "Nao - sem area pet" : "Nao"),
+      isMesona(r) ? "Sim" : "Não",
+      r.pet ? "Sim" : (r.sem_area_pet ? "Não — sem área pet" : "Não"),
       r.comanda || "", r.pager || "", r.mesa_numero || "",
       fmtDataHora(entradaEm(r)),
       r.chamado_em ? fmtDataHora(r.chamado_em) : "",

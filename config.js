@@ -62,6 +62,7 @@ window.FILA_CONFIG = {
   // --- Alerta de espera das outras filas (0 = não colorir) ---
   prefPrazo: 0,           // minutos até a fila PREFERENCIAL ficar vermelha
   normalPrazo: 0,         // minutos até a fila NORMAL ficar vermelha
+  totemEntrada: true,     // mostra o botão "Entrar na fila" no totem
   pedidoPainelMin: 10,     // minutos que o "pedido pronto" fica à mostra (totem, atendente e link do cliente)
   resumoAlerta: 30,       // minutos até o grupo ficar destacado na fila do garçom
 

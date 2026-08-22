@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css" />
+<link rel="stylesheet" href="./styles.css?v=117" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -898,6 +898,14 @@
           <small class="hint">Viram os botões de "Quantas pessoas?" na entrada da fila. Separe por vírgula.</small>
         </label>
         <label class="field">
+          <span>Botão "Entrar na fila" no totem</span>
+          <select id="cfgTotemEntrada">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar (só acompanhar)</option>
+          </select>
+          <small class="hint">Ocultando, o cliente não se cadastra sozinho: o totem vira painel de acompanhamento e quem lança na fila é a recepção.</small>
+        </label>
+        <label class="field">
           <span>Chamada no alto do totem</span>
           <input id="cfgBoas" type="text" maxlength="80" placeholder="Entre na fila aqui 👇" />
           <small class="hint">Aparece em letras grandes no topo do totem. Em branco, mostra "Entre na fila aqui".</small>
@@ -1139,4 +1147,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js"></script>
+<script src="./app.js?v=117"></script>

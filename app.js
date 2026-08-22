@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v114";
+  const VERSAO = "v117";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1756,7 +1756,15 @@
   // O mapa pode ser desligado por perfil: tem casa que quer o mapa só na
   // mão do garçom, e tem quem queira o contrário. Quando o login está
   // desligado, ninguém tem perfil — vale a regra do garçom.
+  // A atendente vê a MESMA planta do garçom, mas travada: sem botões, sem
+  // arrastar, sem abrir opções. Na recepção o mapa é informação, não comando —
+  // quem mexe no estado das mesas é o salão.
+  function mapaSoDeOlhar() {
+    return loginLigado() && !!usuario && usuario.papel === PAPEL.ATENDENTE;
+  }
+
   function mapaVisivelPara() {
+    if (mapaSoDeOlhar()) return true;   // a versão travada não depende do ajuste do salão
     const admLogado = loginLigado() && usuario && usuario.papel === PAPEL.ADM;
     return admLogado ? CFG.mapaAdm !== false : CFG.mapaGarcom !== false;
   }
@@ -1772,29 +1780,27 @@
     const card = $("#mapaCard");
     if (!card) return;
     if (_dedoNoMapa) { _mapaPendente = true; return; }
-    // O mapa é ferramenta do salão (aba do garçom), mas a atendente também
-    // ganha uma versão em FAIXA — uma tira fina entre as mesas livres e a
-    // fila, só para ela bater o olho no salão sem trocar de tela.
+    // O mapa vive na aba "Mapa". Para o garçom é ferramenta de trabalho; para
+    // a atendente é só consulta — mesma planta, mas travada.
     const vista = appEl.getAttribute("data-view");
-    const naFaixa = vista === "staff";
-    card.classList.toggle("em-faixa", naFaixa);
-    card.hidden = CFG.garcomAtivo === false || (vista !== "mapa" && !naFaixa) ||
-      semTabelaMapa || (!naFaixa && !mapaVisivelPara());
+    const soOlhar = mapaSoDeOlhar();
+    card.classList.toggle("so-olhar", soOlhar);
+    card.hidden = CFG.garcomAtivo === false || vista !== "mapa" ||
+      semTabelaMapa || !mapaVisivelPara();
     if (card.hidden) { modoEdicaoMapa = false; return; }
 
     // quem pode mexer no cadastro é quem pode mexer na engrenagem
-    const podeEditar = ehAdm();
-    if (!podeEditar || naFaixa) modoEdicaoMapa = false;
+    const podeEditar = ehAdm() && !soOlhar;
+    if (!podeEditar) modoEdicaoMapa = false;
     const editando = modoEdicaoMapa;
 
-    // na faixa da atendente não entram os botões em lote nem o editor: ela é
-    // só para consultar, e o objetivo é não carregar a tela
-    const podeLote = mapa.length && !editando && !naFaixa && (ehAdm() || dentroDaJanelaLiberar());
+    // na versão da atendente não entra nenhum botão: ela só consulta
+    const podeLote = mapa.length && !editando && !soOlhar && (ehAdm() || dentroDaJanelaLiberar());
     const mostrar = (id, cond) => { const b = $(id); if (b) b.hidden = !cond; };
     mostrar("#liberarTodasBtn", podeLote);
     mostrar("#aguardarTodasBtn", podeLote);
     mostrar("#limparTodasBtn", podeLote);
-    mostrar("#mapaEditarBtn", podeEditar && !editando && !naFaixa);
+    mostrar("#mapaEditarBtn", podeEditar && !editando);
     mostrar("#mapaNova", editando);
     mostrar("#mapaConcluir", editando);
 
@@ -1822,8 +1828,8 @@
   let mapaMesaAtiva = null;
 
   function abrirAcaoMesa(id) {
-    // na faixa da atendente o mapa é só visualização: nenhum comando
-    if (appEl.getAttribute("data-view") === "staff") return;
+    // na versão da atendente o mapa é só visualização: nenhum comando
+    if (mapaSoDeOlhar()) return;
     const m = mapa.find((x) => x.id === id);
     if (!m) return;
     mapaMesaAtiva = id;
@@ -1901,16 +1907,6 @@
   function aplicarZoom() {
     const piso = $("#mapaPiso"), rol = $("#mapaRolagem");
     if (!piso || !rol) return;
-    const card = $("#mapaCard");
-    // Na faixa da atendente a planta NÃO cresce nem tem zoom: é uma tira fina
-    // com o salão inteiro reduzido, um relance — o tamanho vem todo do CSS.
-    if (card && card.classList.contains("em-faixa")) {
-      piso.style.aspectRatio = "";
-      piso.style.width = "";
-      piso.style.height = "";
-      rol.style.height = "";
-      return;
-    }
     const z = Math.round(zoomDoMapa() * 100);
     piso.style.aspectRatio = "auto";
     piso.style.width = z + "%";
@@ -1930,15 +1926,9 @@
   // Dobrar o cabeçalho do mapa: título, legenda e botões saem da tela e a
   // planta cresce para ocupar o espaço. Fica guardado neste aparelho — quem
   // usa o tablet o dia todo não quer reabrir isso a cada troca de aba.
-  // a faixa da atendente guarda a escolha dela separada da aba do Mapa:
-  // esconder a tira na recepção não pode apagar o mapa do salão
   const LS_MAPA_DOBRADO = "fila_mapa_dobrado";
-  function chaveDaDobra() {
-    return appEl.getAttribute("data-view") === "staff"
-      ? LS_MAPA_DOBRADO + "_faixa" : LS_MAPA_DOBRADO;
-  }
   function mapaDobrado() {
-    return localStorage.getItem(chaveDaDobra()) === "1";
+    return localStorage.getItem(LS_MAPA_DOBRADO) === "1";
   }
   // `forcarAberto` = modo de edição: o cabeçalho reaparece porque é lá que
   // estão os botões, mas a preferência guardada não muda — ao concluir a
@@ -1956,7 +1946,7 @@
     aplicarZoom();
   }
   function alternarDobraDoMapa() {
-    try { localStorage.setItem(chaveDaDobra(), mapaDobrado() ? "0" : "1"); } catch (e) { /* ignora */ }
+    try { localStorage.setItem(LS_MAPA_DOBRADO, mapaDobrado() ? "0" : "1"); } catch (e) { /* ignora */ }
     aplicarDobraDoMapa();
   }
 
@@ -2716,6 +2706,17 @@
   function updateAddBtn() {
     const btn = $("#openFormBtn");
     if (!btn) return;
+    // Tem casa que não quer o cliente se cadastrando sozinho: o totem vira só
+    // painel de acompanhamento e quem lança na fila é a recepção. O botão some
+    // apenas no totem — a atendente e o garçom continuam com o deles.
+    const soPainel = !isStaff() && !isGarcom() && CFG.totemEntrada === false;
+    btn.hidden = soPainel;
+    // sem botão nenhum, a barra fixa de baixo some junto: senão fica uma
+    // tarja cinza ocupando o pé da tela do totem
+    const barra = document.querySelector(".add-bar");
+    const outro = $("#freeTableBtn");
+    if (barra) barra.hidden = soPainel && (!outro || outro.hidden);
+    if (soPainel) return;
     // na aba do garçom o botão grande serve para lançar mesa livre
     if (isGarcom()) {
       btn.disabled = false;
@@ -2847,7 +2848,11 @@
     // No totem a faixa é a chamada principal: se ninguém escreveu nada na
     // engrenagem, ela mesma convida a entrar na fila
     if (wb) {
-      const txt = (CFG.boasVindas || "").trim() || "Entre na fila aqui 👇";
+      // com a entrada desligada o totem não convida ninguém a se cadastrar:
+      // ali ele é painel de acompanhamento
+      const semEntrada = !staff && CFG.totemEntrada === false;
+      const txt = (CFG.boasVindas || "").trim() ||
+        (semEntrada ? "Acompanhe a fila" : "Entre na fila aqui 👇");
       wb.textContent = txt;
       wb.hidden = false;
     }
@@ -3058,7 +3063,7 @@
     if (!loginLigado()) return ["totem", "staff", "garcom", "mapa"];   // como era antes
     const p = usuario && usuario.papel;
     if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa"];
-    if (p === PAPEL.ATENDENTE) return ["staff"];
+    if (p === PAPEL.ATENDENTE) return ["staff", "mapa"];
     if (p === PAPEL.GARCOM) return ["garcom", "mapa"];
     return ["totem"];   // totem (ou sem perfil definido): só a fila
   }
@@ -4364,7 +4369,7 @@
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
-    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta", "pedidoPainelMin",
+    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta", "pedidoPainelMin", "totemEntrada",
     "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa", "mesaNumObrigatorio", "liberarAte", "liberarVolta",
   ];
 
@@ -4545,6 +4550,7 @@
     $("#cfgPerguntarMesa").value = CFG.perguntarMesa || "opcional";
     $("#cfgMesaNumObr").value = CFG.mesaNumObrigatorio === false ? "nao" : "sim";
     $("#cfgResumoAlerta").value = alertaDoResumo();
+    $("#cfgTotemEntrada").value = CFG.totemEntrada === false ? "nao" : "sim";
     $("#cfgPedidoPainel").value = minutosDoPedidoNoPainel();
     $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
     $("#cfgPinGarcom").value = CFG.pinGarcom || "";
@@ -4623,6 +4629,7 @@
       perguntarMesa: $("#cfgPerguntarMesa").value,
       mesaNumObrigatorio: $("#cfgMesaNumObr").value === "sim",
       resumoAlerta: num("#cfgResumoAlerta", 0, 600, 30),
+      totemEntrada: $("#cfgTotemEntrada").value === "sim",
       pedidoPainelMin: num("#cfgPedidoPainel", 0, 120, 10),
 
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
@@ -4659,7 +4666,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn",
-    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

@@ -1042,7 +1042,6 @@ button{font-family:inherit}
    cores do salão. (Na faixa da atendente o mapa some inteiro, aí ela sai.) */
 .mapa-card.mapa-dobrado .mapa-titulo,
 .mapa-card.mapa-dobrado .mapa-botoes{display:none}
-.mapa-card.em-faixa.mapa-dobrado .mapa-legenda{display:none}
 .mapa-card.mapa-dobrado .mesas-head{margin-bottom:6px}
 
 /* ---- Desenho da mesa no mapa ----
@@ -1092,39 +1091,10 @@ button{font-family:inherit}
 .btn-preto{background:#1C1F26;border:2px solid #000;color:#fff;font-weight:700}
 .btn-preto:hover{background:#31363F}
 
-/* ---- Mapa em faixa (tela da atendente) ----
-   Uma tira fina entre as mesas livres e a fila: só legenda e visualização,
-   sem nenhum comando. A atendente bate o olho no salão sem trocar de tela e
-   sem perder espaço para a fila, que é o trabalho dela. */
-.mapa-card.em-faixa{padding:10px 12px}
-.mapa-card.em-faixa .mesas-head{margin-bottom:8px}
-.mapa-card.em-faixa .card-title{font-size:1rem}
-.mapa-card.em-faixa .mapa-legenda .ml{font-size:.66rem;padding:2px 7px}
-.mapa-card.em-faixa .mapa-botoes,
-.mapa-card.em-faixa .mapa-vazio,
-.mapa-card.em-faixa #mapaEditMsg{display:none}
-.mapa-card.em-faixa .mapa-rolagem{height:auto}
-/* tira fina de verdade: altura travada, não importa a largura da tela.
-   As mesas são guardadas em %, então continuam no lugar certo — o salão
-   só fica "achatado", que é o suficiente para um relance. */
-.mapa-card.em-faixa .mapa-piso{
-  width:100% !important;aspect-ratio:auto !important;
-  height:clamp(110px, 20vh, 170px) !important;
-}
-/* só olhar: nada de tocar, arrastar ou juntar pela tela da recepção */
-.mapa-card.em-faixa .mm-mesa{pointer-events:none;cursor:default}
-.mapa-card.em-faixa .mapa-piso{touch-action:pan-y}
-/* as mesas encolhem junto com a tira, senão não caberia o salão */
-.mapa-card.em-faixa .mm-mesa{
-  min-width:0;width:calc(20px + var(--lados, 2) * 13px);min-height:30px;padding:2px 3px;
-}
-.mapa-card.em-faixa .mm-mesa.tem-pontas{min-height:36px}
-.mapa-card.em-faixa .mm-num{font-size:.62rem}
-.mapa-card.em-faixa .mm-lug{font-size:.54rem}
-.mapa-card.em-faixa .mm-timer{font-size:.52rem}
-.mapa-card.em-faixa .mm-cadeiras{display:none}
-/* na faixa, a seta esconde o MAPA (é para isso que ela serve na recepção);
-   o título fica, senão some a pista de como trazer de volta */
-.mapa-card.em-faixa.mapa-dobrado .mapa-rolagem{display:none}
-.mapa-card.em-faixa.mapa-dobrado .mapa-titulo{display:block}
-.mapa-card.em-faixa.mapa-dobrado{padding-bottom:8px}
+
+/* ---- Mapa da atendente: só de olhar ----
+   Mesma planta do garçom, sem nenhum comando: nada de tocar, arrastar ou
+   juntar. Na recepção o mapa é informação — quem muda o estado é o salão. */
+.mapa-card.so-olhar .mapa-botoes{display:none}
+.mapa-card.so-olhar .mm-mesa{pointer-events:none;cursor:default}
+.mapa-card.so-olhar .mapa-piso{touch-action:pan-y;cursor:default}

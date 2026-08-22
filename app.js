@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v94";
+  const VERSAO = "v95";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2500,6 +2500,7 @@
       </div>`).join("");
 
     renderMesas();
+    renderResumoFila();
     renderMapa();
 
     // -------- a fila: tudo junto ou separado --------
@@ -2566,6 +2567,29 @@
 
     tickTimes();
     maybeBeep(c);
+  }
+
+  // Fila resumida para o garçom: ele não precisa de nomes nem telefones —
+  // precisa saber de que tamanho são os grupos e há quanto tempo esperam,
+  // para escolher quais mesas liberar primeiro.
+  function renderResumoFila() {
+    const card = $("#filaResumoCard");
+    if (!card) return;
+    const vista = appEl.getAttribute("data-view");
+    card.hidden = vista !== "garcom" || CFG.garcomAtivo === false;
+    if (card.hidden) return;
+    const fila = waiting();
+    $("#resumoCount").textContent = fila.length;
+    $("#resumoVazio").hidden = fila.length > 0;
+    $("#resumoLista").innerHTML = fila.map((r) => `
+      <div class="resumo-item${isMesona(r) ? " is-meso" : ""}"
+           ${prazoDaFila(r) ? `data-espera-since="${r.criado_em}" data-espera-prazo="${prazoDaFila(r)}"` : ""}>
+        <b class="resumo-pes">${r.pessoas}</b>
+        <span class="resumo-txt">
+          <span class="resumo-lab">${r.pessoas === 1 ? "pessoa" : "pessoas"}${r.pet ? " 🐾" : ""}</span>
+          <span class="resumo-tempo">⏱️ <b data-since="${r.criado_em}">agora</b></span>
+        </span>
+      </div>`).join("");
   }
 
   // Painel das mesas livres: a atendente escolhe, o garçom acompanha o que lançou

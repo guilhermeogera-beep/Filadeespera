@@ -969,3 +969,21 @@ button{font-family:inherit}
 #app[data-view="mapa"] .mapa-card{margin-bottom:0}
 #app[data-view="mapa"] .mapa-rolagem{max-height:none}
 #app[data-view="mapa"] .mesas-head{margin-bottom:8px}
+
+/* ---- fila resumida na aba do garçom ---------------------------------
+   Ele não precisa de nome nem telefone: precisa do tamanho do grupo e de
+   há quanto tempo espera, para saber que mesa liberar primeiro. */
+.resumo-lista{display:flex;flex-wrap:wrap;gap:8px}
+.resumo-item{
+  display:flex;align-items:center;gap:9px;padding:6px 12px 6px 6px;
+  border:1.5px solid var(--line);border-radius:12px;background:#fff;
+}
+.resumo-pes{
+  width:38px;height:38px;flex:0 0 auto;border-radius:10px;
+  background:var(--brand);color:#fff;font-weight:800;font-size:1.15rem;
+  display:flex;align-items:center;justify-content:center;
+}
+.resumo-item.is-meso .resumo-pes{background:var(--meso)}
+.resumo-txt{display:flex;flex-direction:column;line-height:1.15}
+.resumo-lab{font-size:.78rem;color:var(--muted);font-weight:600}
+.resumo-tempo{font-size:.92rem;font-weight:700}

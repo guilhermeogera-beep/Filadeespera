@@ -1037,9 +1037,12 @@ button{font-family:inherit}
   border-radius:10px;font-size:1rem;line-height:1;cursor:pointer;color:var(--muted);
 }
 .mapa-dobrar:hover{background:var(--brand-soft)}
+/* dobrado: saem o título e os botões. A legenda FICA — ela cabe na mesma
+   linha da seta, então não custa altura nenhuma e continua explicando as
+   cores do salão. (Na faixa da atendente o mapa some inteiro, aí ela sai.) */
 .mapa-card.mapa-dobrado .mapa-titulo,
-.mapa-card.mapa-dobrado .mapa-legenda,
 .mapa-card.mapa-dobrado .mapa-botoes{display:none}
+.mapa-card.em-faixa.mapa-dobrado .mapa-legenda{display:none}
 .mapa-card.mapa-dobrado .mesas-head{margin-bottom:6px}
 
 /* ---- Desenho da mesa no mapa ----

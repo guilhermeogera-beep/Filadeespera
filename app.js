@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v91";
+  const VERSAO = "v92";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1937,9 +1937,14 @@
       alvo.style.top = Math.max(6, Math.min(94, y)) + "%";
       alvo.classList.add("is-arrastando");
       if (modo() === "juntar") {
-        // a mesa de destino se acende quando a arrastada chega perto
+        // Acende o destino quando a arrastada chega perto. Se ele já faz parte
+        // de um bloco, acende o bloco inteiro: fica claro a que conjunto a
+        // mesa vai se somar.
         const outra = soltoEmCima();
-        $$(seletor + " .mm-mesa").forEach((x2) => x2.classList.toggle("is-alvo", x2 === outra));
+        const alvoM = outra ? mapa.find((x) => x.id === outra.dataset.mapamesa) : null;
+        const ids = alvoM ? new Set(blocoDaMesa(alvoM).map((x) => x.id)) : new Set();
+        $$(seletor + " .mm-mesa").forEach((x2) =>
+          x2.classList.toggle("is-alvo", ids.has(x2.dataset.mapamesa)));
       }
     });
 

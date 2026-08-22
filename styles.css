@@ -957,3 +957,8 @@ button{font-family:inherit}
 .em-zoom:hover{border-color:var(--ink)}
 /* no modo de edição a planta ganha um contorno, para ficar claro o estado */
 .mapa-card.is-editando .mapa-piso{outline:3px solid var(--ink);outline-offset:2px}
+/* na aba do Mapa só o mapa aparece: a fila e a barra de baixo saem da frente */
+#app[data-view="mapa"] #queueCard,
+#app[data-view="mapa"] .add-bar,
+#app[data-view="mapa"] #callPanel{display:none !important}
+#app[data-view="mapa"] .mapa-card{margin-top:0}

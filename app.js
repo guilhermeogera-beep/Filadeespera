@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v92";
+  const VERSAO = "v93";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1545,7 +1545,7 @@
     if (_dedoNoMapa) { _mapaPendente = true; return; }
     // o mapa é ferramenta do salão: aparece na aba do garçom
     const vista = appEl.getAttribute("data-view");
-    card.hidden = CFG.garcomAtivo === false || vista !== "garcom" ||
+    card.hidden = CFG.garcomAtivo === false || vista !== "mapa" ||
       semTabelaMapa || !mapaVisivelPara();
     if (card.hidden) { modoEdicaoMapa = false; return; }
 
@@ -1666,7 +1666,7 @@
   function abrirEditorMapa() {
     $("#cfgModal").hidden = true;
     modoEdicaoMapa = true;
-    setView("garcom");
+    setView("mapa");
     renderMapa();
   }
   function fecharEditorMapa() {
@@ -2540,9 +2540,11 @@
       fb.classList.toggle("is-closed", fechada);
       fb.hidden = CFG.mostrarBtnFila === false;
     }
-    // aba do garçom: some quando o recurso está desligado ou o perfil não a alcança
+    // abas do salão: somem quando o recurso está desligado ou o perfil não as alcança
     const tg = $("#tabGarcom");
     if (tg) tg.hidden = CFG.garcomAtivo === false || !podeVer("garcom");
+    const tm = $("#tabMapa");
+    if (tm) tm.hidden = CFG.garcomAtivo === false || !podeVer("mapa") || !mapaVisivelPara();
 
     tickTimes();
     maybeBeep(c);
@@ -2680,11 +2682,11 @@
 
   // Quais abas cada perfil enxerga
   function abasPermitidas() {
-    if (!loginLigado()) return ["totem", "staff", "garcom"];   // como era antes
+    if (!loginLigado()) return ["totem", "staff", "garcom", "mapa"];   // como era antes
     const p = usuario && usuario.papel;
-    if (p === PAPEL.ADM) return ["totem", "staff", "garcom"];
+    if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa"];
     if (p === PAPEL.ATENDENTE) return ["staff"];
-    if (p === PAPEL.GARCOM) return ["garcom"];
+    if (p === PAPEL.GARCOM) return ["garcom", "mapa"];
     return ["totem"];   // totem (ou sem perfil definido): só a fila
   }
   function podeVer(v) { return abasPermitidas().indexOf(v) >= 0; }
@@ -2797,14 +2799,21 @@
   function aplicarPermissoes() {
     const ligado = loginLigado();
     const podeGarcom = CFG.garcomAtivo !== false && podeVer("garcom");
-    const map = { totem: "#tabTotem", staff: "#tabStaff", garcom: "#tabGarcom" };
+    // o mapa tem aba própria e obedece à mesma chave do garçom, mais a
+    // escolha de "mostrar o mapa" para o perfil de quem está usando
+    const podeMapa = podeGarcom && podeVer("mapa") && mapaVisivelPara();
+    const map = { totem: "#tabTotem", staff: "#tabStaff", garcom: "#tabGarcom", mapa: "#tabMapa" };
     Object.keys(map).forEach((v) => {
       const b = $(map[v]);
-      if (b) b.hidden = (v === "garcom") ? !podeGarcom : !podeVer(v);
+      if (!b) return;
+      b.hidden = v === "garcom" ? !podeGarcom : (v === "mapa" ? !podeMapa : !podeVer(v));
     });
     // com um perfil só, nem faz sentido mostrar a barra de abas
+    const visiveis = Object.keys(map).filter((v) => { const b = $(map[v]); return b && !b.hidden; });
     const sw = document.querySelector(".viewswitch");
-    if (sw) sw.hidden = abasPermitidas().filter((v) => v !== "garcom" || podeGarcom).length < 2;
+    if (sw) sw.hidden = visiveis.length < 2;
+    // a aba aberta pode ter deixado de existir (ex.: mapa desligado)
+    if (visiveis.length && !visiveis.includes(appEl.getAttribute("data-view"))) setView(visiveis[0]);
 
     const sb = $("#sairBtn");
     if (sb) sb.hidden = !ligado;
@@ -2895,7 +2904,7 @@
         return;
       }
       // o garçom só precisa de PIN se o dono tiver definido um
-      if (v === "garcom" && String(CFG.pinGarcom || "") && sessionStorage.getItem(SESSION_PIN_G) !== "1") {
+      if ((v === "garcom" || v === "mapa") && String(CFG.pinGarcom || "") && sessionStorage.getItem(SESSION_PIN_G) !== "1") {
         openPin("garcom");
         return;
       }
@@ -2904,6 +2913,7 @@
     $("#tabTotem").classList.toggle("is-active", v === "totem");
     $("#tabStaff").classList.toggle("is-active", v === "staff");
     $("#tabGarcom").classList.toggle("is-active", v === "garcom");
+    $("#tabMapa").classList.toggle("is-active", v === "mapa");
     $("#staffBar").hidden = v !== "staff";
     // o botão de chamar mesa acompanha a aba da atendente, na barra de baixo
     // (dá para escondê-lo na engrenagem: há casa que só chama pela mesa livre)
@@ -3165,6 +3175,7 @@
     $("#tabTotem").addEventListener("click", () => setView("totem"));
     $("#tabStaff").addEventListener("click", () => setView("staff"));
     $("#tabGarcom").addEventListener("click", () => setView("garcom"));
+    $("#tabMapa").addEventListener("click", () => setView("mapa"));
 
     // ---- mesas livres ----
     // stepper de lugares (pop-up do garçom)
@@ -4252,7 +4263,7 @@
   // visível. Aqui detectamos isso, limpamos o que está guardado e recarregamos
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
-    "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
+    "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior",

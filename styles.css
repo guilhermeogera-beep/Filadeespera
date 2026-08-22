@@ -766,6 +766,7 @@ button{font-family:inherit}
 
 /* vagas: onde dá para soltar a mesa para juntar (aparecem ao segurar) */
 .mm-vaga{
+  box-sizing:border-box;
   position:absolute;transform:translate(-50%, -50%);
   border:2px dashed var(--junta);border-radius:8px;
   background:rgba(37,99,235,.10);pointer-events:none;z-index:1;
@@ -929,3 +930,35 @@ button{font-family:inherit}
 .mapa-botoes{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .mapa-botoes .btn-liberar-todas{margin:0}
 .cfg-versao{margin:14px 0 0;font-size:.78rem;color:var(--muted);text-align:right}
+
+/* ======================================================================
+   EDITOR DO MAPA EM TELA CHEIA
+   Antes era um pop-up menor que a planta: o desenho saía deformado e o
+   que se via ali não era o que o garçom veria depois.
+   ====================================================================== */
+.editor-mapa{
+  position:fixed;inset:0;z-index:60;background:var(--bg);
+  display:flex;flex-direction:column;
+  padding:calc(10px + env(safe-area-inset-top)) 14px calc(10px + env(safe-area-inset-bottom));
+  gap:10px;
+}
+.editor-mapa[hidden]{display:none !important}
+.em-topo{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+}
+.em-topo strong{font-size:1.05rem}
+.em-dica{display:block;font-size:.8rem;color:var(--muted)}
+.em-acoes{display:flex;gap:8px;flex-wrap:wrap}
+/* o palco ocupa toda a altura que sobra */
+.em-palco{flex:1;min-height:0;display:flex;gap:8px;align-items:stretch}
+.em-palco .mapa-piso{
+  flex:1;min-height:0;height:100%;aspect-ratio:auto;   /* manda a altura da tela */
+}
+.em-lado{display:flex;flex-direction:column;justify-content:center;gap:8px}
+.em-zoom{
+  width:38px;height:44px;border:2px solid var(--line);background:#fff;color:var(--ink);
+  border-radius:12px;font-size:1.2rem;font-weight:800;cursor:pointer;font-family:inherit;
+}
+.em-zoom:hover{border-color:var(--ink)}
+.em-rodape{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.em-rodape .form-msg{margin:0}

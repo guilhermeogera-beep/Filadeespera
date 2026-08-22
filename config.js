@@ -91,6 +91,9 @@ window.FILA_CONFIG = {
   mapaGarcom: true,
   mapaAdm: true,
 
+  // Formato da planta do salão: largura ÷ altura (1.5 = 3 por 2)
+  mapaProporcao: 1.5,
+
   // O garçom precisa informar o número da mesa ao liberar?
   mesaNumObrigatorio: true,
 

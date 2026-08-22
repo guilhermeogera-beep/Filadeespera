@@ -343,19 +343,33 @@
 
   <!-- ============ MODAL: CONFIRMAR CHAMADA ============ -->
   <!-- ============ MODAL: CADASTRO DO MAPA (adm/atendente) ============ -->
-  <div class="modal modal-wide" id="mapaEditModal" hidden>
-    <div class="modal-box">
-      <button class="modal-x" data-close aria-label="Fechar">×</button>
-      <h3>🗺 Configurar mapa de mesas</h3>
-      <p class="hint">Arraste as mesas para montar a planta do salão. Toque numa mesa para
-        mudar o número, os lugares ou apagá-la.</p>
-      <div class="mapa-piso is-edit" id="mapaEditPiso"></div>
-      <div class="mapa-edit-barra">
-        <button type="button" class="btn btn-primary" id="mapaNova">➕ Nova mesa</button>
-        <span class="hint" id="mapaEditInfo"></span>
+  <!-- Editor do mapa: tela cheia, para a planta ficar do tamanho real de uso -->
+  <div class="editor-mapa" id="mapaEditModal" hidden>
+    <header class="em-topo">
+      <div>
+        <strong>🗺 Mapa do salão</strong>
+        <span class="em-dica">Segure e arraste para posicionar. Toque numa mesa para editar.</span>
       </div>
-      <p class="form-msg" id="mapaEditMsg" role="status"></p>
+      <div class="em-acoes">
+        <button type="button" class="btn btn-primary btn-sm" id="mapaNova">➕ Nova mesa</button>
+        <button type="button" class="btn btn-verde btn-sm" id="mapaConcluir">✓ Concluir</button>
+      </div>
+    </header>
+
+    <div class="em-palco">
+      <div class="mapa-piso is-edit" id="mapaEditPiso"></div>
+
+      <!-- lateral direita: estica ou encolhe a planta -->
+      <div class="em-lado em-lado-dir">
+        <button type="button" class="em-zoom" id="mapaMaisAlto" title="Salão mais alto" aria-label="Salão mais alto">＋</button>
+        <button type="button" class="em-zoom" id="mapaMaisBaixo" title="Salão mais baixo" aria-label="Salão mais baixo">－</button>
+      </div>
     </div>
+
+    <footer class="em-rodape">
+      <span class="hint" id="mapaEditInfo"></span>
+      <p class="form-msg" id="mapaEditMsg" role="status"></p>
+    </footer>
   </div>
 
   <!-- ============ MODAL: UMA MESA DO CADASTRO ============ -->

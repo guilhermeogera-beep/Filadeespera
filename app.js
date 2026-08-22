@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v85";
+  const VERSAO = "v88";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1539,6 +1539,7 @@
     if (lt) lt.hidden = !podeLote;
     const at = $("#aguardarTodasBtn");
     if (at) at.hidden = !podeLote;
+    aplicarProporcao();
     $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, false)).join("");
     $("#mapaVazio").hidden = mapa.length > 0;
     _mapaPendente = false;
@@ -1614,6 +1615,30 @@
   let mmLugares = 4;
   let mmManual = false;
 
+  // Formato do salão: quanto a planta é mais larga que alta. 1.5 = 3 por 2.
+  // Fica na engrenagem, então vale para todos os aparelhos.
+  function proporcaoDoMapa() {
+    const p = Number(CFG.mapaProporcao);
+    return p >= 0.5 && p <= 3 ? p : 1.5;
+  }
+  function aplicarProporcao() {
+    const piso = $("#mapaPiso");
+    if (piso) piso.style.aspectRatio = String(proporcaoDoMapa());
+  }
+  async function mudarProporcao(passo) {
+    const nova = Math.round((proporcaoDoMapa() + passo) * 10) / 10;
+    if (nova < 0.5 || nova > 3) return;
+    await saveSettings({ mapaProporcao: nova });
+    aplicarProporcao();
+    $("#mapaEditInfo").textContent = infoDoEditor();
+  }
+
+  function infoDoEditor() {
+    const n = mapa.length;
+    return (n ? n + (n === 1 ? " mesa cadastrada" : " mesas cadastradas") : "Nenhuma mesa ainda — toque em “Nova mesa”.") +
+      " • formato " + proporcaoDoMapa().toFixed(1) + " (largura ÷ altura)";
+  }
+
   function abrirEditorMapa() {
     $("#cfgModal").hidden = true;
     $("#mapaEditMsg").textContent = "";
@@ -1621,11 +1646,15 @@
     $("#mapaEditModal").hidden = false;
   }
 
+  // Sair do editor: volta para a engrenagem, de onde se veio
+  function fecharEditorMapa() {
+    $("#mapaEditModal").hidden = true;
+    $("#cfgModal").hidden = false;
+  }
+
   function desenharEditorMapa() {
     $("#mapaEditPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, true)).join("");
-    $("#mapaEditInfo").textContent = mapa.length
-      ? `${mapa.length} ${mapa.length === 1 ? "mesa cadastrada" : "mesas cadastradas"}`
-      : "Nenhuma mesa ainda — toque em “Nova mesa”.";
+    $("#mapaEditInfo").textContent = infoDoEditor();
   }
 
   // pop-up de uma mesa do cadastro (nova ou existente)
@@ -1773,6 +1802,9 @@
         if (!m) return;
         if (meuGrupo && m.grupo === meuGrupo) return;      // já estão juntas
         if (!podeJuntar(m)) return;      // liberada ou ocupada não recebe mesa
+        // mede a mesa de DESTINO: a arrastada está aumentada pelo efeito de
+        // "pronta para arrastar" e daria uma folga maior que a pedida
+        const rd = el.getBoundingClientRect();
         [[lg, 0], [-lg, 0], [0, at], [0, -at]].forEach(([dx2, dy2]) => {
           const vx = Number(m.x) + dx2, vy = Number(m.y) + dy2;
           if (vx < 4 || vx > 96 || vy < 6 || vy > 94) return;   // fora do piso
@@ -1783,9 +1815,10 @@
           v.dataset.dono = m.id;
           v.style.left = vx + "%";
           v.style.top = vy + "%";
-          // marca só o lado, sem tapar o mapa: um terço do tamanho da mesa
-          v.style.width = (lg / 3) + "%";
-          v.style.height = (at / 3) + "%";
+          // a vaga tem o tamanho da mesa com 2mm de folga: dá para ver que a
+          // mesa cabe exatamente ali
+          v.style.width = "calc(" + Math.round(rd.width) + "px + 2mm)";
+          v.style.height = "calc(" + Math.round(rd.height) + "px + 2mm)";
           piso.appendChild(v);
         });
       });
@@ -3442,6 +3475,9 @@
     }));
     $("#cfgMapaBtn").addEventListener("click", acaoSegura("configurar o mapa", abrirEditorMapa));
     $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));
+    $("#mapaConcluir").addEventListener("click", fecharEditorMapa);
+    $("#mapaMaisAlto").addEventListener("click", () => mudarProporcao(-0.1));   // menor razão = mais alto
+    $("#mapaMaisBaixo").addEventListener("click", () => mudarProporcao(0.1));
     $("#mmSalvar").addEventListener("click", salvarMesaCadastro);
     $("#mmApagar").addEventListener("click", apagarMesaCadastro);
     $("#mmNumero").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#mmSalvar").click(); });
@@ -3624,7 +3660,9 @@
       if (e.key === "Escape") {
         // fecha só o pop-up que está por cima
         const abertos = $$(".modal").filter((m) => !m.hidden);
-        if (abertos.length) closeModal(abertos[abertos.length - 1]);
+        if (abertos.length) { closeModal(abertos[abertos.length - 1]); return; }
+        const ed = $("#mapaEditModal");
+        if (ed && !ed.hidden) fecharEditorMapa();
       }
     });
 
@@ -3929,7 +3967,7 @@
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
     "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
-    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
+    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "mapaProporcao", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
@@ -4217,7 +4255,7 @@
     "tabGarcom", "mesasCard", "mesaTitulo", "mNumero",
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
-    "mapaCard", "mapaPiso", "mapaEditModal", "cfgMapaBtn", "mmNumero",
+    "mapaCard", "mapaPiso", "mapaEditModal", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaMaisAlto",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr",
     "loginScreen", "relBtn", "sairBtn",
   ];

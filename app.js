@@ -1260,6 +1260,46 @@
     await refresh();
   }
 
+  // Volta o salão inteiro para "aguardando": tira as mesas da lista da
+  // recepção e limpa as marcações de limpeza e de ocupada feitas à mão.
+  // Mesa com cliente REALMENTE sentado (veio da fila) fica como está — dizer
+  // que ela está livre seria mentir sobre gente que está lá.
+  async function voltarTodasParaAguardando() {
+    const agora = new Date().toISOString();
+    const gravacoes = [];
+    let mexidas = 0, ocupadas = 0;
+    const vistos = new Set();
+    for (const m of mapa) {
+      if (vistos.has(m.id)) continue;
+      const bloco = blocoDaMesa(m);
+      bloco.forEach((x) => vistos.add(x.id));
+      if (ocupanteDaMesa(m)) { ocupadas++; continue; }
+      const estava = estadoDaMesa(m);
+      if (estava === "livre") continue;                 // já está aguardando
+      mexidas++;
+      bloco.forEach((x) => { x.status = MAPA.LIVRE; x.liberada_em = agora; });
+      for (const x of bloco) {
+        gravacoes.push(backend.updateMapa(x.id, { status: MAPA.LIVRE, liberada_em: agora }));
+        // tira da lista da recepção o que apontava para esta mesa
+        mesasLivres
+          .filter((z) => numeroBate(x.numero, z.numeros || z.identificacao))
+          .forEach((z) => gravacoes.push(backend.removeMesa(z.id)));
+      }
+    }
+    if (!gravacoes.length) {
+      avisoStaff(ocupadas ? "Só há mesas ocupadas — nada a devolver." : "Todas as mesas já estão aguardando.");
+      return;
+    }
+    const r = await Promise.allSettled(gravacoes);
+    const falhas = r.filter((x) => x.status === "rejected").length;
+    await refresh();
+    avisoStaff(
+      mexidas + (mexidas === 1 ? " mesa voltou" : " mesas voltaram") + " para aguardando" +
+      (ocupadas ? " • " + ocupadas + (ocupadas === 1 ? " ficou de fora (ocupada)" : " ficaram de fora (ocupadas)") : "") +
+      (falhas ? " • ⚠ " + falhas + " não gravou, verifique a internet" : ""),
+      !falhas);
+  }
+
   // O botão "liberar todas" fica disponível para o garçom só nas pontas do
   // dia: antes do horário de "até" e depois do de "volta". No meio do
   // movimento ele some, para ninguém liberar o salão inteiro sem querer.
@@ -1279,23 +1319,51 @@
   // ocupadas nem nas que precisam de limpeza: liberar mesa suja ou com gente
   // sentada mandaria a recepção para o lugar errado.
   async function liberarTodasAsMesas() {
-    const alvos = [];
+    // Monta a lista de BLOCOS (mesas juntas contam como um só) que estão
+    // aguardando. Ocupada, suja ou já liberada fica de fora.
+    const blocos = [];
     const vistos = new Set();
     for (const m of mapa) {
       if (vistos.has(m.id)) continue;
-      blocoDaMesa(m).forEach((x) => vistos.add(x.id));
-      if (estadoDaMesa(m) === "livre") alvos.push(m);
+      const bloco = blocoDaMesa(m);
+      bloco.forEach((x) => vistos.add(x.id));
+      if (estadoDaMesa(m) === "livre") blocos.push(bloco);
     }
-    let ok = 0;
-    for (const m of alvos) {
-      try { await liberarMesaDoMapa(m); ok++; }
-      catch (e) { console.warn("Não deu para liberar a mesa " + m.numero, e); }
+    if (!blocos.length) { avisoStaff("Nenhuma mesa aguardando para liberar."); return; }
+
+    // Pinta na hora e grava tudo JUNTO. Uma a uma eram duas idas ao servidor
+    // por mesa, em sequência: com o salão cheio isso levava vários segundos e
+    // parecia que o botão não tinha feito nada.
+    const agora = new Date().toISOString();
+    const gravacoes = [];
+    for (const bloco of blocos) {
+      const ancora = bloco[0];
+      bloco.forEach((x) => { x.status = MAPA.LIVRE; x.liberada_em = agora; });
+      for (const x of bloco) {
+        gravacoes.push(backend.updateMapa(x.id, { status: MAPA.LIVRE, liberada_em: agora }));
+      }
+      gravacoes.push(backend.addMesa({
+        id: uuid(),
+        lugares: lugaresDoBloco(ancora),
+        pet: petDoBloco(ancora),
+        identificacao: null,
+        numeros: numerosDoBloco(ancora).join(" + "),
+        status: MESAS.LIVRE,
+        criado_em: agora,
+        usada_em: null,
+      }));
     }
-    const pulou = mapa.length - ok;
-    avisoStaff(ok
-      ? ok + (ok === 1 ? " mesa liberada" : " mesas liberadas") + " para a recepção" +
-        (pulou ? " • " + pulou + (pulou === 1 ? " ficou de fora" : " ficaram de fora") + " (ocupada, suja ou já liberada)" : "")
-      : "Nenhuma mesa aguardando para liberar.", !!ok);
+    const r = await Promise.allSettled(gravacoes);
+    const falhas = r.filter((x) => x.status === "rejected").length;
+    await refresh();
+
+    const ok = blocos.length;
+    const pulou = mapa.length - vistos.size + (vistos.size - blocos.reduce((n, b) => n + b.length, 0));
+    avisoStaff(
+      ok + (ok === 1 ? " mesa liberada" : " mesas liberadas") + " para a recepção" +
+      (pulou ? " • " + pulou + (pulou === 1 ? " ficou de fora" : " ficaram de fora") + " (ocupada, suja ou já liberada)" : "") +
+      (falhas ? " • ⚠ " + falhas + " não gravou, verifique a internet" : ""),
+      !falhas);
   }
 
   // Marca a mesa como ocupada na mão (cliente que sentou sem passar pela fila)
@@ -1471,8 +1539,11 @@
     card.hidden = CFG.garcomAtivo === false || vista !== "garcom" ||
       semTabelaMapa || !mapaVisivelPara();
     if (card.hidden) return;
+    const podeLote = mapa.length && (ehAdm() || dentroDaJanelaLiberar());
     const lt = $("#liberarTodasBtn");
-    if (lt) lt.hidden = !mapa.length || !(ehAdm() || dentroDaJanelaLiberar());
+    if (lt) lt.hidden = !podeLote;
+    const at = $("#aguardarTodasBtn");
+    if (at) at.hidden = !podeLote;
     $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, false)).join("");
     $("#mapaVazio").hidden = mapa.length > 0;
     _mapaPendente = false;
@@ -3350,6 +3421,14 @@
       const b = $("#liberarTodasBtn");
       b.disabled = true;
       try { await liberarTodasAsMesas(); } finally { b.disabled = false; }
+    }));
+    $("#aguardarTodasBtn").addEventListener("click", acaoSegura("todas aguardando", async () => {
+      const quantas = mapa.filter((m) => estadoDaMesa(m) !== "livre" && !ocupanteDaMesa(m)).length;
+      if (!quantas) { avisoStaff("Todas as mesas já estão aguardando."); return; }
+      if (!confirm("Devolver o salão para aguardando? As mesas saem da lista da recepção e as marcações de limpeza são apagadas.")) return;
+      const b = $("#aguardarTodasBtn");
+      b.disabled = true;
+      try { await voltarTodasParaAguardando(); } finally { b.disabled = false; }
     }));
     $("#cfgMapaBtn").addEventListener("click", acaoSegura("configurar o mapa", abrirEditorMapa));
     $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));

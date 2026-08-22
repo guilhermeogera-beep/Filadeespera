@@ -1077,3 +1077,14 @@ button{font-family:inherit}
 .mm-mesa.is-junta{outline:none}
 /* a mesa sem texto mantém a MESMA altura da outra: é isso que faz as bordas
    coincidirem quando elas se encaixam */
+/* os lugares em negrito, na mesma pegada do tempo: é dado de decisão */
+.mm-lug{font-weight:700;opacity:.95}
+
+/* ---- Mesa reservada: preta ----
+   É compromisso com quem ainda vai chegar. Fica de fora das junções e dos
+   botões em lote, para uma reserva não sumir sem querer. */
+.mm-mesa.is-reservada{background:#1C1F26;border-color:#000;color:#fff}
+.mm-bloco.is-reservada{background:rgba(0,0,0,.10);border-color:rgba(0,0,0,.45)}
+.ml.reservada{background:#1C1F26;border-color:#000;color:#fff}
+.btn-preto{background:#1C1F26;border:2px solid #000;color:#fff;font-weight:700}
+.btn-preto:hover{background:#31363F}

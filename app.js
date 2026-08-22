@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v109";
+  const VERSAO = "v112";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1219,7 +1219,7 @@
   //    LIVRE    (verde)    - nenhuma das anteriores
   //  Só o "limpar" fica guardado na mesa; os outros são deduzidos da fila,
   //  para nunca haver duas verdades sobre a mesma mesa.
-  const MAPA = { LIVRE: "livre", LIMPAR: "limpar", OCUPADA: "ocupada" };
+  const MAPA = { LIVRE: "livre", LIMPAR: "limpar", OCUPADA: "ocupada", RESERVADA: "reservada" };
 
   async function carregarMapa() {
     if (loginLigado() && !temSessaoEquipe()) { mapa = []; return; }
@@ -1282,6 +1282,9 @@
     if (ocupanteDaMesa(m)) return "ocupada";                          // cliente da fila
     if (bloco.some((x) => x.status === MAPA.OCUPADA)) return "ocupada"; // marcada na mão
     if (bloco.some((x) => x.status === MAPA.LIMPAR)) return "limpar";
+    // reserva é compromisso com um cliente que ainda vai chegar: vem antes de
+    // "liberada" para ninguém oferecer a mesa por engano
+    if (bloco.some((x) => x.status === MAPA.RESERVADA)) return "reservada";
     if (bloco.some(mesaAvisada)) return "avisada";
     return "livre";
   }
@@ -1290,7 +1293,7 @@
   // do garçom. Liberada já foi prometida à recepção; ocupada tem gente nela.
   function podeJuntar(m) {
     const e = estadoDaMesa(m);
-    return e === "livre" || e === "limpar";
+    return e === "livre" || e === "limpar";  // reservada não entra: já tem dono
   }
 
   // Encerrar a mesa: some o cronômetro e ela sai do vermelho.
@@ -1307,6 +1310,42 @@
   }
 
   // Volta o salão inteiro para "aguardando": tira as mesas da lista da
+  // Marca o salão inteiro para limpeza — o fim do serviço, quando tudo vai
+  // ser recolhido de uma vez. Pega TODAS as mesas que ainda não estão
+  // marcadas, inclusive as ocupadas, e tira da lista da recepção o que
+  // estava oferecido: mesa suja não pode ser entregue a ninguém.
+  async function marcarTodasParaLimpar() {
+    const agora = new Date().toISOString();
+    const gravacoes = [];
+    let mexidas = 0;
+    const vistos = new Set();
+    for (const m of mapa) {
+      if (vistos.has(m.id)) continue;
+      const bloco = blocoDaMesa(m);
+      bloco.forEach((x) => vistos.add(x.id));
+      if (estadoDaMesa(m) === "limpar") continue;        // já está marcada
+      if (estadoDaMesa(m) === "reservada") continue;     // reserva não se apaga em lote
+      mexidas++;
+      bloco.forEach((x) => { x.status = MAPA.LIMPAR; x.liberada_em = agora; });
+      for (const x of bloco) {
+        gravacoes.push(backend.updateMapa(x.id, { status: MAPA.LIMPAR, liberada_em: agora }));
+        mesasLivres
+          .filter((z) => numeroBate(x.numero, z.numeros || z.identificacao))
+          .forEach((z) => gravacoes.push(backend.removeMesa(z.id)));
+      }
+    }
+    if (!gravacoes.length) { avisoStaff("Todas as mesas já estão marcadas para limpar.", true); return; }
+    renderMapa();
+    const r = await Promise.allSettled(gravacoes);
+    const falhas = r.filter((x) => x.status === "rejected").length;
+    await refresh();
+    avisoStaff(
+      mexidas + (mexidas === 1 ? " mesa marcada" : " mesas marcadas") + " para limpar" +
+      (falhas ? " • ⚠ " + falhas + " não gravou, verifique a internet" : ""),
+      !falhas);
+  }
+
+  // Volta o salão inteiro para "aguardando": tira as mesas da lista da
   // recepção e apaga as marcações de limpeza e de ocupada.
   // É ação de virada de turno: pega TODAS, inclusive as ocupadas. Quem está
   // sentado continua registrado na fila — o que muda é só o mapa.
@@ -1320,6 +1359,7 @@
       const bloco = blocoDaMesa(m);
       bloco.forEach((x) => vistos.add(x.id));
       if (estadoDaMesa(m) === "livre") continue;         // já está aguardando
+      if (estadoDaMesa(m) === "reservada") continue;     // reserva não se apaga em lote
       mexidas++;
       bloco.forEach((x) => { x.status = MAPA.LIVRE; x.liberada_em = agora; });
       for (const x of bloco) {
@@ -1369,7 +1409,8 @@
       if (vistos.has(m.id)) continue;
       const bloco = blocoDaMesa(m);
       bloco.forEach((x) => vistos.add(x.id));
-      if (estadoDaMesa(m) !== "avisada") blocos.push(bloco);
+      // a reservada fica de fora: tem cliente marcado para ela
+      if (estadoDaMesa(m) !== "avisada" && estadoDaMesa(m) !== "reservada") blocos.push(bloco);
     }
     if (!blocos.length) { avisoStaff("Todas as mesas já estão liberadas.", true); return; }
 
@@ -1746,6 +1787,7 @@
     const mostrar = (id, cond) => { const b = $(id); if (b) b.hidden = !cond; };
     mostrar("#liberarTodasBtn", podeLote);
     mostrar("#aguardarTodasBtn", podeLote);
+    mostrar("#limparTodasBtn", podeLote);
     mostrar("#mapaEditarBtn", podeEditar && !editando);
     mostrar("#mapaNova", editando);
     mostrar("#mapaConcluir", editando);
@@ -1787,7 +1829,7 @@
       : "Mesa " + m.numero;
     const situacao = { ocupada: "🔴 ocupada", limpar: "🟡 precisa limpar",
                        avisada: "🟢 liberada", aguardando: "🔵 aguardando",
-                       livre: "🔵 aguardando" }[est];
+                       reservada: "⬛ reservada", livre: "🔵 aguardando" }[est];
     $("#mapaAcaoInfo").innerHTML =
       `${lugares} ${lugares === 1 ? "lugar" : "lugares"}${juntas ? ` (${bloco.map((x) => x.lugares).join(" + ")})` : ""}` +
       `${petDoBloco(m) ? " • 🐾 área pet" : ""} — ${situacao}` +
@@ -1801,6 +1843,7 @@
       btn("livre", "btn-azul", "🔵 Aguardando"),
       btn("limpar", "btn-amarelo", "🟡 Precisa limpar"),
       btn("ocupada", "btn-vermelho", "🔴 Ocupada"),
+      btn("reservada", "btn-preto", "⬛ Reservada"),
     ];
     if (juntas) btns.push(`<button type="button" class="btn btn-neutral" data-macao="separar">✂️ Separar as mesas</button>`);
     $("#mapaAcoes").innerHTML = btns.join("");
@@ -1818,6 +1861,7 @@
     msg.textContent = "";
     try {
       if (acao === "limpar") await encerrarMesaMapa(m.id, MAPA.LIMPAR);
+      else if (acao === "reservada") await encerrarMesaMapa(m.id, MAPA.RESERVADA);
       else if (acao === "ocupada") await marcarOcupada(m.id);
       else if (acao === "livre") await voltarParaLivre(m);
       else if (acao === "separar") await separarMesas(m.id);
@@ -3771,7 +3815,7 @@
     });
     // cadastro do mapa (pela engrenagem)
     $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {
-      const quantas = mapa.filter((m) => estadoDaMesa(m) !== "avisada").length;
+      const quantas = mapa.filter((m) => ["avisada", "reservada"].indexOf(estadoDaMesa(m)) < 0).length;
       if (!quantas) { avisoStaff("Todas as mesas já estão liberadas.", true); return; }
       // ação em lote: sempre confirma, para os dois perfis
       if (!confirm("Liberar TODAS as mesas para a recepção? Inclui as ocupadas e as marcadas para limpar.")) return;
@@ -3779,8 +3823,16 @@
       b.disabled = true;
       try { await liberarTodasAsMesas(); } finally { b.disabled = false; }
     }));
+    $("#limparTodasBtn").addEventListener("click", acaoSegura("todas limpar", async () => {
+      const quantas = mapa.filter((m) => ["limpar", "reservada"].indexOf(estadoDaMesa(m)) < 0).length;
+      if (!quantas) { avisoStaff("Todas as mesas já estão marcadas para limpar.", true); return; }
+      if (!confirm("Marcar TODAS as mesas para limpar? Inclui as ocupadas; elas saem da lista da recepção.")) return;
+      const b = $("#limparTodasBtn");
+      b.disabled = true;
+      try { await marcarTodasParaLimpar(); } finally { b.disabled = false; }
+    }));
     $("#aguardarTodasBtn").addEventListener("click", acaoSegura("todas aguardando", async () => {
-      const quantas = mapa.filter((m) => estadoDaMesa(m) !== "livre").length;
+      const quantas = mapa.filter((m) => ["livre", "reservada"].indexOf(estadoDaMesa(m)) < 0).length;
       if (!quantas) { avisoStaff("Todas as mesas já estão aguardando.", true); return; }
       if (!confirm("Devolver TODAS as mesas para aguardando? Inclui as ocupadas; elas saem da lista da recepção e as marcações de limpeza são apagadas.")) return;
       const b = $("#aguardarTodasBtn");
@@ -4582,7 +4634,7 @@
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
-    "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior",
+    "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn",
     "loginScreen", "relBtn", "sairBtn",
   ];

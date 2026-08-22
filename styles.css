@@ -928,3 +928,4 @@ button{font-family:inherit}
 /* os dois botões de ação em lote do mapa, lado a lado */
 .mapa-botoes{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .mapa-botoes .btn-liberar-todas{margin:0}
+.cfg-versao{margin:14px 0 0;font-size:.78rem;color:var(--muted);text-align:right}

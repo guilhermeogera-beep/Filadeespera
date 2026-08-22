@@ -7,6 +7,10 @@
 
   const CFG = window.FILA_CONFIG || {};
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
+  // Versão do programa. Aparece no rodapé das configurações: quando algo não
+  // bate entre dois aparelhos, é a primeira coisa a conferir.
+  const VERSAO = "v84";
+
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
   // No balcão a atendente lança o tamanho real do grupo, sem teto artificial.
@@ -1261,21 +1265,19 @@
   }
 
   // Volta o salão inteiro para "aguardando": tira as mesas da lista da
-  // recepção e limpa as marcações de limpeza e de ocupada feitas à mão.
-  // Mesa com cliente REALMENTE sentado (veio da fila) fica como está — dizer
-  // que ela está livre seria mentir sobre gente que está lá.
+  // recepção e apaga as marcações de limpeza e de ocupada.
+  // É ação de virada de turno: pega TODAS, inclusive as ocupadas. Quem está
+  // sentado continua registrado na fila — o que muda é só o mapa.
   async function voltarTodasParaAguardando() {
     const agora = new Date().toISOString();
     const gravacoes = [];
-    let mexidas = 0, ocupadas = 0;
+    let mexidas = 0;
     const vistos = new Set();
     for (const m of mapa) {
       if (vistos.has(m.id)) continue;
       const bloco = blocoDaMesa(m);
       bloco.forEach((x) => vistos.add(x.id));
-      if (ocupanteDaMesa(m)) { ocupadas++; continue; }
-      const estava = estadoDaMesa(m);
-      if (estava === "livre") continue;                 // já está aguardando
+      if (estadoDaMesa(m) === "livre") continue;         // já está aguardando
       mexidas++;
       bloco.forEach((x) => { x.status = MAPA.LIVRE; x.liberada_em = agora; });
       for (const x of bloco) {
@@ -1286,16 +1288,13 @@
           .forEach((z) => gravacoes.push(backend.removeMesa(z.id)));
       }
     }
-    if (!gravacoes.length) {
-      avisoStaff(ocupadas ? "Só há mesas ocupadas — nada a devolver." : "Todas as mesas já estão aguardando.");
-      return;
-    }
+    if (!gravacoes.length) { avisoStaff("Todas as mesas já estão aguardando."); return; }
+    renderMapa();
     const r = await Promise.allSettled(gravacoes);
     const falhas = r.filter((x) => x.status === "rejected").length;
     await refresh();
     avisoStaff(
       mexidas + (mexidas === 1 ? " mesa voltou" : " mesas voltaram") + " para aguardando" +
-      (ocupadas ? " • " + ocupadas + (ocupadas === 1 ? " ficou de fora (ocupada)" : " ficaram de fora (ocupadas)") : "") +
       (falhas ? " • ⚠ " + falhas + " não gravou, verifique a internet" : ""),
       !falhas);
   }
@@ -1318,18 +1317,19 @@
   // Libera de uma vez todas as mesas que estão aguardando. Não mexe nas
   // ocupadas nem nas que precisam de limpeza: liberar mesa suja ou com gente
   // sentada mandaria a recepção para o lugar errado.
+  // Libera o salão inteiro para a recepção. Também é ação de virada de turno:
+  // pega TODAS as mesas que ainda não estão liberadas, inclusive as ocupadas e
+  // as marcadas para limpar. Mesas juntas contam como uma só.
   async function liberarTodasAsMesas() {
-    // Monta a lista de BLOCOS (mesas juntas contam como um só) que estão
-    // aguardando. Ocupada, suja ou já liberada fica de fora.
     const blocos = [];
     const vistos = new Set();
     for (const m of mapa) {
       if (vistos.has(m.id)) continue;
       const bloco = blocoDaMesa(m);
       bloco.forEach((x) => vistos.add(x.id));
-      if (estadoDaMesa(m) === "livre") blocos.push(bloco);
+      if (estadoDaMesa(m) !== "avisada") blocos.push(bloco);
     }
-    if (!blocos.length) { avisoStaff("Nenhuma mesa aguardando para liberar."); return; }
+    if (!blocos.length) { avisoStaff("Todas as mesas já estão liberadas."); return; }
 
     // Pinta na hora e grava tudo JUNTO. Uma a uma eram duas idas ao servidor
     // por mesa, em sequência: com o salão cheio isso levava vários segundos e
@@ -1338,30 +1338,25 @@
     const gravacoes = [];
     for (const bloco of blocos) {
       const ancora = bloco[0];
+      const lugares = lugaresDoBloco(ancora);
+      const pet = petDoBloco(ancora);
+      const numeros = numerosDoBloco(ancora).join(" + ");
       bloco.forEach((x) => { x.status = MAPA.LIVRE; x.liberada_em = agora; });
       for (const x of bloco) {
         gravacoes.push(backend.updateMapa(x.id, { status: MAPA.LIVRE, liberada_em: agora }));
       }
       gravacoes.push(backend.addMesa({
-        id: uuid(),
-        lugares: lugaresDoBloco(ancora),
-        pet: petDoBloco(ancora),
-        identificacao: null,
-        numeros: numerosDoBloco(ancora).join(" + "),
-        status: MESAS.LIVRE,
-        criado_em: agora,
-        usada_em: null,
+        id: uuid(), lugares, pet, identificacao: null, numeros,
+        status: MESAS.LIVRE, criado_em: agora, usada_em: null,
       }));
     }
+    renderMapa();
     const r = await Promise.allSettled(gravacoes);
     const falhas = r.filter((x) => x.status === "rejected").length;
     await refresh();
-
     const ok = blocos.length;
-    const pulou = mapa.length - vistos.size + (vistos.size - blocos.reduce((n, b) => n + b.length, 0));
     avisoStaff(
       ok + (ok === 1 ? " mesa liberada" : " mesas liberadas") + " para a recepção" +
-      (pulou ? " • " + pulou + (pulou === 1 ? " ficou de fora" : " ficaram de fora") + " (ocupada, suja ou já liberada)" : "") +
       (falhas ? " • ⚠ " + falhas + " não gravou, verifique a internet" : ""),
       !falhas);
   }
@@ -1796,6 +1791,20 @@
     };
     const limparVagas = () => $$(seletor + " .mm-vaga").forEach((v) => v.remove());
 
+    // Qual mesa está neste ponto da tela. Serve de plano B: se o mapa foi
+    // redesenhado entre o toque e o clique, o elemento antigo não existe mais,
+    // mas o ponto continua sobre a mesma mesa.
+    const mesaNoPonto = (x, y) => {
+      let melhor = null, menor = Infinity;
+      $$(seletor + " .mm-mesa").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const dentro = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+        const d = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
+        if (dentro && d < menor) { menor = d; melhor = el; }
+      });
+      return melhor;
+    };
+
     // Abre a mesa, venha o aviso de onde vier. A trava de 500ms garante que
     // ponteiro + toque + clique do MESMO gesto abram uma vez só.
     const abrirPorToque = (id) => {
@@ -1810,7 +1819,7 @@
       limparVagas();
       piso.classList.remove("is-pegando");
       travarRolagem(false);
-      if (modo === "juntar") setTimeout(liberarDesenhoDoMapa, 60);
+      if (modo === "juntar") setTimeout(liberarDesenhoDoMapa, 600);
       clearTimeout(relogio);
       if (alvo) alvo.classList.remove("is-arrastando", "is-pronto");
       $$(seletor + " .mm-mesa").forEach((x) => x.classList.remove("is-alvo"));
@@ -1966,7 +1975,7 @@
       const t = e.changedTouches && e.changedTouches[0];
       if (!t) return;
       const el = document.elementFromPoint(t.clientX, t.clientY);
-      const mesa = el && el.closest ? el.closest("[data-mapamesa]") : null;
+      const mesa = (el && el.closest && el.closest("[data-mapamesa]")) || mesaNoPonto(t.clientX, t.clientY);
       if (mesa) abrirPorToque(mesa.dataset.mapamesa);
     }, { passive: true });
 
@@ -1974,7 +1983,7 @@
     // (acontece no Android quando ele acha que o gesto virou rolagem), o
     // clique ainda chega. Sem isto, o toque simples às vezes não abria nada.
     piso.addEventListener("click", (e) => {
-      const el = e.target.closest("[data-mapamesa]");
+      const el = e.target.closest("[data-mapamesa]") || mesaNoPonto(e.clientX, e.clientY);
       if (el) abrirPorToque(el.dataset.mapamesa);
     });
   }
@@ -3414,18 +3423,18 @@
     });
     // cadastro do mapa (pela engrenagem)
     $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {
-      const quantas = mapa.filter((m) => estadoDaMesa(m) === "livre").length;
-      if (!quantas) { avisoStaff("Nenhuma mesa aguardando para liberar."); return; }
+      const quantas = mapa.filter((m) => estadoDaMesa(m) !== "avisada").length;
+      if (!quantas) { avisoStaff("Todas as mesas já estão liberadas."); return; }
       // ação em lote: sempre confirma, para os dois perfis
-      if (!confirm("Liberar " + quantas + (quantas === 1 ? " mesa" : " mesas") + " para a recepção?")) return;
+      if (!confirm("Liberar TODAS as mesas para a recepção? Inclui as ocupadas e as marcadas para limpar.")) return;
       const b = $("#liberarTodasBtn");
       b.disabled = true;
       try { await liberarTodasAsMesas(); } finally { b.disabled = false; }
     }));
     $("#aguardarTodasBtn").addEventListener("click", acaoSegura("todas aguardando", async () => {
-      const quantas = mapa.filter((m) => estadoDaMesa(m) !== "livre" && !ocupanteDaMesa(m)).length;
+      const quantas = mapa.filter((m) => estadoDaMesa(m) !== "livre").length;
       if (!quantas) { avisoStaff("Todas as mesas já estão aguardando."); return; }
-      if (!confirm("Devolver o salão para aguardando? As mesas saem da lista da recepção e as marcações de limpeza são apagadas.")) return;
+      if (!confirm("Devolver TODAS as mesas para aguardando? Inclui as ocupadas; elas saem da lista da recepção e as marcações de limpeza são apagadas.")) return;
       const b = $("#aguardarTodasBtn");
       b.disabled = true;
       try { await voltarTodasParaAguardando(); } finally { b.disabled = false; }
@@ -3575,6 +3584,14 @@
       }
     });
 
+    // Marca a hora em que cada pop-up aparece. É o que permite ignorar o
+    // clique atrasado do celular logo depois do toque que abriu.
+    $$(".modal").forEach((m) => {
+      new MutationObserver(() => {
+        if (!m.hidden) m.dataset.abertoEm = String(Date.now());
+      }).observe(m, { attributes: true, attributeFilter: ["hidden"] });
+    });
+
     // fechar pop-ups: botão "X", clique fora e tecla Esc
     function closeModal(m) {
       if (!m) return;
@@ -3591,6 +3608,11 @@
     document.addEventListener("click", (e) => {
       const x = e.target.closest("[data-close]");
       if (x) { closeModal(x.closest(".modal")); return; }
+      // No celular, o clique que o navegador dispara DEPOIS do toque cai em
+      // cima do pop-up que o toque acabou de abrir — e o fechava na hora.
+      // Por isso o fundo escuro só responde depois de um instante aberto.
+      const abertoEm = Number(e.target.dataset && e.target.dataset.abertoEm) || 0;
+      if (Date.now() - abertoEm < 400) return;
       // Clique no fundo escuro fecha — MENOS nos pop-ups com campos digitados.
       // Num toque errado no totem, o cliente perdia o cadastro pela metade;
       // nesses o jeito de sair é o × ou o Cancelar, que são propositais.
@@ -4037,6 +4059,8 @@
 
   // preenche e abre a tela de configurações
   function openCfg() {
+    const vv = $("#cfgVersao");
+    if (vv) vv.textContent = VERSAO;
     $("#cfgPrazo").value = CFG.prazoComparecer || 5;
     $("#cfgAutoFim").value = CFG.autoFimDaFila === false ? "nao" : "sim";
     $("#cfgAlt").value = CFG.alternancia || "1:1";

@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v102";
+  const VERSAO = "v106";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -591,7 +591,8 @@
 
   // ---- "Pedido pronto" no painel do totem ----
   // Quando a atendente avisa que o pedido ficou pronto, o cliente pode estar
-  // longe do celular. O painel do salão repete o aviso por alguns minutos.
+  // longe do celular. O aviso fica à mostra por alguns minutos no totem, na
+  // tela da atendente e no link que o cliente acompanha (mesmo ajuste).
   function minutosDoPedidoNoPainel() {
     const v = Number(CFG.pedidoPainelMin);
     return isNaN(v) || v < 0 ? 10 : v;
@@ -963,8 +964,8 @@
       msg.textContent = "";
       if (livre) {
         try {
+          // a mesa some da lista sozinha — não precisa de aviso dizendo isso
           await usarMesa(livre.id);
-          avisoStaff(`Mesa ${descMesa(livre)} saiu da lista de livres.`, true);
         } catch (e2) { console.warn("Não deu para baixar a mesa:", e2); }
       }
     } catch (e) {
@@ -1079,12 +1080,23 @@
     card.hidden = !temAviso && !temInstalar;
   }
 
+  // A faixa de avisos da atendente não pode virar mural: um "deu certo" que
+  // fica na tela o dia todo só atrapalha. Confirmação some sozinha em segundos;
+  // aviso de problema (sem internet, não gravou) fica até o próximo.
+  let sumirAviso = null;
   function avisoStaff(txt, ok) {
     const smsg = $("#staffMsg");
     if (!smsg) return;
     smsg.textContent = txt;
     smsg.className = "form-msg " + (ok ? "ok" : "err");
     ajustarBarraStaff();
+    clearTimeout(sumirAviso);
+    if (ok) {
+      sumirAviso = setTimeout(() => {
+        smsg.textContent = "";
+        ajustarBarraStaff();
+      }, 6000);
+    }
   }
 
   async function refresh() {
@@ -1318,7 +1330,7 @@
           .forEach((z) => gravacoes.push(backend.removeMesa(z.id)));
       }
     }
-    if (!gravacoes.length) { avisoStaff("Todas as mesas já estão aguardando."); return; }
+    if (!gravacoes.length) { avisoStaff("Todas as mesas já estão aguardando.", true); return; }
     renderMapa();
     const r = await Promise.allSettled(gravacoes);
     const falhas = r.filter((x) => x.status === "rejected").length;
@@ -1359,7 +1371,7 @@
       bloco.forEach((x) => vistos.add(x.id));
       if (estadoDaMesa(m) !== "avisada") blocos.push(bloco);
     }
-    if (!blocos.length) { avisoStaff("Todas as mesas já estão liberadas."); return; }
+    if (!blocos.length) { avisoStaff("Todas as mesas já estão liberadas.", true); return; }
 
     // Pinta na hora e grava tudo JUNTO. Uma a uma eram duas idas ao servidor
     // por mesa, em sequência: com o salão cheio isso levava vários segundos e
@@ -2521,26 +2533,30 @@
     media("#avgNorm", (r) => !r.preferencial && !isMesona(r));
 
     // -------- painel "chamando" (mostra TODAS as mesas chamadas) --------
-    // No totem entram também os pedidos que acabaram de ficar prontos: quem
-    // está no salão, longe do celular, lê o aviso aqui. Na tela da atendente o
-    // painel segue só com as chamadas — o aviso do pedido ela mesma mandou.
+    // Entram também os pedidos que acabaram de ficar prontos, no topo: no totem
+    // para o cliente que está longe do celular, na tela da equipe para a
+    // atendente saber o que ainda está no balcão esperando ser retirado.
     const callList = $("#callList");
     const callEmpty = $("#callEmpty");
-    const prontos = staff ? [] : pedidosProntos();
+    const prontosTodos = pedidosProntos();
+    const prontos = buscando ? prontosTodos.filter(combinaBusca) : prontosTodos;
     const painel = prontos.concat(c.filter((r) => !prontos.some((p) => p.id === r.id)));
     callEmpty.hidden = painel.length > 0;
     callList.innerHTML = painel.map((r, i) => {
-      const pronto = !staff && pedidoNoPainel(r);
+      const pronto = pedidoNoPainel(r);
+      // os botões de chamada só fazem sentido para quem ainda está chamado:
+      // quem já sentou e só está esperando o pedido não volta para a fila
+      const acoes = staff && r.status === STATUS.CHAMADO;
       return `
       <div class="call-item ${pronto ? "pronto" : ""} ${r.preferencial && !pronto ? "pref" : ""} ${i === 0 ? "fresh" : ""}">
-        ${staff ? `<button class="ci-x staff-only" data-discard="${r.id}" aria-label="Remover">✕</button>` : ""}
+        ${acoes ? `<button class="ci-x staff-only" data-discard="${r.id}" aria-label="Remover">✕</button>` : ""}
         <span class="ci-label">${pronto ? "🍽️ Pedido pronto" : r.preferencial ? "★ Preferencial" : "Chamando"}</span>
         <span class="ci-name">${esc(firstName(r.nome))}</span>
         <span class="ci-meta">${pronto
           ? `Pode retirar no balcão • avisado às ${fmtClock(r.pedido_em)}`
           : `${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)`}</span>
         ${callChipsHTML(r, staff)}
-        ${staff ? `<div class="ci-actions staff-only">
+        ${acoes ? `<div class="ci-actions staff-only">
           ${(CFG.whatsAtivo !== false && r.telefone) ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
           <button class="btn btn-sm ci-ok" data-seat="${r.id}">✓ Sentou</button>
           <button class="btn btn-sm ci-back" data-back="${r.id}">↩️ Voltar à fila</button>
@@ -3570,7 +3586,7 @@
     // cadastro do mapa (pela engrenagem)
     $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {
       const quantas = mapa.filter((m) => estadoDaMesa(m) !== "avisada").length;
-      if (!quantas) { avisoStaff("Todas as mesas já estão liberadas."); return; }
+      if (!quantas) { avisoStaff("Todas as mesas já estão liberadas.", true); return; }
       // ação em lote: sempre confirma, para os dois perfis
       if (!confirm("Liberar TODAS as mesas para a recepção? Inclui as ocupadas e as marcadas para limpar.")) return;
       const b = $("#liberarTodasBtn");
@@ -3579,7 +3595,7 @@
     }));
     $("#aguardarTodasBtn").addEventListener("click", acaoSegura("todas aguardando", async () => {
       const quantas = mapa.filter((m) => estadoDaMesa(m) !== "livre").length;
-      if (!quantas) { avisoStaff("Todas as mesas já estão aguardando."); return; }
+      if (!quantas) { avisoStaff("Todas as mesas já estão aguardando.", true); return; }
       if (!confirm("Devolver TODAS as mesas para aguardando? Inclui as ocupadas; elas saem da lista da recepção e as marcações de limpeza são apagadas.")) return;
       const b = $("#aguardarTodasBtn");
       b.disabled = true;

@@ -28,7 +28,21 @@
   // Só estas configurações interessam a quem acompanha a fila. Copiar `dados`
   // inteiro traria junto qualquer ajuste interno guardado na configuração.
   const CFG_PUBLICAS = ["restaurante", "marca", "mostrarMedia", "mesonaAtiva", "mesonaMin", "prazoComparecer",
-    "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera"];
+    "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera", "pedidoPainelMin"];
+
+  // Por quantos minutos o aviso de "pedido pronto" fica na tela. É o mesmo
+  // ajuste da engrenagem que vale para o totem e para a tela da atendente.
+  // 0 = não mostra aqui (o cliente foi avisado pelo WhatsApp).
+  function minutosDoPedido() {
+    const v = Number(CFG.pedidoPainelMin);
+    return isNaN(v) || v < 0 ? 10 : v;
+  }
+  function pedidoNaTela(r) {
+    const min = minutosDoPedido();
+    if (!r || !r.pedido_em || !min) return false;
+    const d = new Date(r.pedido_em).getTime();
+    return !isNaN(d) && Date.now() - d < min * 60000;
+  }
 
   // Janela de histórico: a página não precisa (nem deve) baixar a tabela inteira
   const JANELA_HIST_MS = 24 * 3600 * 1000;
@@ -137,14 +151,14 @@
     if (me) {
       const pos = w.findIndex((r) => r.id === me.id) + 1;
       let corpo;
-      // O pedido pronto vem na frente de tudo: se ele já ficou pronto, é isso
-      // que o cliente precisa ler, mesmo que a linha dele ainda esteja como
-      // "aguardando" ou "chamado" na fila.
-      if (me.pedido_em) {
-        // o mesmo aviso que sai pelo WhatsApp, para quem acompanha pelo link
-        corpo = `<div class="me-big">🍽️ Seu pedido está pronto!</div>
-          <div class="me-sub">Pode retirar no balcão. Avisamos às ${fmtClock(me.pedido_em)}.</div>`;
-      } else if (me.status === STATUS.CHAMADO) {
+      // O pedido pronto é um aviso à parte, no topo do cartão: ele não pode
+      // roubar o lugar da posição na fila nem do "é a sua vez" — o cliente
+      // precisa continuar vendo onde está e quando a mesa dele sair.
+      const avisoPedido = pedidoNaTela(me)
+        ? `<div class="me-pedido">🍽️ Seu pedido está pronto — pode retirar no balcão
+             <span>avisamos às ${fmtClock(me.pedido_em)}</span></div>`
+        : "";
+      if (me.status === STATUS.CHAMADO) {
         corpo = `<div class="me-big">🔔 É a sua vez!</div>
           <div class="me-sub">Dirija-se à recepção agora. Você foi chamado às ${fmtClock(me.chamado_em)}
           e tem até ${esc(String(CFG.prazoComparecer || 5))} minutos para comparecer.</div>`;
@@ -164,12 +178,12 @@
           <div class="me-note">A ordem pode mudar conforme o tamanho das mesas que vagam.</div>`;
       } else if (me.status === STATUS.SENTADO) {
         corpo = `<div class="me-big">✅ Bom apetite!</div>
-          <div class="me-sub">Você já está na mesa${me.sentou_em ? " desde as " + fmtClock(me.sentou_em) : ""}. Avisamos aqui assim que o pedido ficar pronto.</div>`;
+          <div class="me-sub">Você já está na mesa${me.sentou_em ? " desde as " + fmtClock(me.sentou_em) : ""}. ${me.pedido_em ? "Seu pedido foi avisado às " + fmtClock(me.pedido_em) + "." : "Avisamos aqui assim que o pedido ficar pronto."}</div>`;
       } else {
         corpo = `<div class="me-big">Atendimento encerrado</div>
           <div class="me-sub">Este código não está mais na fila. Bom apetite! 🍽️</div>`;
       }
-      meCard.innerHTML = corpo;
+      meCard.innerHTML = avisoPedido + corpo;
       meCard.hidden = false;
       meCard.classList.toggle("me-chamado", me.status === STATUS.CHAMADO);
       $("#semCodigo").hidden = true;

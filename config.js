@@ -98,6 +98,9 @@ window.FILA_CONFIG = {
   // (fora dela o botão some para ele; para o adm fica sempre visível)
   liberarAte: "11:00",
   liberarVolta: "17:00",
+
+  // Botão "Chamar mesa" na barra de baixo da atendente
+  mostrarBtnChamar: true,
   boasVindas: "",         // mensagem de boas-vindas no topo do totem (vazio = escondido)
 
   // --- Fechamento da fila ---

@@ -1455,9 +1455,17 @@
     return admLogado ? CFG.mapaAdm !== false : CFG.mapaGarcom !== false;
   }
 
+  // Enquanto um dedo está em cima do mapa, ele NÃO é redesenhado. Redesenhar
+  // troca todos os quadradinhos por novos; se isso acontece no meio de um
+  // toque, o elemento que o dedo apertou deixa de existir e o toque se perde.
+  // (o mapa se redesenha sozinho a cada 15s e a cada mudança no banco)
+  let _dedoNoMapa = false;
+  let _mapaPendente = false;
+
   function renderMapa() {
     const card = $("#mapaCard");
     if (!card) return;
+    if (_dedoNoMapa) { _mapaPendente = true; return; }
     // o mapa é ferramenta do salão: aparece na aba do garçom
     const vista = appEl.getAttribute("data-view");
     card.hidden = CFG.garcomAtivo === false || vista !== "garcom" ||
@@ -1467,6 +1475,13 @@
     if (lt) lt.hidden = !mapa.length || !(ehAdm() || dentroDaJanelaLiberar());
     $("#mapaPiso").innerHTML = mapa.map((m) => mesaMapaHTML(m, false)).join("");
     $("#mapaVazio").hidden = mapa.length > 0;
+    _mapaPendente = false;
+  }
+
+  // chamado quando o dedo sai do mapa: desenha o que ficou pendente
+  function liberarDesenhoDoMapa() {
+    _dedoNoMapa = false;
+    if (_mapaPendente) renderMapa();
   }
 
   // ---------- pop-up de ação (garçom toca numa mesa) ----------
@@ -1668,7 +1683,11 @@
     piso.addEventListener("contextmenu", (e) => e.preventDefault());
     let alvo = null, podeArrastar = false, moveu = false, vagaAcesa = null;
     let tocouEm = 0;          // hora do toque, para separar toque de arrasto
-    let houveGesto = false;   // true = segurou/arrastou; o clique que vem depois não abre
+    // O Android manda os eventos em ordens diferentes conforme a versão
+    // (ponteiro, toque, clique) e às vezes engole alguns. Em vez de depender
+    // de um deles, qualquer um pode abrir — e uma trava de tempo impede que
+    // dois cheguem juntos e abram duas vezes.
+    let ultimoToque = 0;
     let dx = 0, dy = 0, posOriginal = null, xInicial = 0, yInicial = 0, relogio = null;
     const SEGURAR = 350;   // ms de dedo parado para liberar o arrasto
     const FOLGA = 10;      // px de tremida que ainda contam como "parado"
@@ -1706,10 +1725,21 @@
     };
     const limparVagas = () => $$(seletor + " .mm-vaga").forEach((v) => v.remove());
 
+    // Abre a mesa, venha o aviso de onde vier. A trava de 500ms garante que
+    // ponteiro + toque + clique do MESMO gesto abram uma vez só.
+    const abrirPorToque = (id) => {
+      const agora = Date.now();
+      if (agora - ultimoToque < 500) return;
+      ultimoToque = agora;
+      if (modo === "juntar") acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(id))();
+      else abrirMesaCadastro(id);
+    };
+
     const soltar = () => {
       limparVagas();
       piso.classList.remove("is-pegando");
       travarRolagem(false);
+      if (modo === "juntar") setTimeout(liberarDesenhoDoMapa, 60);
       clearTimeout(relogio);
       if (alvo) alvo.classList.remove("is-arrastando", "is-pronto");
       $$(seletor + " .mm-mesa").forEach((x) => x.classList.remove("is-alvo"));
@@ -1744,7 +1774,8 @@
     piso.addEventListener("pointerdown", (e) => {
       const el = e.target.closest("[data-mapamesa]");
       if (!el) return;
-      alvo = el; podeArrastar = false; moveu = false; houveGesto = false;
+      alvo = el; podeArrastar = false; moveu = false;
+      if (modo === "juntar") _dedoNoMapa = true;   // segura o redesenho
       tocouEm = e.timeStamp || 0;
       xInicial = e.clientX; yInicial = e.clientY;
       posOriginal = { left: el.style.left, top: el.style.top };
@@ -1759,7 +1790,7 @@
       }
       relogio = setTimeout(() => {
         podeArrastar = true;
-        houveGesto = true;
+        ultimoToque = Date.now();        // segurou: o que vier depois não abre
         el.classList.add("is-pronto");
         // Só agora o mapa toma conta do dedo. O touch-action sozinho não
         // resolveria: o Android decide se o gesto é rolagem no primeiro
@@ -1824,14 +1855,9 @@
       const id = el.dataset.mapamesa;
       soltar();
 
-      if (eraToque) {
-        houveGesto = true;               // o clique que vem a seguir não repete
-        if (modo === "juntar") acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(id))();
-        else abrirMesaCadastro(id);
-        return;
-      }
+      if (eraToque) { abrirPorToque(id); return; }
       if (!arrastou) return;                     // segurou e soltou sem mover
-      houveGesto = true;
+      ultimoToque = Date.now();
 
       if (modo === "juntar") {
         // solta no vazio: volta ao lugar. Sobre uma vaga: o juntar coloca a
@@ -1863,16 +1889,22 @@
     piso.addEventListener("pointerup", fim);
     piso.addEventListener("pointercancel", () => soltar());
 
+    // Segunda rede: no Android o "touchend" chega mesmo quando os eventos de
+    // ponteiro são cancelados e o clique é engolido.
+    piso.addEventListener("touchend", (e) => {
+      const t = e.changedTouches && e.changedTouches[0];
+      if (!t) return;
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      const mesa = el && el.closest ? el.closest("[data-mapamesa]") : null;
+      if (mesa) abrirPorToque(mesa.dataset.mapamesa);
+    }, { passive: true });
+
     // Rede de segurança: se o navegador cancelar os eventos de dedo no meio
     // (acontece no Android quando ele acha que o gesto virou rolagem), o
     // clique ainda chega. Sem isto, o toque simples às vezes não abria nada.
     piso.addEventListener("click", (e) => {
       const el = e.target.closest("[data-mapamesa]");
-      if (!el) return;
-      if (houveGesto) { houveGesto = false; return; }   // veio de um arrasto
-      const id = el.dataset.mapamesa;
-      if (modo === "juntar") acaoSegura("abrir mesa do mapa", () => abrirAcaoMesa(id))();
-      else abrirMesaCadastro(id);
+      if (el) abrirPorToque(el.dataset.mapamesa);
     });
   }
 
@@ -2762,8 +2794,9 @@
     $("#tabGarcom").classList.toggle("is-active", v === "garcom");
     $("#staffBar").hidden = v !== "staff";
     // o botão de chamar mesa acompanha a aba da atendente, na barra de baixo
+    // (dá para escondê-lo na engrenagem: há casa que só chama pela mesa livre)
     const fb2 = $("#freeTableBtn");
-    if (fb2) fb2.hidden = v !== "staff";
+    if (fb2) fb2.hidden = v !== "staff" || CFG.mostrarBtnChamar === false;
     ajustarBarraStaff();
     const rotulo = v === "staff" ? "Adicionar cliente" : "Entrar na fila";
     $("#formTitle").textContent = rotulo;
@@ -3071,6 +3104,20 @@
       // onde mandar o cliente e o mapa não consegue ligar a mesa a ninguém
       if (CFG.mesaNumObrigatorio !== false && !numerosNovaMesa.length) {
         msg.textContent = "Digite o número da mesa.";
+        msg.className = "form-msg err";
+        $("#mNumero").focus();
+        return;
+      }
+      // Duas mesas livres com o mesmo número seriam impossíveis de distinguir:
+      // a atendente não saberia qual chamar e o "Sentou" pegaria a errada.
+      const repetida = numerosNovaMesa.find((n) =>
+        mesasLivres.some((m) => m.id !== editandoMesaId && numeroBate(n, m.numeros || m.identificacao)));
+      if (repetida) {
+        // tira o número recusado da lista: se ficasse, a próxima tentativa
+        // esbarraria nele de novo e o garçom não entenderia o porquê
+        numerosNovaMesa = numerosNovaMesa.filter((n) => n !== repetida);
+        renderNumChips();
+        msg.textContent = "A mesa " + repetida + " já está liberada. Confira o número.";
         msg.className = "form-msg err";
         $("#mNumero").focus();
         return;
@@ -3780,7 +3827,7 @@
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
     "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
-    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
+    "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
     "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo",
@@ -3916,6 +3963,7 @@
     $("#cfgAlt").value = CFG.alternancia || "1:1";
     $("#cfgRegra").value = CFG.regraTamanho || "exato";
     $("#cfgTamanhos").value = tamanhosDaCasa().join(", ");
+    $("#cfgBtnChamar").value = CFG.mostrarBtnChamar === false ? "nao" : "sim";
     $("#cfgTamanhosGrupo").value = tamanhosDeGrupo().join(", ");
     $("#cfgFilasColunas").value = CFG.filasColunas === false ? "lista" : "colunas";
     $("#cfgMapaGarcom").value = CFG.mapaGarcom === false ? "nao" : "sim";
@@ -3990,6 +4038,7 @@
       liberarVolta: $("#cfgLiberarVolta").value || "17:00",
       tamanhosGrupo: Array.from(new Set($("#cfgTamanhosGrupo").value.split(/[^0-9]+/).map(Number)
         .filter((n) => n >= 1 && n <= 99))).sort((a, b) => a - b),
+      mostrarBtnChamar: $("#cfgBtnChamar").value === "sim",
       tamanhosMesa: Array.from(new Set($("#cfgTamanhos").value.split(/[^0-9]+/).map(Number)
         .filter((n) => n >= 1 && n <= 99))).sort((a, b) => a - b),
       somAtivo: $("#cfgSom").value === "sim",
@@ -4065,7 +4114,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "mapaEditModal", "cfgMapaBtn", "mmNumero",
-    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

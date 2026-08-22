@@ -904,3 +904,19 @@ button{font-family:inherit}
   #app[data-view="totem"] .call-item .ci-chips{font-size:1.15rem}
   #app[data-view="totem"] .call-empty{font-size:1.4rem}
 }
+
+/* ---- cartões de mesa livre: do tamanho do que têm dentro ---------------
+   Antes cada cartão esticava para preencher a linha e, com o conteúdo
+   enxuto (número e lugares), sobrava um vazio grande à direita. */
+.mesa-item{
+  flex:0 0 auto;          /* não estica */
+  max-width:100%;
+  padding:8px 12px;gap:10px;
+}
+.mesa-lug{width:46px;height:46px;font-size:1.25rem;border-radius:10px}
+.mesa-lug small{font-size:.52rem}
+.mesa-nome{font-size:.98rem;white-space:nowrap}
+.mesa-acoes .btn{width:38px;height:38px;min-height:38px;font-size:1rem}
+.mesas-list{gap:10px}
+/* o cartão da mesa chamada tem uma linha a mais e pode ocupar a linha toda */
+.mesa-item.is-reservada{flex:1 1 260px}

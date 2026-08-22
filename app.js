@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v101";
+  const VERSAO = "v102";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -376,7 +376,11 @@
   // (view fila_publica): a fila sem telefone, sem comanda e só com o
   // primeiro nome. A equipe logada continua vendo a tabela inteira.
   const T_PUBLICA = "fila_publica";
-  const COLS_PUBLICA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
+  // pedido_em entra para o totem poder anunciar "pedido pronto"; se a vitrine
+  // do banco ainda for a antiga, o app cai de volta para as colunas de sempre
+  const COLS_PUBLICA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pedido_em,pet";
+  const COLS_PUBLICA_ANTIGA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
+  let colsPublicaEmUso = COLS_PUBLICA;
   function temSessaoEquipe() {
     return !!(usuario && usuario.papel && usuario.papel !== PAPEL.TOTEM);
   }
@@ -416,15 +420,23 @@
         // logado = tabela inteira; totem/sem login = só a vitrine
         const equipe = temSessaoEquipe();
         const tab = equipe ? T : T_PUBLICA;
-        const cols = equipe ? "*" : COLS_PUBLICA;
-        const ativos = await client.from(tab).select(cols)
+        const busca = async (monta) => {
+          const cols = () => (equipe ? "*" : colsPublicaEmUso);
+          let r = await monta(client.from(tab).select(cols()));
+          if (!equipe && r.error && r.error.code === "42703" && colsPublicaEmUso !== COLS_PUBLICA_ANTIGA) {
+            colsPublicaEmUso = COLS_PUBLICA_ANTIGA;
+            r = await monta(client.from(tab).select(cols()));
+          }
+          return r;
+        };
+        const ativos = await busca((q) => q
           .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO])
-          .order("criado_em", { ascending: true }).limit(PAGINA);
+          .order("criado_em", { ascending: true }).limit(PAGINA));
         if (ativos.error) throw ativos.error;
         const desde = new Date(Date.now() - JANELA_HIST_MS).toISOString();
-        const hist = await client.from(tab).select(cols)
+        const hist = await busca((q) => q
           .gte("criado_em", desde)
-          .order("criado_em", { ascending: false }).limit(PAGINA); // do mais novo para o mais velho
+          .order("criado_em", { ascending: false }).limit(PAGINA)); // do mais novo para o mais velho
         if (hist.error) throw hist.error;
         const mapa = new Map();
         (ativos.data || []).concat(hist.data || []).forEach((r) => mapa.set(r.id, r));
@@ -575,6 +587,24 @@
   function called() {
     return rows.filter((r) => r.status === STATUS.CHAMADO)
       .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em));
+  }
+
+  // ---- "Pedido pronto" no painel do totem ----
+  // Quando a atendente avisa que o pedido ficou pronto, o cliente pode estar
+  // longe do celular. O painel do salão repete o aviso por alguns minutos.
+  function minutosDoPedidoNoPainel() {
+    const v = Number(CFG.pedidoPainelMin);
+    return isNaN(v) || v < 0 ? 10 : v;
+  }
+  function pedidoNoPainel(r) {
+    const min = minutosDoPedidoNoPainel();
+    if (!r.pedido_em || !min) return false;
+    const d = new Date(r.pedido_em).getTime();
+    return !isNaN(d) && Date.now() - d < min * 60000;
+  }
+  function pedidosProntos() {
+    return rows.filter(pedidoNoPainel)
+      .sort((a, b) => new Date(b.pedido_em) - new Date(a.pedido_em));
   }
 
   // "Mesona" = grupo grande, mostrado numa lista à parte (a ordem de chamada não muda)
@@ -2491,15 +2521,24 @@
     media("#avgNorm", (r) => !r.preferencial && !isMesona(r));
 
     // -------- painel "chamando" (mostra TODAS as mesas chamadas) --------
+    // No totem entram também os pedidos que acabaram de ficar prontos: quem
+    // está no salão, longe do celular, lê o aviso aqui. Na tela da atendente o
+    // painel segue só com as chamadas — o aviso do pedido ela mesma mandou.
     const callList = $("#callList");
     const callEmpty = $("#callEmpty");
-    callEmpty.hidden = c.length > 0;
-    callList.innerHTML = c.map((r, i) => `
-      <div class="call-item ${r.preferencial ? "pref" : ""} ${i === 0 ? "fresh" : ""}">
+    const prontos = staff ? [] : pedidosProntos();
+    const painel = prontos.concat(c.filter((r) => !prontos.some((p) => p.id === r.id)));
+    callEmpty.hidden = painel.length > 0;
+    callList.innerHTML = painel.map((r, i) => {
+      const pronto = !staff && pedidoNoPainel(r);
+      return `
+      <div class="call-item ${pronto ? "pronto" : ""} ${r.preferencial && !pronto ? "pref" : ""} ${i === 0 ? "fresh" : ""}">
         ${staff ? `<button class="ci-x staff-only" data-discard="${r.id}" aria-label="Remover">✕</button>` : ""}
-        <span class="ci-label">${r.preferencial ? "★ Preferencial" : "Chamando"}</span>
+        <span class="ci-label">${pronto ? "🍽️ Pedido pronto" : r.preferencial ? "★ Preferencial" : "Chamando"}</span>
         <span class="ci-name">${esc(firstName(r.nome))}</span>
-        <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)</span>
+        <span class="ci-meta">${pronto
+          ? `Pode retirar no balcão • avisado às ${fmtClock(r.pedido_em)}`
+          : `${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} • chamado às ${fmtClock(r.chamado_em)} (há <b data-since="${r.chamado_em}">agora</b>)`}</span>
         ${callChipsHTML(r, staff)}
         ${staff ? `<div class="ci-actions staff-only">
           ${(CFG.whatsAtivo !== false && r.telefone) ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
@@ -2509,7 +2548,8 @@
           ${pedidoBtnHTML(r)}
           <button class="btn btn-sm ci-end" data-toend="${r.id}">⬇ Fim da fila</button>
         </div>` : ""}
-      </div>`).join("");
+      </div>`;
+    }).join("");
 
     renderMesas();
     renderResumoFila();
@@ -4045,7 +4085,7 @@
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
-    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta",
+    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta", "pedidoPainelMin",
     "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa", "mesaNumObrigatorio", "liberarAte", "liberarVolta",
   ];
 
@@ -4226,6 +4266,7 @@
     $("#cfgPerguntarMesa").value = CFG.perguntarMesa || "opcional";
     $("#cfgMesaNumObr").value = CFG.mesaNumObrigatorio === false ? "nao" : "sim";
     $("#cfgResumoAlerta").value = alertaDoResumo();
+    $("#cfgPedidoPainel").value = minutosDoPedidoNoPainel();
     $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
     $("#cfgPinGarcom").value = CFG.pinGarcom || "";
 
@@ -4242,7 +4283,12 @@
   }
 
   async function saveCfgFromForm() {
-    const num = (sel, min, max, pad) => Math.max(min, Math.min(max, parseInt($(sel).value, 10) || pad));
+    // `|| pad` não serve aqui: zero é um valor legítimo (0 = desligar o prazo)
+    // e seria trocado pelo padrão sem ninguém pedir.
+    const num = (sel, min, max, pad) => {
+      const v = parseInt($(sel).value, 10);
+      return Math.max(min, Math.min(max, isNaN(v) ? pad : v));
+    };
     const obj = {
       prazoComparecer: num("#cfgPrazo", 1, 60, 5),
       autoFimDaFila: $("#cfgAutoFim").value === "sim",
@@ -4298,6 +4344,7 @@
       perguntarMesa: $("#cfgPerguntarMesa").value,
       mesaNumObrigatorio: $("#cfgMesaNumObr").value === "sim",
       resumoAlerta: num("#cfgResumoAlerta", 0, 600, 30),
+      pedidoPainelMin: num("#cfgPedidoPainel", 0, 120, 10),
 
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
     };
@@ -4333,7 +4380,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior",
-    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel",
     "loginScreen", "relBtn", "sairBtn",
   ];
   const LS_RECARGA = "fila_recarga_versao";

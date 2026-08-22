@@ -168,6 +168,11 @@ button{font-family:inherit}
   content:" PRAZO ESGOTADO";color:#fff;font-weight:800;
   background:rgba(0,0,0,.45);border-radius:999px;padding:1px 8px;margin-left:6px;
 }
+/* "Pedido pronto" no painel do salão: cor própria (laranja) para ninguém
+   confundir com a chamada de mesa, que é verde. Não recebe o semáforo de
+   tempo — o aviso vale por alguns minutos e sai sozinho. */
+.call-item.pronto{background:linear-gradient(135deg,#e67e22,#d35400)}
+.call-item.pronto .ci-label{color:#fff}
 .call-item.is-me{box-shadow:0 0 0 4px #fff, 0 6px 18px rgba(0,0,0,.25)}
 @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes blink{0%,100%{box-shadow:0 6px 18px rgba(0,0,0,.18)}50%{box-shadow:0 0 0 4px rgba(255,255,255,.6),0 6px 18px rgba(0,0,0,.18)}}

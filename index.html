@@ -996,6 +996,11 @@
           <small class="hint">Avisa o cliente no WhatsApp que o pedido pode ser retirado.</small>
         </label>
         <label class="field">
+          <span>Pedido pronto no painel do totem (min)</span>
+          <input id="cfgPedidoPainel" type="number" min="0" max="120" step="1" />
+          <small class="hint">O aviso aparece no painel do salão por esse tempo, para quem está longe do celular. 0 mostra só no WhatsApp e no link do cliente.</small>
+        </label>
+        <label class="field">
           <span>Mensagem do pedido pronto</span>
           <textarea id="cfgMsgPedido" rows="3"></textarea>
           <small class="hint">Use {nome}, {restaurante}, {comanda} e {pager}.</small>

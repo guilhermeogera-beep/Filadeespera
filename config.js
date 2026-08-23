@@ -153,6 +153,7 @@ window.FILA_CONFIG = {
   msgPedido: "Olá {nome}! Seu pedido na {restaurante} está pronto 🍽️ Pode retirar no balcão quando quiser. Bom apetite!",
 
   // --- Preencher para ativar o modo nuvem (Supabase) ---
+  pushChavePublica: "BK_poMjebMFL7wkUsMzNJhGf4cXOuUlGG8Ph11qlKUFoU4x95u8cat1yE-s0Xn08lDpR9bVKm0IFBxI-_V2VMAA",
   supabaseUrl: "https://xmnrzjuvgegfdalbgpwb.supabase.co",
   supabaseAnonKey: "sb_publishable_egn2eVf5KSLsPRfHiKgkiQ_jJTvnNZY",
 };

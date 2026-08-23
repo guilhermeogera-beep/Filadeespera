@@ -161,18 +161,24 @@
     o.stop(audioCtx.currentTime + inicio + dur);
   }
 
-  // toque de chamada: três pares de bipes, alto o bastante para o bolso
-  function tocarAlarme(vezes) {
+  // Toque + vibração. A chamada da mesa e o pedido pronto têm padrões
+  // diferentes: dá para saber qual é sem tirar o celular do bolso.
+  const VIBRA = {
+    chamada: [500, 200, 500, 200, 900],
+    pedido: [250, 120, 250, 120, 250, 120, 250],
+  };
+  function tocarAlarme(vezes, tipo) {
     if (!alarmeLigado) return;
+    const agudo = tipo === "pedido";
     try {
       if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
       for (let i = 0; i < (vezes || 6); i++) {
-        bip(1046, i * 0.42, 0.18, 0.28);
-        bip(1568, i * 0.42 + 0.2, 0.18, 0.28);
+        bip(agudo ? 880 : 1046, i * 0.42, 0.18, 0.3);
+        bip(agudo ? 1318 : 1568, i * 0.42 + 0.2, 0.18, 0.3);
       }
     } catch (e) { console.warn("Som:", e); }
     try {
-      if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 700]);
+      if (navigator.vibrate) navigator.vibrate(VIBRA[tipo] || VIBRA.chamada);
     } catch (e) { /* iPhone não vibra pelo navegador */ }
   }
 
@@ -196,7 +202,57 @@
     catch (e) { /* bateria fraca ou navegador sem suporte: segue sem */ }
   }
 
+  // ---------- notificação push ----------
+  // O alarme da tela só toca com a página aberta. A notificação push chega
+  // mesmo com o navegador fechado: quem entrega é o servidor, não a página.
+  // No iPhone só funciona se a pessoa tiver usado "Adicionar à Tela de Início".
+  function chaveParaBytes(base64) {
+    const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+    const b64 = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+    const bruto = atob(b64);
+    const bytes = new Uint8Array(bruto.length);
+    for (let i = 0; i < bruto.length; i++) bytes[i] = bruto.charCodeAt(i);
+    return bytes;
+  }
+
+  async function ligarPush() {
+    const chave = CFG.pushChavePublica;
+    if (!chave || !client || !meuId) return "sem-push";
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "sem-suporte";
+    try {
+      const permissao = await Notification.requestPermission();
+      if (permissao !== "granted") return "recusado";
+      const reg = await navigator.serviceWorker.register("./sw.js");
+      await navigator.serviceWorker.ready;
+      const jaTem = await reg.pushManager.getSubscription();
+      const sub = jaTem || await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: chaveParaBytes(chave),
+      });
+      const j = sub.toJSON();
+      const { error } = await client.from("fila_push").insert({
+        cliente_id: meuId,
+        endpoint: j.endpoint,
+        p256dh: j.keys.p256dh,
+        auth: j.keys.auth,
+      });
+      // 23505 = já estava cadastrado; 42P01 = a tabela ainda não existe
+      if (error && error.code !== "23505") {
+        console.warn("Push não cadastrado:", error.message);
+        return error.code === "42P01" ? "sem-tabela" : "erro";
+      }
+      return "ok";
+    } catch (e) {
+      console.warn("Push:", e);
+      return "erro";
+    }
+  }
+
+  let pushEstado = "";            // "ok", "recusado", "sem-suporte"...
+
   async function ligarAlarme() {
+    const btn = $("#alertaBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Ligando…"; }
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (AC) { audioCtx = new AC(); await audioCtx.resume(); }
@@ -206,6 +262,10 @@
     bip(1046, 0, 0.12, 0.2);                       // confirma que está ligado
     try { if (navigator.vibrate) navigator.vibrate(120); } catch (e) { /* ignora */ }
     manterTelaAcesa();
+    // o MESMO toque serve para pedir a notificação: é a única chance de pedir
+    // sem parecer invasivo, e é ela que salva quem fecha o navegador
+    pushEstado = await ligarPush();
+    if (btn) { btn.disabled = false; btn.textContent = "🔔 Tocar quando for a minha vez"; }
     desenharAlarme();
   }
 
@@ -219,8 +279,13 @@
     card.hidden = !naFila;
     if (!naFila) return;
     $("#alertaBtn").hidden = alarmeLigado;
+    const recado = {
+      ok: "🔔 Pronto! Você recebe a notificação mesmo com o celular guardado.",
+      recusado: "🔔 Alarme ligado. As notificações estão bloqueadas neste navegador — deixe esta tela aberta.",
+      "sem-suporte": "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra quando chegar a sua vez.",
+    };
     $("#alertaNota").textContent = alarmeLigado
-      ? "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra quando chegar a sua vez."
+      ? (recado[pushEstado] || "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra quando chegar a sua vez.")
       : "Deixe esta tela aberta. O celular toca e vibra quando a mesa sair.";
   }
 
@@ -229,11 +294,11 @@
     const st = me ? me.status : null;
     const ped = me ? me.pedido_em : null;
     if (statusAnterior !== null && st === STATUS.CHAMADO && statusAnterior !== STATUS.CHAMADO) {
-      tocarAlarme(8);
+      tocarAlarme(8, "chamada");
       piscarTitulo("🔔 É A SUA VEZ!");
     }
     if (pedidoAnterior !== null && ped && !pedidoAnterior) {
-      tocarAlarme(4);
+      tocarAlarme(6, "pedido");
       piscarTitulo("🍽️ PEDIDO PRONTO!");
     }
     if (st !== STATUS.CHAMADO && !ped && piscando) pararDePiscar();

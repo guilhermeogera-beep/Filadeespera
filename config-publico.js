@@ -17,6 +17,10 @@ window.FILA_CONFIG = {
   marca: "Fila Fácil",
   restaurante: "Quinta do Aveiro",
 
+  // Chave PÚBLICA das notificações (pode ficar à vista: é ela que o celular
+  // usa para aceitar avisos deste site). A chave privada fica só no Supabase.
+  pushChavePublica: "BK_poMjebMFL7wkUsMzNJhGf4cXOuUlGG8Ph11qlKUFoU4x95u8cat1yE-s0Xn08lDpR9bVKm0IFBxI-_V2VMAA",
+
   supabaseUrl: "https://xmnrzjuvgegfdalbgpwb.supabase.co",
   supabaseAnonKey: "sb_publishable_egn2eVf5KSLsPRfHiKgkiQ_jJTvnNZY",
 };

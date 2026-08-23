@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v123";
+  const VERSAO = "v124";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -779,6 +779,9 @@
       status: STATUS.CHAMADO,
       chamado_em: new Date().toISOString(),
     }, extras || {}));
+    // grava primeiro, avisa depois: a notificação nunca sai de uma chamada
+    // que não foi registrada
+    avisarNoCelular(id, "chamada");
   }
   async function seatPerson(id, mesaNumero) {
     const patch = { status: STATUS.SENTADO, sentou_em: new Date().toISOString() };
@@ -1095,9 +1098,22 @@
 
   // Marca que o cliente já foi avisado de que o pedido está pronto
   // (o WhatsApp abre pelo próprio link; aqui só registramos a hora)
+  // Avisa o celular do cliente (notificação push). Quem entrega é a função
+  // "avisar" no Supabase — o app só pede. Se a função não existir ainda, isto
+  // falha em silêncio: o WhatsApp e o alarme da tela continuam valendo.
+  async function avisarNoCelular(id, tipo) {
+    try {
+      if (!backend || !backend.client || !backend.client.functions) return;
+      await backend.client.functions.invoke("avisar", { body: { id, tipo } });
+    } catch (e) {
+      console.warn("Notificação não enviada:", e && e.message);
+    }
+  }
+
   async function marcarPedido(id) {
     try {
       await backend.update(id, { pedido_em: new Date().toISOString() });
+      avisarNoCelular(id, "pedido");
       await refresh();
     } catch (e) { console.warn("Não deu para registrar o aviso do pedido:", e); }
   }

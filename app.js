@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v132";
+  const VERSAO = "v133";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2784,6 +2784,13 @@
     // Quem já está na mesa não se chama nem se "senta" de novo: ali as ações
     // que fazem sentido são avisar o pedido e corrigir o cadastro.
     const naMesa = r.status === STATUS.SENTADO;
+    // O perfil Pedidos tem uma ação só: avisar que o prato saiu. Editar ou
+    // devolver à fila não é trabalho dele — e o banco também não deixaria.
+    if (soPedidos()) {
+      $("#cliAcoes").innerHTML = `${pedidoBtnHTML(r)}${wa}`;
+      $("#clienteModal").hidden = false;
+      return;
+    }
     $("#cliAcoes").innerHTML = naMesa ? `
       ${pedidoBtnHTML(r)}
       <button class="btn btn-edit" data-edit="${r.id}">✏️ Editar</button>
@@ -3224,7 +3231,9 @@
   //  desligado, o app funciona como sempre funcionou (com os PINs) — assim dá
   //  para criar e testar os usuários sem correr o risco de ficar trancado fora.
   // ==========================================================
-  const PAPEL = { ADM: "adm", ATENDENTE: "atendente", GARCOM: "garcom", TOTEM: "totem" };
+  // PEDIDOS é o perfil da cozinha/balcão: só acompanha quem já está na mesa e
+  // avisa quando o prato fica pronto. Não mexe na fila nem no salão.
+  const PAPEL = { ADM: "adm", ATENDENTE: "atendente", GARCOM: "garcom", PEDIDOS: "pedidos", TOTEM: "totem" };
   const LS_TOTEM = "fila_modo_totem";
   let usuario = null;   // { email, papel, nome } — null quando não há login
 
@@ -3239,6 +3248,7 @@
     if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa", "sentados"];
     if (p === PAPEL.ATENDENTE) return ["staff", "mapa", "sentados"];
     if (p === PAPEL.GARCOM) return ["garcom", "mapa"];
+    if (p === PAPEL.PEDIDOS) return ["sentados"];
     return ["totem"];   // totem (ou sem perfil definido): só a fila
   }
   function podeVer(v) { return abasPermitidas().indexOf(v) >= 0; }
@@ -3248,8 +3258,14 @@
     if (p === PAPEL.ADM) return "staff";
     if (p === PAPEL.ATENDENTE) return "staff";
     if (p === PAPEL.GARCOM) return "garcom";
+    if (p === PAPEL.PEDIDOS) return "sentados";
     return "totem";
   }
+  // Perfil Pedidos: a tela dele é só a aba "Na mesa" e o aviso do pedido.
+  function soPedidos() {
+    return loginLigado() && !!usuario && usuario.papel === PAPEL.PEDIDOS;
+  }
+
   function ehAdm() { return !loginLigado() || (usuario && usuario.papel === PAPEL.ADM); }
   // recepção = quem pode mexer na fila (administrador ou atendente)
   function ehRecepcao() {
@@ -3389,6 +3405,7 @@
   function rotuloPapel(p) {
     return p === PAPEL.ADM ? "Administrador"
       : p === PAPEL.ATENDENTE ? "Atendente"
+      : p === PAPEL.PEDIDOS ? "Pedidos"
       : p === PAPEL.GARCOM ? "Garçom" : "Totem";
   }
 

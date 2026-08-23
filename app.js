@@ -6,7 +6,9 @@
   "use strict";
 
   const CFG = window.FILA_CONFIG || {};
-  const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
+  // FINALIZADO = comeu e foi embora. É diferente de DESISTIU (foi embora sem
+  // sentar): no relatório um é atendimento cumprido, o outro é cliente perdido.
+  const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu", FINALIZADO: "finalizado" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
   const VERSAO = "v151";
@@ -887,6 +889,17 @@
     await Promise.allSettled(gravacoes);
     await refresh();
   }
+  // Atendimento cumprido: o cliente comeu e foi embora. Sai da aba "Na mesa"
+  // e a mesa dele deixa de aparecer ocupada no mapa (o mapa procura por quem
+  // está SENTADO). No relatório continua contando como quem sentou — não é
+  // desistência, é o serviço que terminou direito.
+  async function finalizarAtendimento(id) {
+    const patch = { status: STATUS.FINALIZADO };
+    pintarLocal(id, patch);             // some da lista na hora
+    const gravacoes = soltarReservaDe(id).concat(backend.update(id, patch));
+    await Promise.allSettled(gravacoes);
+    await refresh();
+  }
   async function backToQueue(id) {
     const patch = { status: STATUS.AGUARDANDO, chamado_em: null };
     pintarLocal(id, patch);
@@ -1076,6 +1089,17 @@
       </button>`;
     }).join("");
     box.hidden = false;
+  }
+
+  // Acende a mesa que corresponde ao que está escrito no campo — e apaga as
+  // outras. É o campo que manda: assim, apagar o número na mão desmarca a
+  // mesa, que é o que qualquer um tenta fazer para voltar atrás.
+  function marcarMesaDoSentou() {
+    const escolhida = $("#sentouMesa").value.trim().toLowerCase();
+    $$("#sentouMesas .sm-mesa").forEach((x) => {
+      const num = String(x.dataset.sentoumesa || "").trim().toLowerCase();
+      x.classList.toggle("is-sel", !!num && num === escolhida);
+    });
   }
 
   // Procura, entre as mesas livres, uma que combine com o que foi digitado.
@@ -3123,7 +3147,8 @@
     // Menos botão aqui é menos chance de mexer sem querer em quem já sentou.
     if (r.status === STATUS.SENTADO) {
       $("#cliAcoes").innerHTML =
-        `<button class="btn btn-sm" data-back="${r.id}">↩️ Voltar à fila</button>`;
+        `<button class="btn btn-sm btn-verde" data-finish="${r.id}">🏁 Finalizado</button>
+         <button class="btn btn-sm" data-back="${r.id}">↩️ Voltar à fila</button>`;
       $("#clienteModal").hidden = false;
       return;
     }
@@ -4734,7 +4759,7 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente],[data-finish]");
       if (!t) return;
       // veio da ficha do cliente? ela sai da frente antes da ação acontecer
       if (t.closest("#clienteModal")) $("#clienteModal").hidden = true;
@@ -4763,6 +4788,7 @@
       t.disabled = true;   // evita toque duplo enquanto grava
       try {
         if (t.dataset.drop) { if (confirm("Remover este cliente da fila?")) await dropPerson(t.dataset.drop); }
+        else if (t.dataset.finish) { if (confirm("Finalizar o atendimento deste cliente?")) await finalizarAtendimento(t.dataset.finish); }
         else if (t.dataset.back) await backToQueue(t.dataset.back);
         else if (t.dataset.discard) { if (confirm("Remover esta chamada?")) await dropPerson(t.dataset.discard); }
         else if (t.dataset.toend) {
@@ -4839,15 +4865,20 @@
       if (!jaEra) b.classList.add("is-sel");
       renderMesas();     // a lista atrás do pop-up acompanha a escolha
     });
-    // tocar numa mesa livre preenche o número — sem ninguém decorar nada
+    // Tocar numa mesa livre preenche o número — sem ninguém decorar nada.
+    // Um toque marca, OUTRO DESMARCA, igual ao pop-up de chamada: quem tocou
+    // na mesa errada precisa de um jeito de voltar atrás e sentar sem mesa.
     $("#sentouMesas").addEventListener("click", (e) => {
       const b = e.target.closest("[data-sentoumesa]");
       if (!b) return;
-      $("#sentouMesa").value = b.dataset.sentoumesa;
-      $$("#sentouMesas .sm-mesa").forEach((x) => x.classList.remove("is-sel"));
-      b.classList.add("is-sel");
+      const jaEra = b.classList.contains("is-sel");
+      $("#sentouMesa").value = jaEra ? "" : b.dataset.sentoumesa;
+      marcarMesaDoSentou();
       $("#sentouMsg").textContent = "";
     });
+    // apagar o número na mão também desmarca: antes o destaque continuava
+    // aceso e parecia que o cliente não podia sentar sem mesa
+    $("#sentouMesa").addEventListener("input", marcarMesaDoSentou);
     $("#sentouMesa").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#sentouOk").click(); });
 
     // editar cliente
@@ -5087,7 +5118,7 @@
 
     const situacao = {
       aguardando: "⏳ na fila", chamado: "🔔 chamado",
-      sentado: "✅ sentou", desistiu: "✖ saiu",
+      sentado: "✅ sentou", finalizado: "🏁 finalizado", desistiu: "✖ saiu",
     };
     // conta desde a hora REAL de chegada (quem perdeu a vez teve o criado_em reescrito)
     const esperaAteChamar = (r) => (r.chamado_em ? new Date(r.chamado_em) - new Date(entradaEm(r)) : null);
@@ -5125,7 +5156,7 @@
     const cards = [
       ["Grupos", lista.length],
       ["Pessoas", lista.reduce((a, r) => a + Number(r.pessoas || 0), 0)],
-      ["Sentaram", lista.filter((r) => r.status === STATUS.SENTADO).length],
+      ["Sentaram", lista.filter((r) => r.status === STATUS.SENTADO || r.status === STATUS.FINALIZADO).length],
       ["Desistiram", lista.filter((r) => r.status === STATUS.DESISTIU).length],
       ["Com pet", lista.filter((r) => r.pet).length],
       ["Preferenciais", lista.filter((r) => r.preferencial).length],
@@ -5190,7 +5221,7 @@
   }
 
   function apagaveis() {
-    return relCache.filter((r) => r.status === STATUS.SENTADO || r.status === STATUS.DESISTIU);
+    return relCache.filter((r) => r.status === STATUS.SENTADO || r.status === STATUS.FINALIZADO || r.status === STATUS.DESISTIU);
   }
 
   function pedirLimpeza() {

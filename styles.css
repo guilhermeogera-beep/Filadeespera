@@ -192,9 +192,9 @@ button{font-family:inherit}
 
 /* ---------------- FORMULÁRIO ---------------- */
 .join-form{display:flex;flex-direction:column;gap:16px}
-/* Quando o formulário ainda assim não couber (celular em pé, com todos os
-   campos ligados), o botão de entrar não some no fim da rolagem: fica colado
-   no rodapé do pop-up. A sombra branca por cima esconde o que passa atrás. */
+/* Quando o formulário não couber na tela, o botão de entrar não some no fim
+   da rolagem: fica colado no rodapé do pop-up, sempre à mão.
+   A sombra branca por cima esconde o conteúdo que passa atrás dele. */
 .join-form>.btn-big{position:sticky;bottom:-2px;z-index:1;box-shadow:0 -12px 16px 6px #fff}
 .field{display:flex;flex-direction:column;gap:7px}
 .field>span{font-weight:600;font-size:.95rem;color:var(--ink)}
@@ -356,24 +356,6 @@ button{font-family:inherit}
 .call-confirm{font-size:1.05rem}
 .call-confirm .cc-name{font-size:1.6rem;font-weight:800;color:var(--brand-dark)}
 .call-confirm .cc-meta{color:var(--muted);margin-top:4px}
-/* ---- Pop-up longo em tela larga: usa a LATERAL em vez de rolar ----
-   Num tablet ou computador sobra largura dos dois lados e o que falta é
-   ALTURA: a atendente tinha de rolar o formulário para achar o botão de
-   entrar, e no meio do corrido isso custa. A partir de 800px de largura o
-   formulário passa a duas colunas e cabe inteiro na tela.
-   No celular e no totem em pé nada muda — continua uma coluna só. */
-@media (min-width:800px){
-  .modal-box-2col{max-width:780px}
-  .modal-box-2col .join-form{
-    display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;align-items:start;
-  }
-  /* o que não se divide ao meio: os extras (que já são duas colunas por
-     dentro), o aceite das regras, o botão de enviar e o recado de erro */
-  .modal-box-2col #formExtras,
-  .modal-box-2col #termosRow,
-  .modal-box-2col #joinBtn,
-  .modal-box-2col #formMsg{grid-column:1 / -1}
-}
 .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .two-cols .field input{padding:12px}
 .two-cols .field[hidden]{display:none}

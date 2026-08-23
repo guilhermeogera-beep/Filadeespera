@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v135";
+  const VERSAO = "v136";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -3036,19 +3036,14 @@
   }
 
   // ---------- aba "Pedidos": cozinha/balcão ----------
-  // Aqui aparece TODO MUNDO que ainda está sendo atendido — esperando mesa,
-  // chamado ou já sentado. Quem prepara o pedido não sabe (nem precisa saber)
-  // em que pé está a fila: precisa achar a pessoa pela comanda ou pelo pager e
-  // avisar que o prato saiu.
+  // Aqui aparece SÓ quem está na fila esperando para sentar. Quem já foi
+  // chamado ou já sentou sai da lista sozinho — senão a tela enche de gente
+  // que a cozinha não tem mais o que fazer.
   let buscaPed = "";
   const filtrosPed = new Set();
 
   function emAtendimento() {
-    return rows
-      .filter((r) => r.status === STATUS.AGUARDANDO ||
-                     r.status === STATUS.CHAMADO ||
-                     r.status === STATUS.SENTADO)
-      .sort(byCreatedAsc);            // ordem de chegada, como a cozinha trabalha
+    return waiting();               // ordem de chegada, como a cozinha trabalha
   }
 
   function combinaPed(r) {

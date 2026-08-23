@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=131" />
+<link rel="stylesheet" href="./styles.css?v=132" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -171,13 +171,10 @@
                aria-label="Procurar entre quem está na mesa" />
         <button type="button" id="sentLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
       </div>
+      <!-- Onde procurar. Nada marcado = procura em tudo. Igual à tela da atendente. -->
       <div class="busca-filtros" id="sentFiltros">
-        <button type="button" class="bf-chip" data-sfiltro="pedido">🍽 Pedido pronto</button>
-        <button type="button" class="bf-chip" data-sfiltro="sempedido">⏳ Sem pedido</button>
-        <button type="button" class="bf-chip" data-sfiltro="comanda">🧾 Com comanda</button>
-        <button type="button" class="bf-chip" data-sfiltro="pager">🔔 Com pager</button>
-        <button type="button" class="bf-chip" data-sfiltro="mesa">🪑 Com mesa</button>
-        <button type="button" class="bf-chip bf-limpar" data-sfiltro="limpar" hidden>✕ limpar filtros</button>
+        <button type="button" class="bf-chip" data-sfiltro="comanda">🧾 só comanda</button>
+        <button type="button" class="bf-chip" data-sfiltro="pager">🔔 só pager</button>
       </div>
 
       <div class="queue-head">
@@ -1193,4 +1190,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=131"></script>
+<script src="./app.js?v=132"></script>

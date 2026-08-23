@@ -1145,7 +1145,6 @@ button{font-family:inherit}
   font:inherit;width:100%;
 }
 .sent-item:hover{border-color:var(--brand);background:var(--brand-soft)}
-.sent-item.tem-pedido{border-color:#d35400;background:#FFF3E8}
 .sent-mesa{
   flex:0 0 auto;min-width:52px;height:44px;border-radius:10px;padding:0 8px;
   background:var(--brand);color:#fff;font-weight:800;

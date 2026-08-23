@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v131";
+  const VERSAO = "v132";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -3044,16 +3044,15 @@
       .slice(0, quantosNaMesa());
   }
 
+  // Mesma regra da busca da atendente: o chip escolhe ONDE procurar.
   function combinaSent(r) {
-    if (filtrosSent.size) {
-      if (filtrosSent.has("pedido") && !r.pedido_em) return false;
-      if (filtrosSent.has("sempedido") && r.pedido_em) return false;
-      if (filtrosSent.has("comanda") && !String(r.comanda || "").trim()) return false;
-      if (filtrosSent.has("pager") && !String(r.pager || "").trim()) return false;
-      if (filtrosSent.has("mesa") && !String(r.mesa_numero || "").trim()) return false;
-    }
     const t = semAcento(buscaSent).trim();
     if (!t) return true;
+    if (filtrosSent.size) {
+      if (filtrosSent.has("comanda") && semAcento(r.comanda).includes(t)) return true;
+      if (filtrosSent.has("pager") && semAcento(r.pager).includes(t)) return true;
+      return false;
+    }
     if ([r.nome, r.comanda, r.pager, r.mesa_numero].some((c) => semAcento(c).includes(t))) return true;
     const dig = soDigitos(t);
     return dig.length >= 3 && soDigitos(r.telefone).includes(dig);
@@ -3065,10 +3064,14 @@
     card.hidden = appEl.getAttribute("data-view") !== "sentados";
     if (card.hidden) return;
     $$("#sentFiltros .bf-chip").forEach((b) => {
-      const f = b.dataset.sfiltro;
-      if (f === "limpar") { b.hidden = !filtrosSent.size; return; }
-      b.classList.toggle("is-on", filtrosSent.has(f));
+      b.classList.toggle("is-on", filtrosSent.has(b.dataset.sfiltro));
     });
+    const campoSent = $("#sentBusca");
+    if (campoSent) {
+      campoSent.placeholder = filtrosSent.size
+        ? "Procurar " + [...filtrosSent].map((f) => (f === "pager" ? "pager" : "comanda")).join(" ou ")
+        : "Procurar por nome, telefone, comanda, pager ou mesa";
+    }
     const x = $("#sentLimpar");
     if (x) x.hidden = !buscaSent;
     const todos = sentados();
@@ -3089,12 +3092,11 @@
         r.telefone ? "📞 " + esc(r.telefone) : "",
       ].filter(Boolean).join(" • ");
       return `
-      <button type="button" class="sent-item${r.pedido_em ? " tem-pedido" : ""}" data-cliente="${r.id}">
+      <button type="button" class="sent-item" data-cliente="${r.id}">
         <span class="sent-mesa${mesa ? "" : " sem"}">${mesa ? esc(mesa) : "—"}<small>mesa</small></span>
         <span class="sent-txt">
           <span class="sent-nome">${esc(r.nome)}</span>
           <span class="sent-meta">${dados}</span>
-          <span class="sent-meta">sentou ${fmtClock(r.sentou_em)} (há <b data-since="${r.sentou_em}">agora</b>)</span>
         </span>
       </button>`;
     }).join("");
@@ -4290,12 +4292,8 @@
       const b = e.target.closest("[data-sfiltro]");
       if (!b) return;
       const f = b.dataset.sfiltro;
-      if (f === "limpar") filtrosSent.clear();
-      else if (filtrosSent.has(f)) filtrosSent.delete(f);
+      if (filtrosSent.has(f)) filtrosSent.delete(f);
       else filtrosSent.add(f);
-      // "com pedido" e "sem pedido" se anulam
-      if (f === "pedido") filtrosSent.delete("sempedido");
-      if (f === "sempedido") filtrosSent.delete("pedido");
       renderSentados();
     });
     $("#buscaFiltros").addEventListener("click", (e) => {

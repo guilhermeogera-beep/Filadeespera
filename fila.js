@@ -249,6 +249,11 @@
   }
 
   let pushEstado = "";            // "ok", "recusado", "sem-suporte"...
+  // o navegador exige um toque novo a cada carregamento para liberar som;
+  // quem já ligou uma vez merece um rótulo mais direto
+  function jaUsouAlarme() {
+    try { return localStorage.getItem("fila_alarme") === "1"; } catch (e) { return false; }
+  }
 
   async function ligarAlarme() {
     const btn = $("#alertaBtn");
@@ -265,28 +270,39 @@
     // o MESMO toque serve para pedir a notificação: é a única chance de pedir
     // sem parecer invasivo, e é ela que salva quem fecha o navegador
     pushEstado = await ligarPush();
-    if (btn) { btn.disabled = false; btn.textContent = "🔔 Tocar quando for a minha vez"; }
-    desenharAlarme();
+    if (btn) btn.disabled = false;
+    desenharAlarme();   // o rótulo certo vem daqui
   }
 
   function desenharAlarme(me) {
     if (me !== undefined) meAtual = me;
     const card = $("#alertaCard");
     if (!card) return;
-    // só faz sentido para quem ainda está esperando ou acabou de ser chamado
     const r = meAtual;
-    const naFila = r && (r.status === STATUS.AGUARDANDO || r.status === STATUS.CHAMADO);
-    card.hidden = !naFila;
-    if (!naFila) return;
-    $("#alertaBtn").hidden = alarmeLigado;
+    // Vale enquanto ele espera a mesa E enquanto espera o pedido: era aqui que
+    // o aviso de "pedido pronto" se perdia — o botão sumia quando a pessoa
+    // sentava, e quem recarregava a página ficava sem alarme nenhum.
+    const esperandoMesa = r && (r.status === STATUS.AGUARDANDO || r.status === STATUS.CHAMADO);
+    const esperandoPedido = r && r.status === STATUS.SENTADO && !r.pedido_em && CFG.avisoPedido !== false;
+    card.hidden = !(esperandoMesa || esperandoPedido);
+    if (card.hidden) return;
+    const btn = $("#alertaBtn");
+    btn.hidden = alarmeLigado;
+    if (!alarmeLigado) {
+      btn.textContent = esperandoPedido
+        ? "🔔 Tocar quando o pedido ficar pronto"
+        : (jaUsouAlarme() ? "🔔 Reativar o alarme" : "🔔 Tocar quando for a minha vez");
+    }
     const recado = {
       ok: "🔔 Pronto! Você recebe a notificação mesmo com o celular guardado.",
       recusado: "🔔 Alarme ligado. As notificações estão bloqueadas neste navegador — deixe esta tela aberta.",
       "sem-suporte": "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra quando chegar a sua vez.",
     };
     $("#alertaNota").textContent = alarmeLigado
-      ? (recado[pushEstado] || "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra quando chegar a sua vez.")
-      : "Deixe esta tela aberta. O celular toca e vibra quando a mesa sair.";
+      ? (recado[pushEstado] || "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra na hora.")
+      : (esperandoPedido
+        ? "Toque uma vez: o celular toca e vibra quando o pedido sair do balcão."
+        : "Deixe esta tela aberta. O celular toca e vibra quando a mesa sair.");
   }
 
   // Toca quando o estado MUDA: virou "é a sua vez" ou o pedido ficou pronto.

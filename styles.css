@@ -1157,3 +1157,11 @@ button{font-family:inherit}
 .sent-nome{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sent-meta{font-size:.8rem;color:var(--muted);font-weight:600}
 .sent-selo{font-size:.72rem;font-weight:800;color:#b0480f}
+
+/* ---- Alarme na página do cliente ----
+   O WhatsApp passa batido no bolso; com isto ligado o próprio celular toca e
+   vibra na hora da chamada. O botão existe porque o navegador só libera som
+   depois de um toque da pessoa. */
+.alerta-card{text-align:center;display:flex;flex-direction:column;gap:8px}
+.alerta-card .btn-big{width:100%}
+.alerta-nota{margin:0;font-size:.86rem;color:var(--muted);font-weight:600;line-height:1.4}

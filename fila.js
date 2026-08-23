@@ -131,6 +131,116 @@
     } catch (e) { console.warn("Config indisponível:", e); }
   }
 
+  // ==========================================================
+  //  ALARME NO CELULAR DO CLIENTE
+  // ----------------------------------------------------------
+  //  A mensagem do WhatsApp passa batido no bolso e a pessoa perde a vez.
+  //  Com o alarme ligado, é o próprio celular dela que toca e vibra na hora
+  //  da chamada — sem instalar nada, só deixando esta tela aberta.
+  //
+  //  O navegador só deixa tocar som depois de UM toque da pessoa: por isso o
+  //  botão. O mesmo toque serve para pedir que a tela não apague.
+  // ==========================================================
+  let alarmeLigado = false;
+  let audioCtx = null;
+  let telaAcesa = null;          // WakeLockSentinel
+  let statusAnterior = null;     // para tocar só na MUDANÇA de estado
+  let pedidoAnterior = null;
+  let piscando = null;
+  let meAtual = null;             // o cliente deste link, como está agora
+  const TITULO = document.title;
+
+  function bip(freq, inicio, dur, vol) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "square";
+    o.frequency.value = freq;
+    g.gain.value = vol;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(audioCtx.currentTime + inicio);
+    o.stop(audioCtx.currentTime + inicio + dur);
+  }
+
+  // toque de chamada: três pares de bipes, alto o bastante para o bolso
+  function tocarAlarme(vezes) {
+    if (!alarmeLigado) return;
+    try {
+      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+      for (let i = 0; i < (vezes || 6); i++) {
+        bip(1046, i * 0.42, 0.18, 0.28);
+        bip(1568, i * 0.42 + 0.2, 0.18, 0.28);
+      }
+    } catch (e) { console.warn("Som:", e); }
+    try {
+      if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 700]);
+    } catch (e) { /* iPhone não vibra pelo navegador */ }
+  }
+
+  // o título da aba pisca: quem está com o celular na mão vê mesmo de longe
+  function piscarTitulo(texto) {
+    clearInterval(piscando);
+    let liga = false;
+    piscando = setInterval(() => {
+      document.title = (liga = !liga) ? texto : TITULO;
+    }, 900);
+  }
+  function pararDePiscar() {
+    clearInterval(piscando);
+    piscando = null;
+    document.title = TITULO;
+  }
+
+  async function manterTelaAcesa() {
+    if (!alarmeLigado || !navigator.wakeLock) return;
+    try { telaAcesa = await navigator.wakeLock.request("screen"); }
+    catch (e) { /* bateria fraca ou navegador sem suporte: segue sem */ }
+  }
+
+  async function ligarAlarme() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) { audioCtx = new AC(); await audioCtx.resume(); }
+    } catch (e) { console.warn("Áudio:", e); }
+    alarmeLigado = true;
+    try { localStorage.setItem("fila_alarme", "1"); } catch (e) { /* ignora */ }
+    bip(1046, 0, 0.12, 0.2);                       // confirma que está ligado
+    try { if (navigator.vibrate) navigator.vibrate(120); } catch (e) { /* ignora */ }
+    manterTelaAcesa();
+    desenharAlarme();
+  }
+
+  function desenharAlarme(me) {
+    if (me !== undefined) meAtual = me;
+    const card = $("#alertaCard");
+    if (!card) return;
+    // só faz sentido para quem ainda está esperando ou acabou de ser chamado
+    const r = meAtual;
+    const naFila = r && (r.status === STATUS.AGUARDANDO || r.status === STATUS.CHAMADO);
+    card.hidden = !naFila;
+    if (!naFila) return;
+    $("#alertaBtn").hidden = alarmeLigado;
+    $("#alertaNota").textContent = alarmeLigado
+      ? "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra quando chegar a sua vez."
+      : "Deixe esta tela aberta. O celular toca e vibra quando a mesa sair.";
+  }
+
+  // Toca quando o estado MUDA: virou "é a sua vez" ou o pedido ficou pronto.
+  function talvezTocar(me) {
+    const st = me ? me.status : null;
+    const ped = me ? me.pedido_em : null;
+    if (statusAnterior !== null && st === STATUS.CHAMADO && statusAnterior !== STATUS.CHAMADO) {
+      tocarAlarme(8);
+      piscarTitulo("🔔 É A SUA VEZ!");
+    }
+    if (pedidoAnterior !== null && ped && !pedidoAnterior) {
+      tocarAlarme(4);
+      piscarTitulo("🍽️ PEDIDO PRONTO!");
+    }
+    if (st !== STATUS.CHAMADO && !ped && piscando) pararDePiscar();
+    statusAnterior = st;
+    pedidoAnterior = ped;
+  }
+
   // ---------- desenho ----------
   function render() {
     const w = waiting();
@@ -147,6 +257,8 @@
 
     // ---- meu cartão (quem abriu o link com o próprio código) ----
     const me = meuId ? rows.find((r) => r.id === meuId) : null;
+    desenharAlarme(me);
+    talvezTocar(me);
     const meCard = $("#meCard");
     if (me) {
       const pos = w.findIndex((r) => r.id === me.id) + 1;
@@ -257,10 +369,18 @@
     await carregarConfig();
     await atualizar();
 
+    $("#alertaBtn").addEventListener("click", ligarAlarme);
+    // ao voltar para a tela, o navegador solta o wake lock: pede de novo
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        manterTelaAcesa();
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+        atualizar();
+      }
+    });
+
     setInterval(tick, 1000);        // tempos ao vivo
     setInterval(atualizar, 20000);  // rede de segurança
-    // recarrega assim que a pessoa volta para a aba
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) atualizar(); });
   }
 
   document.addEventListener("DOMContentLoaded", start);

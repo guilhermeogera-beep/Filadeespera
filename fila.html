@@ -5,7 +5,7 @@
 <title>Sua vez na fila — Fila Fácil</title>
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=122" />
+<link rel="stylesheet" href="./styles.css?v=123" />
 
 <div id="app" data-view="publico">
 
@@ -27,6 +27,13 @@
     <!-- ESTE link é pessoal: mostra só a situação de quem o recebeu.
          Ninguém vê o nome nem a posição de outro cliente. -->
     <section class="me-card" id="meCard" hidden></section>
+
+    <!-- Alarme: o WhatsApp passa batido no bolso. Com isto ligado, o próprio
+         celular toca e vibra na hora da chamada. -->
+    <section class="card alerta-card" id="alertaCard" hidden>
+      <button type="button" class="btn btn-primary btn-big" id="alertaBtn">🔔 Tocar quando for a minha vez</button>
+      <p class="alerta-nota" id="alertaNota">Deixe esta tela aberta. O celular toca e vibra quando a mesa sair.</p>
+    </section>
 
     <!-- Sem código no endereço, não há o que mostrar -->
     <section class="card sem-codigo" id="semCodigo" hidden>
@@ -53,4 +60,4 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config-publico.js"></script>
-<script src="./fila.js?v=122"></script>
+<script src="./fila.js?v=123"></script>

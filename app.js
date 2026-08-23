@@ -2789,8 +2789,8 @@
     if (!link) return "";
     const feito = !!r.pedido_em;
     return `<a class="btn btn-sm btn-pedido ${feito ? "is-feito" : ""}" href="${link}" target="_blank" rel="noopener"
-      data-pedido="${r.id}" title="${feito ? "Avisado às " + fmtClock(r.pedido_em) : "Avisar no WhatsApp que o pedido está pronto"}">
-      ${feito ? "✅ pedido avisado" : "🍽 Pedido pronto"}</a>`;
+      data-pedido="${r.id}" title="${feito ? "Último aviso às " + fmtClock(r.pedido_em) + " — pode avisar de novo" : "Avisar no WhatsApp que o pedido está pronto"}">
+      ${feito ? "🔁 avisar de novo" : "🍽 Pedido pronto"}</a>`;
   }
 
   // ==========================================================
@@ -3314,7 +3314,10 @@
   // recebe pela notificação e vê no painel do totem).
   function botaoPedidoHTML(r) {
     const feito = !!r.pedido_em;
-    const rotulo = feito ? "✅ avisado " + fmtClock(r.pedido_em) : "🍽 Pedido pronto";
+    // O mesmo cliente pede várias vezes: o botão NUNCA trava. Depois do
+    // primeiro aviso ele só muda de cara ("de novo" + hora do último) e pode
+    // ser tocado quantas vezes a atendente precisar.
+    const rotulo = feito ? "🔁 avisar de novo · " + fmtClock(r.pedido_em) : "🍽 Pedido pronto";
     const classe = "btn btn-sm btn-pedido ped-acao" + (feito ? " is-feito" : "");
     const link = CFG.whatsAtivo !== false && r.telefone ? waLinkPedido(r) : "";
     return link
@@ -4607,8 +4610,15 @@
       if (t.dataset.qrcliente) { await acaoSegura("QR do cliente", () => abrirQrCliente(t.dataset.qrcliente))(); return; }
       // "Sentou" pode perguntar em qual mesa (o pop-up é que grava)
       if (t.dataset.seat) { await acaoSegura("sentou", () => pedirMesaSentou(t.dataset.seat))(); return; }
-      // "pedido pronto" é um link: o WhatsApp abre sozinho, só registramos a hora
-      if (t.dataset.pedido) { marcarPedido(t.dataset.pedido); return; }
+      // "pedido pronto" é um link: o WhatsApp abre sozinho, só registramos a hora.
+      // O registro sai DEPOIS do clique (setTimeout): ele redesenha a lista, e
+      // redesenhar no meio do clique arrancava o próprio link da tela antes do
+      // navegador abrir o WhatsApp — era isso que travava o segundo aviso.
+      if (t.dataset.pedido) {
+        const idPedido = t.dataset.pedido;
+        setTimeout(() => marcarPedido(idPedido), 0);
+        return;
+      }
 
       if (t.disabled) return;
       t.disabled = true;   // evita toque duplo enquanto grava

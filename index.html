@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=152" />
+<link rel="stylesheet" href="./styles.css?v=154" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -51,6 +51,9 @@
       </div>
     </div>
     <div class="topbar-right">
+      <!-- quantas pessoas esperam agora: fica ao lado das abas para a atendente
+           saber o tamanho da fila sem precisar olhar a lista -->
+      <span id="filaTopo" class="fila-topo" title="Pessoas aguardando na fila" hidden></span>
       <div class="viewswitch" role="tablist" aria-label="Modo de visualização">
         <button id="tabTotem" class="vs-btn is-active" role="tab">Totem</button>
         <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
@@ -243,7 +246,7 @@
         <h2 class="card-title">Fila de espera</h2>
         <div class="queue-stats">
           <span class="stat"><b id="statTotal">0</b> na fila</span>
-          <span class="stat stat-avg" id="statAvgWrap">⏱️ espera média <b id="statAvg">—</b><button class="avg-reset staff-only" id="resetAvgBtn" title="Resetar média" aria-label="Resetar média">↺</button></span>
+          <span class="stat stat-avg" id="statAvgWrap">⏱️ <span id="statAvgLabel">espera típica</span> <b id="statAvg">—</b><button class="avg-reset staff-only" id="resetAvgBtn" title="Zerar a contagem da espera" aria-label="Zerar a contagem da espera">↺</button></span>
         </div>
       </div>
 
@@ -1288,4 +1291,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=152"></script>
+<script src="./app.js?v=154"></script>

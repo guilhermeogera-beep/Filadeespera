@@ -71,11 +71,44 @@
   const called = () => rows.filter((r) => r.status === STATUS.CHAMADO)
     .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em));
 
-  function avgWaitMs() {
-    const done = rows.filter((r) => r.chamado_em);
-    if (!done.length) return null;
-    const sum = done.reduce((a, r) => a + Math.max(0, new Date(r.chamado_em) - new Date(r.criado_em)), 0);
-    return sum / done.length;
+  // Mesma conta da tela da atendente: MEDIANA das últimas chamadas, não média.
+  // A média era arrastada por um grupo grande que esperou muito e mostrava ao
+  // cliente um número que não acontecia com ninguém. Aqui ele vê a FAIXA
+  // (p25–p75) — honesta com a variação e sem virar promessa.
+  const JANELA_ESPERA = 10;
+
+  function percentil(ordenada, p) {
+    if (!ordenada.length) return null;
+    const i = (ordenada.length - 1) * p;
+    const baixo = Math.floor(i), alto = Math.ceil(i);
+    if (baixo === alto) return ordenada[baixo];
+    return ordenada[baixo] + (ordenada[alto] - ordenada[baixo]) * (i - baixo);
+  }
+
+  function esperaStats() {
+    const feitas = rows.filter((r) => r.chamado_em)
+      .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em))
+      .slice(0, JANELA_ESPERA)
+      .map((r) => Math.max(0, new Date(r.chamado_em) - new Date(r.criado_em)))
+      .sort((a, b) => a - b);
+    if (!feitas.length) return null;
+    // quem ainda espera também conta, senão o número congela quando a fila trava
+    const meio = percentil(feitas, 0.5);
+    const agora = Date.now();
+    const emCurso = waiting()
+      .map((r) => Math.max(0, agora - new Date(r.criado_em).getTime()))
+      .filter((ms) => ms > meio);
+    const amostra = feitas.concat(emCurso).sort((a, b) => a - b);
+    return { min: percentil(amostra, 0.25), max: percentil(amostra, 0.75) };
+  }
+
+  function esperaTexto() {
+    const s = esperaStats();
+    if (!s) return null;
+    const a = fmtElapsed(s.min), b = fmtElapsed(s.max);
+    if (a === b) return "~" + a;
+    if (a.endsWith("min") && b.endsWith("min")) return "~" + a.replace("min", "") + "–" + b;
+    return "~" + a + "–" + b;
   }
 
   // ---------- dados ----------
@@ -380,11 +413,11 @@
     $("#brandName").textContent = CFG.marca || "Fila Fácil";
     $("#brandSub").textContent = CFG.restaurante || "";
 
-    // tempo médio: segue a mesma configuração do totem
-    const avg = avgWaitMs();
-    const mostrarMedia = CFG.mostrarMedia !== false && avg != null;
+    // tempo de espera: segue a mesma configuração do totem
+    const espera = esperaTexto();
+    const mostrarMedia = CFG.mostrarMedia !== false && espera != null;
     $("#statAvgWrap").hidden = !mostrarMedia;
-    if (mostrarMedia) $("#statAvg").textContent = "~" + fmtElapsed(avg);
+    if (mostrarMedia) $("#statAvg").textContent = espera;
 
     // ---- meu cartão (quem abriu o link com o próprio código) ----
     const me = meuId ? rows.find((r) => r.id === meuId) : null;

@@ -617,17 +617,84 @@
   function getMediaReset() {
     return localStorage.getItem("fila_media_reset") || "1970-01-01T00:00:00.000Z";
   }
-  // Tempo médio de espera (entrada -> chamada) desde o último reset.
-  // Com um filtro, mede só um pedaço da fila (mesas grandes, preferencial, normal).
-  function avgWaitMs(filtro) {
+  // ---- Tempo de espera: MEDIANA das chamadas recentes ----
+  // A média não servia. Um grupo de 8 que esperou 90min puxava sozinho o número
+  // de um salão inteiro, e o resultado (uns "25min") não acontecia com ninguém:
+  // ficava no meio do caminho entre os 10min de quem senta rápido e os 40min de
+  // quem espera mesa grande. A mediana é o valor DO MEIO — o caso extremo entra
+  // na conta, mas não desloca o número.
+  //
+  // Só as últimas chamadas entram: às 21h a espera das 18h não diz mais nada.
+  const JANELA_ESPERA = 10;
+
+  // Quantos minutos cada um esperou, do mais recente para trás.
+  // `filtro` recorta uma fila só (mesona, preferencial, normal).
+  function esperasRecentes(filtro) {
     const rp = new Date(getMediaReset()).getTime();
     let done = rows.filter((r) => r.chamado_em && new Date(r.chamado_em).getTime() >= rp);
     if (filtro) done = done.filter(filtro);
-    if (!done.length) return null;
-    const sum = done.reduce((a, r) => a + Math.max(0, new Date(r.chamado_em) - new Date(entradaEm(r))), 0);
-    return sum / done.length;
+    return done
+      .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em))
+      .slice(0, JANELA_ESPERA)
+      .map((r) => Math.max(0, new Date(r.chamado_em) - new Date(entradaEm(r))));
   }
-  // Zera a média (a fila e as pessoas não são afetadas)
+
+  // Percentil de uma lista já ordenada (0.5 = mediana), com interpolação
+  function percentil(ordenada, p) {
+    if (!ordenada.length) return null;
+    const i = (ordenada.length - 1) * p;
+    const baixo = Math.floor(i), alto = Math.ceil(i);
+    if (baixo === alto) return ordenada[baixo];
+    return ordenada[baixo] + (ordenada[alto] - ordenada[baixo]) * (i - baixo);
+  }
+
+  // Mediana + faixa (p25–p75) da espera. Devolve null enquanto não houver
+  // nenhuma chamada para medir.
+  //
+  // Quem AINDA espera também conta: se ninguém é chamado há 20min, a fila está
+  // mais lenta do que as chamadas antigas dizem, e o número precisa subir
+  // sozinho. Só entra quem já passou da mediana das chamadas concluídas —
+  // quem acabou de chegar ainda não é notícia e só puxaria o número para baixo.
+  function esperaStats(filtro) {
+    const feitas = esperasRecentes(filtro);
+    if (!feitas.length) return null;
+    const base = feitas.slice().sort((a, b) => a - b);
+    const meio = percentil(base, 0.5);
+    const agora = Date.now();
+    let esperando = waiting();
+    if (filtro) esperando = esperando.filter(filtro);
+    const emCurso = esperando
+      .map((r) => Math.max(0, agora - new Date(entradaEm(r)).getTime()))
+      .filter((ms) => ms > meio);
+    const amostra = base.concat(emCurso).sort((a, b) => a - b);
+    return {
+      meio: percentil(amostra, 0.5),
+      min: percentil(amostra, 0.25),
+      max: percentil(amostra, 0.75),
+      n: feitas.length,
+    };
+  }
+
+  // Um número só (a mediana), para as linhas de cada fila
+  function avgWaitMs(filtro) {
+    const s = esperaStats(filtro);
+    return s ? s.meio : null;
+  }
+
+  // Faixa "~20–35min" para o cliente: honesta com a variação, e não vira a
+  // promessa que um número cravado vira. Se as duas pontas caem no mesmo
+  // valor arredondado, mostra um número só em vez de "~20–20min".
+  function esperaTexto(faixa) {
+    const s = esperaStats();
+    if (!s) return "—";
+    if (!faixa) return "~" + fmtElapsed(s.meio);
+    const a = fmtElapsed(s.min), b = fmtElapsed(s.max);
+    if (a === b) return "~" + a;
+    // as duas pontas abaixo de 1h viram "~20–35min" (a unidade uma vez só)
+    if (a.endsWith("min") && b.endsWith("min")) return "~" + a.replace("min", "") + "–" + b;
+    return "~" + a + "–" + b;
+  }
+  // Zera a contagem da espera (a fila e as pessoas não são afetadas)
   function resetMedia() {
     localStorage.setItem("fila_media_reset", new Date().toISOString());
     render();
@@ -3110,32 +3177,37 @@
     const pref = w.filter((r) => r.preferencial && !isMesona(r));
     const norm = w.filter((r) => !r.preferencial && !isMesona(r));
     $("#statTotal").textContent = buscando ? `${w.length}/${wTodos.length}` : wTodos.length;
+
+    // -------- contador no cabeçalho (perfil atendente) --------
+    // O número que conta para a atendente é o de PESSOAS (é ele que enche o
+    // salão); o de grupos vem junto, menor, porque é o que ela chama por vez.
+    // A busca não mexe aqui: o cabeçalho mostra a fila inteira, sempre.
+    const topo = $("#filaTopo");
+    if (topo) {
+      // nunca no totem: aquela tela é do cliente, não do controle do salão
+      topo.hidden = !podeVer("staff") || appEl.getAttribute("data-view") === "totem";
+      if (!topo.hidden) {
+        const pessoasNaFila = wTodos.reduce((a, r) => a + Number(r.pessoas || 0), 0);
+        topo.innerHTML = `👥 <b>${pessoasNaFila}</b> ${pessoasNaFila === 1 ? "pessoa" : "pessoas"}` +
+          `<span class="ft-grupos">• ${wTodos.length} ${wTodos.length === 1 ? "grupo" : "grupos"}</span>`;
+      }
+    }
     $("#statPref").textContent = pref.length;
     $("#statNorm").textContent = norm.length;
     $("#statMeso").textContent = meso.length;
 
-    // tempo médio: sempre na aba da atendente; no totem, conforme a configuração
-    const avg = avgWaitMs();
-    $("#statAvg").textContent = avg == null ? "—" : "~" + fmtElapsed(avg);
+    // tempo de espera: sempre na aba da atendente; no totem, conforme a configuração
     $("#statAvgWrap").hidden = !staff && CFG.mostrarMedia === false;
 
     // filas lado a lado (só na tela da atendente; o celular empilha sozinho)
     $("#queueGroups").classList.toggle("is-colunas", staff && CFG.filasColunas !== false);
 
-    // média de cada fila, para a atendente enxergar onde está apertando
-    const media = (el, filtro) => {
+    // a espera de cada fila, para a atendente enxergar onde está apertando
+    ["#avgMeso", "#avgPref", "#avgNorm"].forEach((el) => {
       const box = $(el);
-      if (!box) return;
-      box.hidden = !staff;
-      if (!staff) return;
-      const m = avgWaitMs(filtro);
-      // sem nenhuma chamada ainda, mostra "—": sumir com a linha seria pior,
-      // a atendente ficaria procurando uma média que desapareceu
-      box.textContent = m == null ? "⏱️ —" : "⏱️ ~" + fmtElapsed(m);
-    };
-    media("#avgMeso", (r) => isMesona(r));
-    media("#avgPref", (r) => r.preferencial && !isMesona(r));
-    media("#avgNorm", (r) => !r.preferencial && !isMesona(r));
+      if (box) box.hidden = !staff;
+    });
+    atualizarEsperas();
 
     // -------- painel "chamando" (mostra TODAS as mesas chamadas) --------
     // Entram também os pedidos que acabaram de ficar prontos, no topo: no totem
@@ -3503,6 +3575,29 @@
   }
 
   // Atualiza os "tempos" ao vivo (a cada segundo, sem redesenhar tudo)
+  // Atualiza SÓ os tempos de espera. Roda a cada 1 minuto por conta própria,
+  // sem redesenhar as listas: a atendente pode estar com o dedo em cima de um
+  // cartão. É o que faz o número subir quando a fila trava e ninguém é chamado.
+  function atualizarEsperas() {
+    const staff = isStaff();
+    const alvo = $("#statAvg");
+    if (alvo) alvo.textContent = esperaTexto(!staff);
+    const lbl = $("#statAvgLabel");
+    if (lbl) lbl.textContent = staff ? "espera típica" : "espera";
+    if (!staff) return;
+    const box = (el, filtro) => {
+      const b = $(el);
+      if (!b) return;
+      const m = avgWaitMs(filtro);
+      // sem nenhuma chamada ainda, mostra "—": sumir com a linha seria pior,
+      // a atendente ficaria procurando um número que desapareceu
+      b.textContent = m == null ? "⏱️ —" : "⏱️ ~" + fmtElapsed(m);
+    };
+    box("#avgMeso", (r) => isMesona(r));
+    box("#avgPref", (r) => r.preferencial && !isMesona(r));
+    box("#avgNorm", (r) => !r.preferencial && !isMesona(r));
+  }
+
   function tickTimes() {
     const now = Date.now();
     $$("[data-since]").forEach((el) => {
@@ -3586,7 +3681,9 @@
     if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos"];
     if (p === PAPEL.ATENDENTE) return ["staff", "mapa", "sentados"];
     if (p === PAPEL.GARCOM) return ["garcom", "mapa"];
-    if (p === PAPEL.PEDIDOS) return ["pedidos"];
+    // Pedidos também precisa da aba "Na mesa": muita gente pede depois de
+    // sentar, e sem ela o balcão não tinha como achar a comanda desse cliente.
+    if (p === PAPEL.PEDIDOS) return ["pedidos", "sentados"];
     return ["totem"];   // totem (ou sem perfil definido): só a fila
   }
   function podeVer(v) { return abasPermitidas().indexOf(v) >= 0; }
@@ -4073,7 +4170,8 @@
     const pos = waiting().findIndex((r) => r.id === pessoa.id) + 1;
     $("#joinedTitle").textContent = isStaff() ? `✅ ${firstName(pessoa.nome)} entrou na fila!` : "✅ Você está na fila!";
     $("#joinedPos").textContent = pos > 0 ? pos + "º" : "—";
-    const avg = avgWaitMs();
+    // este pop-up é lido pelo cliente: vai a FAIXA, não um número cravado
+    const espera = esperaStats() ? esperaTexto(true) : null;
     // Quantos grupos DO MESMO TAMANHO estão na frente. É o que realmente
     // manda na espera: as mesas são chamadas pelo número de lugares, então
     // "12 grupos na fila" assusta sem querer dizer nada para quem é 2.
@@ -4087,7 +4185,7 @@
           ? `nenhum grupo de ${gente} na frente`
           : `${naFrente} ${naFrente === 1 ? "grupo" : "grupos"} de ${gente} na frente`);
     $("#joinedSub").textContent = frente +
-      (avg != null && CFG.mostrarMedia !== false ? ` • espera média ~${fmtElapsed(avg)}` : "");
+      (espera && CFG.mostrarMedia !== false ? ` • espera ${espera}` : "");
 
     const link = publicUrl(pessoa.id);
     drawQR($("#joinedQr"), link);
@@ -5660,6 +5758,7 @@
 
     setInterval(tickTimes, 1000);          // tempos ao vivo
     setInterval(checkExpired, 3000);       // move sozinho quem estourou o prazo
+    setInterval(atualizarEsperas, 60000);  // espera típica: recalcula a cada 1 min
     setInterval(refresh, 15000);           // rede de segurança da FILA
     setInterval(recarregarConfig, 15000);  // rede de segurança das CONFIGURAÇÕES
     // ao voltar para a tela (totem que estava em segundo plano), atualiza tudo

@@ -28,7 +28,7 @@
   // Só estas configurações interessam a quem acompanha a fila. Copiar `dados`
   // inteiro traria junto qualquer ajuste interno guardado na configuração.
   const CFG_PUBLICAS = ["restaurante", "marca", "mostrarMedia", "mesonaAtiva", "mesonaMin", "prazoComparecer",
-    "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera", "pedidoPainelMin"];
+    "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera", "pedidoPainelMin", "avisoPedido"];
 
   // Por quantos minutos o aviso de "pedido pronto" fica na tela. É o mesmo
   // ajuste da engrenagem que vale para o totem e para a tela da atendente.
@@ -177,8 +177,14 @@
             CFG.mostrarTempoEspera !== false ? ` • esperando há <b data-since="${me.criado_em}">agora</b>` : ""}</div>
           <div class="me-note">A ordem pode mudar conforme o tamanho das mesas que vagam.</div>`;
       } else if (me.status === STATUS.SENTADO) {
-        corpo = `<div class="me-big">✅ Bom apetite!</div>
-          <div class="me-sub">Você já está na mesa${me.sentou_em ? " desde as " + fmtClock(me.sentou_em) : ""}. ${me.pedido_em ? "Seu pedido foi avisado às " + fmtClock(me.pedido_em) + "." : "Avisamos aqui assim que o pedido ficar pronto."}</div>`;
+        // Sentou (chamado ou direto do balcão): para a fila, acabou. O cartão
+        // fecha o atendimento em vez de continuar parecendo espera.
+        const naMesa = me.sentou_em ? " às " + fmtClock(me.sentou_em) : "";
+        const avisa = CFG.avisoPedido !== false && !me.pedido_em
+          ? " Avisamos aqui quando o pedido ficar pronto."
+          : "";
+        corpo = `<div class="me-big">✅ Atendimento concluído</div>
+          <div class="me-sub">Você sentou${naMesa}. Bom apetite! 🍽️${avisa}</div>`;
       } else {
         corpo = `<div class="me-big">Atendimento encerrado</div>
           <div class="me-sub">Este código não está mais na fila. Bom apetite! 🍽️</div>`;
@@ -187,7 +193,9 @@
       meCard.hidden = false;
       meCard.classList.toggle("me-chamado", me.status === STATUS.CHAMADO);
       $("#semCodigo").hidden = true;
-      $("#resumoCard").hidden = !mostrarMedia;
+      // acabou o atendimento: a espera média da casa não diz mais nada a ele
+      const naFila = me.status === STATUS.AGUARDANDO || me.status === STATUS.CHAMADO;
+      $("#resumoCard").hidden = !mostrarMedia || !naFila;
     } else {
       meCard.hidden = true;
       // sem código no link (ou código que não está mais na fila): não há o que mostrar

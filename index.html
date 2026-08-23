@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=119" />
+<link rel="stylesheet" href="./styles.css?v=122" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -56,6 +56,7 @@
         <button id="tabStaff" class="vs-btn" role="tab">Atendente</button>
         <button id="tabGarcom" class="vs-btn" role="tab">Garçom</button>
         <button id="tabMapa" class="vs-btn" role="tab">Mapa</button>
+        <button id="tabSentados" class="vs-btn" role="tab">Na mesa</button>
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
       <button id="relBtn" class="icon-btn-h staff-only" title="Relatório" aria-label="Relatório">📊</button>
@@ -160,6 +161,33 @@
     </section>
 
     <!-- ============ A FILA ============ -->
+    <!-- ============ NA MESA (aba da atendente: quem já sentou) ============ -->
+    <section class="card sentados-card" id="sentadosCard" hidden>
+      <div class="busca-bar">
+        <span class="busca-lupa" aria-hidden="true">🔎</span>
+        <input id="sentBusca" type="text" name="busca-mesa-x" autocomplete="off"
+               autocapitalize="none" spellcheck="false" inputmode="search" readonly
+               placeholder="Procurar por nome, telefone, comanda, pager ou mesa"
+               aria-label="Procurar entre quem está na mesa" />
+        <button type="button" id="sentLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
+      </div>
+      <div class="busca-filtros" id="sentFiltros">
+        <button type="button" class="bf-chip" data-sfiltro="pedido">🍽 Pedido pronto</button>
+        <button type="button" class="bf-chip" data-sfiltro="sempedido">⏳ Sem pedido</button>
+        <button type="button" class="bf-chip" data-sfiltro="comanda">🧾 Com comanda</button>
+        <button type="button" class="bf-chip" data-sfiltro="pager">🔔 Com pager</button>
+        <button type="button" class="bf-chip" data-sfiltro="mesa">🪑 Com mesa</button>
+        <button type="button" class="bf-chip bf-limpar" data-sfiltro="limpar" hidden>✕ limpar filtros</button>
+      </div>
+
+      <div class="queue-head">
+        <h2 class="card-title">🍽 Na mesa <span class="mesas-count" id="sentCount">0</span></h2>
+        <small class="hint">Quem sentou hoje. Toque para abrir a ficha.</small>
+      </div>
+      <div class="sent-lista" id="sentLista"></div>
+      <div class="mesas-empty" id="sentVazio" hidden>Ninguém sentou ainda hoje.</div>
+    </section>
+
     <section class="card queue-card" id="queueCard">
       <!-- Busca: um campo só, que procura em tudo (nome, telefone, comanda, pager, mesa) -->
       <div class="busca-bar staff-only">
@@ -172,6 +200,15 @@
                autocapitalize="none" spellcheck="false" inputmode="search" readonly
                placeholder="Procurar por nome, telefone, comanda, pager ou mesa" aria-label="Procurar na fila" />
         <button type="button" id="buscaLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
+      </div>
+      <div class="busca-filtros staff-only" id="buscaFiltros">
+        <button type="button" class="bf-chip" data-filtro="pref">★ Preferencial</button>
+        <button type="button" class="bf-chip" data-filtro="pet">🐾 Com pet</button>
+        <button type="button" class="bf-chip" data-filtro="meso">🍽 Mesa grande</button>
+        <button type="button" class="bf-chip" data-filtro="comanda">🧾 Com comanda</button>
+        <button type="button" class="bf-chip" data-filtro="pager">🔔 Com pager</button>
+        <button type="button" class="bf-chip" data-filtro="demora">⏱️ Esperando muito</button>
+        <button type="button" class="bf-chip bf-limpar" data-filtro="limpar" hidden>✕ limpar filtros</button>
       </div>
       <p class="busca-info" id="buscaInfo" hidden></p>
 
@@ -1147,4 +1184,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=119"></script>
+<script src="./app.js?v=122"></script>

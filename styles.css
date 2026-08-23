@@ -1107,3 +1107,53 @@ button{font-family:inherit}
 .cc-mesas-tit{font-size:.85rem;font-weight:700;color:var(--muted);margin-bottom:6px}
 .cc-mesas-tit small{font-weight:600;opacity:.8}
 .cc-mesas-lista{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-height:33vh;overflow-y:auto}
+/* Na faixa do Mapa a fila inteira está ali: cabem ~6 na tela e o garçom
+   arrasta para o lado para ver quem vem depois. Largura fixa por item para
+   a linha não "pular" de tamanho a cada atualização. */
+.fila-resumo.em-faixa .resumo-item{flex:0 0 auto;width:calc((100% - 5 * 8px) / 6);min-width:118px}
+.fila-resumo.em-faixa .resumo-lista{scroll-snap-type:x proximity;scrollbar-width:thin}
+.fila-resumo.em-faixa .resumo-item{scroll-snap-align:start}
+
+/* ---- Filtros da busca (tela da atendente) ----
+   Chips que somam ao texto digitado. Servem para as perguntas do dia a dia:
+   "quem está com pet?", "quem tem comanda?", "quem já está esperando demais?" */
+.busca-filtros{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+.bf-chip{
+  font:inherit;font-size:.78rem;font-weight:700;cursor:pointer;
+  padding:5px 10px;border-radius:999px;border:1.5px solid var(--line);
+  background:#fff;color:var(--muted);line-height:1.1;
+}
+.bf-chip:hover{border-color:var(--ink)}
+.bf-chip.is-on{background:var(--brand);border-color:var(--brand);color:#fff}
+.bf-limpar{border-style:dashed;color:var(--danger)}
+
+/* ---- Aba "Na mesa" (atendente) ----
+   Quem já sentou hoje, com a mesma busca da fila. Serve para achar rápido a
+   comanda, o pager ou a mesa de alguém que já está sentado. */
+#app[data-view="sentados"] #queueCard,
+#app[data-view="sentados"] #mesasCard,
+#app[data-view="sentados"] #filaResumoCard,
+#app[data-view="sentados"] .mapa-card,
+#app[data-view="sentados"] .call-panel,
+#app[data-view="sentados"] .welcome,
+#app[data-view="sentados"] .closed-banner,
+#app[data-view="sentados"] .add-bar{display:none !important}
+.sent-lista{display:flex;flex-direction:column;gap:8px}
+.sent-item{
+  display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;
+  border:1.5px solid var(--line);border-radius:12px;background:#fff;text-align:left;
+  font:inherit;width:100%;
+}
+.sent-item:hover{border-color:var(--brand);background:var(--brand-soft)}
+.sent-item.tem-pedido{border-color:#d35400;background:#FFF3E8}
+.sent-mesa{
+  flex:0 0 auto;min-width:52px;height:44px;border-radius:10px;padding:0 8px;
+  background:var(--brand);color:#fff;font-weight:800;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;
+}
+.sent-mesa small{font-size:.58rem;font-weight:700;text-transform:uppercase;opacity:.9}
+.sent-mesa.sem{background:var(--muted)}
+.sent-txt{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
+.sent-nome{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sent-meta{font-size:.8rem;color:var(--muted);font-weight:600}
+.sent-selo{font-size:.72rem;font-weight:800;color:#b0480f}

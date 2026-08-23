@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v140";
+  const VERSAO = "v142";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -783,20 +783,39 @@
     // que não foi registrada
     avisarNoCelular(id, "chamada");
   }
-  async function seatPerson(id, mesaNumero) {
+  // Pinta a mudança na tela ANTES de o servidor responder. A gravação segue
+  // acontecendo; se ela falhar, o `refresh` seguinte devolve a verdade do
+  // banco. Sem isto, a atendente fica olhando para um botão travado enquanto
+  // a internet do restaurante decide se colabora.
+  function pintarLocal(id, patch) {
+    const r = rows.find((x) => x.id === id);
+    if (r) Object.assign(r, patch);
+    render();
+  }
+
+  // `opcoes.semEsperar` devolve a gravação em vez de esperar por ela: quem
+  // chamou junta com as outras gravações e espera todas de uma vez só.
+  async function seatPerson(id, mesaNumero, opcoes) {
     const patch = { status: STATUS.SENTADO, sentou_em: new Date().toISOString() };
     if (mesaNumero !== undefined) patch.mesa_numero = (mesaNumero || "").trim() || null;
-    await backend.update(id, patch);
+    pintarLocal(id, patch);
+    const gravando = backend.update(id, patch);
+    if (opcoes && opcoes.semEsperar) return gravando;
+    await gravando;
     await refresh();
   }
   async function dropPerson(id) {
-    await soltarReservaDe(id);          // a mesa que era dele volta a ficar livre
-    await backend.update(id, { status: STATUS.DESISTIU });
+    const patch = { status: STATUS.DESISTIU };
+    pintarLocal(id, patch);             // some da fila na hora
+    const gravacoes = soltarReservaDe(id).concat(backend.update(id, patch));
+    await Promise.allSettled(gravacoes);
     await refresh();
   }
   async function backToQueue(id) {
-    await soltarReservaDe(id);
-    await backend.update(id, { status: STATUS.AGUARDANDO, chamado_em: null });
+    const patch = { status: STATUS.AGUARDANDO, chamado_em: null };
+    pintarLocal(id, patch);
+    const gravacoes = soltarReservaDe(id).concat(backend.update(id, patch));
+    await Promise.allSettled(gravacoes);
     await refresh();
   }
 
@@ -808,7 +827,7 @@
     try { atual = await backend.getOne(id); }
     catch (e) { atual = rows.find((r) => r.id === id) || null; }
     if (!atual || atual.status !== STATUS.CHAMADO) { await refresh(); return false; }
-    await soltarReservaDe(id);          // não compareceu: a mesa volta para a lista
+    const soltando = soltarReservaDe(id);   // não compareceu: a mesa volta para a lista
     await backend.updateSeStatus(id, STATUS.CHAMADO, {
       status: STATUS.AGUARDANDO,
       chamado_em: null,
@@ -816,6 +835,7 @@
       entrou_em: entradaEm(atual),                  // ...sem perder a hora real de chegada
       chamadas_perdidas: (atual.chamadas_perdidas || 0) + 1,
     });
+    await Promise.allSettled(soltando);
     await refresh();
     return true;
   }
@@ -1004,27 +1024,32 @@
       $("#sentouMesa").focus();
       return;
     }
-    btn.disabled = true;
-    msg.textContent = "Salvando…"; msg.className = "form-msg";
-    try {
-      // se a mesa digitada estava na lista de livres, ela acabou de ser ocupada
-      const livre = acharMesaLivrePeloNumero(numero);
-      await seatPerson(sentandoId, numero);
-      $("#sentouModal").hidden = true;
-      sentandoId = null;
-      msg.textContent = "";
-      if (livre) {
-        try {
-          // a mesa some da lista sozinha — não precisa de aviso dizendo isso
-          await usarMesa(livre.id);
-        } catch (e2) { console.warn("Não deu para baixar a mesa:", e2); }
-      }
-    } catch (e) {
-      console.error("Erro ao marcar sentou:", e);
-      msg.textContent = "Não deu para salvar — verifique a internet e tente de novo.";
-      msg.className = "form-msg err";
-    } finally {
-      btn.disabled = false;
+    // Fecha o pop-up NA HORA e pinta o resultado: a confirmação é a fila
+    // mudando atrás. Antes eram quatro esperas em fila indiana (gravar o
+    // cliente, reler tudo, baixar a mesa, reler tudo de novo) — com internet
+    // ruim isso dava vários segundos de botão travado.
+    const quem = sentandoId;
+    const livre = acharMesaLivrePeloNumero(numero);
+    sentandoId = null;
+    msg.textContent = "";
+    btn.disabled = false;
+    $("#sentouModal").hidden = true;
+
+    const gravacoes = [seatPerson(quem, numero, { semEsperar: true })];
+    if (livre) {
+      // a mesa sai da lista de livres na mesma hora
+      mesasLivres = mesasLivres.filter((m) => m.id !== livre.id);
+      if (mesaSelecionada === livre.id) mesaSelecionada = null;
+      renderMesas();
+      gravacoes.push(backend.updateMesa(livre.id, {
+        status: MESAS.USADA, usada_em: new Date().toISOString(),
+      }));
+    }
+    const r = await Promise.allSettled(gravacoes);
+    await refresh();
+    if (r.some((x) => x.status === "rejected")) {
+      console.error("Erro ao marcar sentou:", r.filter((x) => x.status === "rejected"));
+      avisoStaff("⚠ Não deu para salvar tudo — confira se o cliente saiu da fila.");
     }
   }
 
@@ -1111,11 +1136,15 @@
   }
 
   async function marcarPedido(id) {
+    const patch = { pedido_em: new Date().toISOString() };
+    pintarLocal(id, patch);             // o botão vira "avisado" na hora
     try {
-      await backend.update(id, { pedido_em: new Date().toISOString() });
+      await backend.update(id, patch);
       avisarNoCelular(id, "pedido");
-      await refresh();
-    } catch (e) { console.warn("Não deu para registrar o aviso do pedido:", e); }
+    } catch (e) {
+      console.warn("Não deu para registrar o aviso do pedido:", e);
+    }
+    await refresh();
   }
 
   // Protege um botão contra "tela desatualizada": se o app for atualizado e o
@@ -1251,19 +1280,24 @@
 
   // O cliente não apareceu (voltou para a fila, saiu, foi para o fim):
   // a mesa volta a ficar disponível para outro grupo.
-  async function soltarReservaDe(pessoaId) {
+  // Devolve à recepção as mesas que estavam presas a esta pessoa. As mesas são
+  // soltas TODAS DE UMA VEZ: uma a uma, cada mesa era uma espera somada.
+  function soltarReservaDe(pessoaId) {
     const presas = mesasLivres.filter((m) => m.reservada_para === pessoaId);
-    for (const m of presas) {
-      m.reservada_para = null;
-      try { await backend.updateMesa(m.id, { reservada_para: null }); }
-      catch (e) { if (!colunaNaoExiste(e)) console.warn("Não deu para soltar a mesa:", e); }
-    }
-    if (presas.length) renderMesas();
+    if (!presas.length) return [];
+    presas.forEach((m) => { m.reservada_para = null; });
+    renderMesas();
+    return presas.map((m) =>
+      backend.updateMesa(m.id, { reservada_para: null })
+        .catch((e) => { if (!colunaNaoExiste(e)) console.warn("Não deu para soltar a mesa:", e); }));
   }
 
   async function usarMesa(id) {
-    await backend.updateMesa(id, { status: MESAS.USADA, usada_em: new Date().toISOString() });
+    // tira da lista na hora e grava depois
+    mesasLivres = mesasLivres.filter((m) => m.id !== id);
     if (mesaSelecionada === id) mesaSelecionada = null;
+    renderMesas();
+    await backend.updateMesa(id, { status: MESAS.USADA, usada_em: new Date().toISOString() });
     await refresh();
   }
 
@@ -2787,9 +2821,6 @@
 
     const wa = (CFG.whatsAtivo !== false && r.telefone && waLink(r))
       ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : "";
-    // Quem já está na mesa não se chama nem se "senta" de novo: ali as ações
-    // que fazem sentido são avisar o pedido e corrigir o cadastro.
-    const naMesa = r.status === STATUS.SENTADO;
     // O perfil Pedidos tem uma ação só: avisar que o prato saiu. Editar ou
     // devolver à fila não é trabalho dele — e o banco também não deixaria.
     if (soPedidos()) {
@@ -2797,12 +2828,16 @@
       $("#clienteModal").hidden = false;
       return;
     }
-    $("#cliAcoes").innerHTML = naMesa ? `
-      ${pedidoBtnHTML(r)}
-      <button class="btn btn-edit" data-edit="${r.id}">✏️ Editar</button>
-      ${wa}
-      ${CFG.linkAtivo === false ? "" : `<button class="btn btn-qr" data-qrcliente="${r.id}">📱 QR do cliente</button>`}
-      <button class="btn btn-sm" data-back="${r.id}">↩️ Voltar à fila</button>` : `
+    // Quem já está na mesa tem UMA ação: voltar para a fila. Qualquer correção
+    // (nome, comanda, pager) a atendente faz na fila, onde o cadastro é dela.
+    // Menos botão aqui é menos chance de mexer sem querer em quem já sentou.
+    if (r.status === STATUS.SENTADO) {
+      $("#cliAcoes").innerHTML =
+        `<button class="btn btn-sm" data-back="${r.id}">↩️ Voltar à fila</button>`;
+      $("#clienteModal").hidden = false;
+      return;
+    }
+    $("#cliAcoes").innerHTML = `
       <button class="btn btn-accent" data-call="${r.id}">🔔 Chamar</button>
       <button class="btn btn-primary" data-seat="${r.id}">✓ Sentou</button>
       <button class="btn btn-edit" data-edit="${r.id}">✏️ Editar</button>

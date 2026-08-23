@@ -651,26 +651,35 @@
   // Mediana + faixa (p25–p75) da espera. Devolve null enquanto não houver
   // nenhuma chamada para medir.
   //
-  // Quem AINDA espera também conta: se ninguém é chamado há 20min, a fila está
-  // mais lenta do que as chamadas antigas dizem, e o número precisa subir
-  // sozinho. Só entra quem já passou da mediana das chamadas concluídas —
-  // quem acabou de chegar ainda não é notícia e só puxaria o número para baixo.
+  // Com gente na fila o número TEM de subir, e as chamadas já feitas sozinhas
+  // não fazem isso: elas são passado. Quem está esperando agora é o presente.
+  // Então quem ainda aguarda entra como PISO, não como mais um voto: se metade
+  // da fila já espera há 25min, a espera típica não pode ser menor que isso —
+  // essas pessoas são a prova viva de que não é. Como o piso é a mediana da
+  // fila (e não o recordista), um grupo grande que espera há horas continua
+  // sem mandar no número.
+  //
+  // A faixa inteira sobe junto, mantendo a largura: o que muda é o patamar,
+  // não a incerteza.
   function esperaStats(filtro) {
     const feitas = esperasRecentes(filtro);
     if (!feitas.length) return null;
     const base = feitas.slice().sort((a, b) => a - b);
     const meio = percentil(base, 0.5);
+
     const agora = Date.now();
     let esperando = waiting();
     if (filtro) esperando = esperando.filter(filtro);
     const emCurso = esperando
       .map((r) => Math.max(0, agora - new Date(entradaEm(r)).getTime()))
-      .filter((ms) => ms > meio);
-    const amostra = base.concat(emCurso).sort((a, b) => a - b);
+      .sort((a, b) => a - b);
+    const piso = emCurso.length ? percentil(emCurso, 0.5) : 0;
+    const desloc = Math.max(0, piso - meio);
+
     return {
-      meio: percentil(amostra, 0.5),
-      min: percentil(amostra, 0.25),
-      max: percentil(amostra, 0.75),
+      meio: meio + desloc,
+      min: percentil(base, 0.25) + desloc,
+      max: percentil(base, 0.75) + desloc,
       n: feitas.length,
     };
   }

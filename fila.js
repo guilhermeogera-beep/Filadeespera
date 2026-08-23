@@ -92,14 +92,17 @@
       .map((r) => Math.max(0, new Date(r.chamado_em) - new Date(r.criado_em)))
       .sort((a, b) => a - b);
     if (!feitas.length) return null;
-    // quem ainda espera também conta, senão o número congela quando a fila trava
+    // Quem ainda espera entra como PISO (não como mais um voto): se metade da
+    // fila já espera há 25min, a espera não pode ser menor que isso. A faixa
+    // sobe inteira, mantendo a largura. Mesma regra da tela da atendente.
     const meio = percentil(feitas, 0.5);
     const agora = Date.now();
     const emCurso = waiting()
       .map((r) => Math.max(0, agora - new Date(r.criado_em).getTime()))
-      .filter((ms) => ms > meio);
-    const amostra = feitas.concat(emCurso).sort((a, b) => a - b);
-    return { min: percentil(amostra, 0.25), max: percentil(amostra, 0.75) };
+      .sort((a, b) => a - b);
+    const piso = emCurso.length ? percentil(emCurso, 0.5) : 0;
+    const desloc = Math.max(0, piso - meio);
+    return { min: percentil(feitas, 0.25) + desloc, max: percentil(feitas, 0.75) + desloc };
   }
 
   function esperaTexto() {

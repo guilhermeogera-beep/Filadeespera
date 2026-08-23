@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v142";
+  const VERSAO = "v144";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1901,6 +1901,8 @@
     mostrar("#limparTodasBtn", podeLote);
     mostrar("#mapaEditarBtn", podeEditar && !editando);
     mostrar("#mapaNova", editando);
+    mostrar("#mapaVarias", editando);
+    mostrar("#mapaArrumar", editando && mapa.length > 1);
     mostrar("#mapaConcluir", editando);
 
     card.classList.toggle("is-editando", editando);
@@ -2138,6 +2140,153 @@
   }
 
   // Procura um ponto do piso onde ainda não há mesa (varre em linhas)
+  // ==========================================================
+  //  MONTAR O SALÃO DEPRESSA
+  // ----------------------------------------------------------
+  //  Cadastrar mesa por mesa num restaurante de quarenta mesas é meia hora
+  //  de trabalho. Aqui a casa inteira nasce de uma vez e se arruma sozinha
+  //  no mapa; o ajuste fino continua sendo arrastar cada uma no lugar.
+  // ==========================================================
+
+  // Distribui N pontos numa grade que respeita o formato do piso: num salão
+  // largo saem mais colunas; num estreito, mais linhas.
+  function gradeDoPiso(quantas) {
+    const piso = $("#mapaPiso");
+    const r = piso && piso.getBoundingClientRect();
+    const proporcao = r && r.height ? r.width / r.height : 1.5;
+    let colunas = Math.max(1, Math.round(Math.sqrt(quantas * proporcao)));
+    colunas = Math.min(colunas, quantas);
+    const linhas = Math.ceil(quantas / colunas);
+    return { colunas, linhas };
+  }
+
+  function posicoesEmGrade(quantas) {
+    const { colunas, linhas } = gradeDoPiso(quantas);
+    const margemX = 8, margemY = 10;
+    const larg = 100 - margemX * 2, alt = 100 - margemY * 2;
+    const pontos = [];
+    for (let i = 0; i < quantas; i++) {
+      const col = i % colunas, lin = Math.floor(i / colunas);
+      pontos.push({
+        x: +(margemX + (colunas === 1 ? larg / 2 : (col * larg) / (colunas - 1))).toFixed(2),
+        y: +(margemY + (linhas === 1 ? alt / 2 : (lin * alt) / (linhas - 1))).toFixed(2),
+      });
+    }
+    return pontos;
+  }
+
+  // "Organizar no mapa": põe todas as mesas em ordem numérica numa grade.
+  async function arrumarMapa() {
+    if (!mapa.length) { avisoStaff("Não há mesas para organizar.", true); return; }
+    if (!confirm("Reposicionar TODAS as " + mapa.length + " mesas numa grade?\n\n" +
+      "O tamanho, o número e a área pet de cada uma continuam como estão — muda só o lugar no desenho.")) return;
+    const ordenadas = mapa.slice().sort((a, b) =>
+      String(a.numero).localeCompare(String(b.numero), "pt-BR", { numeric: true }));
+    const pontos = posicoesEmGrade(ordenadas.length);
+    const gravacoes = [];
+    ordenadas.forEach((m, i) => {
+      const p = pontos[i];
+      m.x = p.x; m.y = p.y;                       // pinta na hora
+      gravacoes.push(backend.updateMapa(m.id, { x: p.x, y: p.y }));
+    });
+    renderMapa();
+    const r = await Promise.allSettled(gravacoes);
+    await refresh();
+    desenharEditorMapa();
+    const falhas = r.filter((x) => x.status === "rejected").length;
+    avisoStaff(ordenadas.length + " mesas organizadas" +
+      (falhas ? " • ⚠ " + falhas + " não gravou" : ""), !falhas);
+  }
+
+  // ---------- criar várias mesas ----------
+  let mlLugares = 4;
+  let mlManual = false;
+
+  function abrirLoteMesas() {
+    mlLugares = valorDaLista(tamanhosDaCasa(), 4);
+    mlManual = false;
+    // sugere continuar de onde a numeração parou
+    const maior = mapa.reduce((n, m) => Math.max(n, parseInt(String(m.numero).replace(/\D/g, ""), 10) || 0), 0);
+    $("#mlInicio").value = maior + 1;
+    $("#mlQtd").value = 10;
+    $("#mlPet").value = "nao";
+    $("#mlPetField").hidden = CFG.petAtivo === false;
+    $("#mlMsg").textContent = "";
+    desenharLugaresLote();
+    $("#mapaLoteModal").hidden = false;
+  }
+
+  function desenharLugaresLote() {
+    $("#mlTamanhos").innerHTML =
+      tamanhosDaCasa().map((n) => `<button type="button" class="tm-btn${!mlManual && mlLugares === n ? " is-sel" : ""}" data-mltam="${n}">
+        <b>${n}</b><span>${n === 1 ? "lugar" : "lugares"}</span>
+      </button>`).join("") +
+      `<button type="button" class="tm-btn tm-outro${mlManual ? " is-sel" : ""}" data-mltam="manual"><b>✏️</b><span>outro</span></button>`;
+    $("#mlLugaresField").hidden = !mlManual;
+    $("#mlLugares").value = mlLugares;
+    atualizarPreviaLote();
+  }
+
+  function numerosDoLote() {
+    const qtd = Math.max(1, Math.min(200, parseInt($("#mlQtd").value, 10) || 0));
+    const inicio = Math.max(1, parseInt($("#mlInicio").value, 10) || 1);
+    const existentes = new Set(mapa.map((m) => String(m.numero).trim().toLowerCase()));
+    const novos = [];
+    const pulados = [];
+    for (let i = 0; i < qtd; i++) {
+      const n = String(inicio + i);
+      if (existentes.has(n.toLowerCase())) pulados.push(n);
+      else novos.push(n);
+    }
+    return { novos, pulados };
+  }
+
+  function atualizarPreviaLote() {
+    const { novos, pulados } = numerosDoLote();
+    const p = $("#mlPrevia");
+    if (!p) return;
+    if (!novos.length) {
+      p.textContent = "Todos esses números já existem no mapa.";
+      return;
+    }
+    p.textContent = `Vai criar ${novos.length} ${novos.length === 1 ? "mesa" : "mesas"} de ` +
+      `${mlLugares} ${mlLugares === 1 ? "lugar" : "lugares"}: ${novos[0]} a ${novos[novos.length - 1]}` +
+      (pulados.length ? ` (pulando ${pulados.length} que já existem)` : "") + ".";
+  }
+
+  async function criarLoteMesas() {
+    const msg = $("#mlMsg");
+    const { novos } = numerosDoLote();
+    if (!novos.length) { msg.textContent = "Nada a criar: esses números já existem."; msg.className = "form-msg err"; return; }
+    const pet = $("#mlPet").value === "sim" && CFG.petAtivo !== false;
+    const btn = $("#mlCriar");
+    btn.disabled = true;
+    msg.textContent = "Criando…"; msg.className = "form-msg";
+    // as novas entram numa grade junto com as que já existem
+    const total = mapa.length + novos.length;
+    const pontos = posicoesEmGrade(total);
+    const agora = new Date().toISOString();
+    const gravacoes = novos.map((numero, i) => {
+      const p = pontos[mapa.length + i] || { x: 50, y: 50 };
+      return backend.addMapa({
+        id: uuid(), numero, lugares: mlLugares, pet,
+        x: p.x, y: p.y, status: MAPA.LIVRE, liberada_em: null, criado_em: agora,
+      });
+    });
+    const r = await Promise.allSettled(gravacoes);
+    const falhas = r.filter((x) => x.status === "rejected").length;
+    await refresh();
+    desenharEditorMapa();
+    btn.disabled = false;
+    if (falhas) {
+      msg.textContent = falhas + " de " + novos.length + " não foram criadas — verifique a internet.";
+      msg.className = "form-msg err";
+      return;
+    }
+    $("#mapaLoteModal").hidden = true;
+    avisoStaff((novos.length - falhas) + " mesas criadas no mapa.", true);
+  }
+
   function posicaoLivre() {
     for (let y = 12; y <= 88; y += 16) {
       for (let x = 10; x <= 90; x += 14) {
@@ -3743,7 +3892,7 @@
     $("#mesaTitulo").textContent = m ? "✏️ Corrigir mesa" : "🍽 Lançar mesa livre";
     $("#mSalvar").textContent = m ? "Salvar alterações" : "🍽 Liberar esta mesa";
     desenharTamanhosMesa();
-    renderNumChips();
+    renderNumChips();          // já desenha o teclado de números junto
     $("#mesaModal").hidden = false;
     focoSePuder("#mNumero");
   }
@@ -3770,6 +3919,38 @@
   }
 
   // Números já adicionados (quando o garçom junta duas ou mais mesas)
+  // Teclado de números de mesa: o garçom toca no número em vez de digitar.
+  // As opções saem do MAPA quando ele existe (é a planta real da casa); sem
+  // mapa cadastrado, vale a sequência de 1 a 50, que cobre a maioria dos salões.
+  function numerosSugeridos() {
+    const doMapa = mapa
+      .map((m) => String(m.numero).trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+    if (doMapa.length) return [...new Set(doMapa)];
+    const lista = [];
+    for (let i = 1; i <= 50; i++) lista.push(String(i));
+    return lista;
+  }
+
+  function renderTecladoNumeros() {
+    const box = $("#mNumTeclado");
+    if (!box) return;
+    // uma mesa já lançada e ainda não usada não pode ser lançada de novo
+    const jaLancadas = new Set(
+      mesasLivres.flatMap((m) => String(m.numeros || m.identificacao || "")
+        .split("+").map((s) => s.trim().toLowerCase()).filter(Boolean))
+    );
+    const escolhidos = new Set(numerosNovaMesa.map((n) => n.toLowerCase()));
+    box.innerHTML = numerosSugeridos().map((n) => {
+      const chave = n.toLowerCase();
+      const sel = escolhidos.has(chave) ? " is-sel" : "";
+      const ocupada = jaLancadas.has(chave) && !escolhidos.has(chave) ? " is-lancada" : "";
+      const titulo = ocupada ? ' title="Já está na lista da recepção"' : "";
+      return `<button type="button" class="num-tecla${sel}${ocupada}" data-numtecla="${esc(n)}"${titulo}>${esc(n)}</button>`;
+    }).join("");
+  }
+
   function renderNumChips() {
     const box = $("#mNumChips");
     if (!box) return;
@@ -3777,6 +3958,7 @@
       <span class="num-chip">${esc(n)}<button type="button" data-tiranum="${i}" aria-label="Tirar">✕</button></span>`)
       .join('<span class="num-mais">+</span>');
     box.hidden = !numerosNovaMesa.length;
+    renderTecladoNumeros();          // o teclado marca o que já foi escolhido
   }
 
   // Guarda o que está digitado no campo de número (chamado ao adicionar e ao salvar)
@@ -3886,6 +4068,27 @@
       })
     );
     // "+" junta outra mesa ao mesmo lançamento
+    // teclado de números: um toque escolhe, outro tira
+    $("#mNumTeclado").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-numtecla]");
+      if (!b) return;
+      const n = b.dataset.numtecla;
+      const i = numerosNovaMesa.findIndex((x) => x.toLowerCase() === n.toLowerCase());
+      if (i >= 0) {
+        numerosNovaMesa.splice(i, 1);
+      } else {
+        if (numerosNovaMesa.length >= 6) {
+          const msg = $("#mMsg");
+          msg.textContent = "São no máximo 6 mesas juntas.";
+          msg.className = "form-msg err";
+          return;
+        }
+        numerosNovaMesa.push(n);
+        $("#mNumero").value = "";           // escolheu pelo teclado: o campo limpa
+      }
+      $("#mMsg").textContent = "";
+      renderNumChips();
+    });
     $("#mAddNum").addEventListener("click", () => {
       if (!guardarNumeroDigitado()) {
         const msg = $("#mMsg");
@@ -4186,6 +4389,22 @@
     }));
     $("#cfgMapaBtn").addEventListener("click", acaoSegura("configurar o mapa", abrirEditorMapa));
     $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));
+    $("#mapaVarias").addEventListener("click", acaoSegura("várias mesas", abrirLoteMesas));
+    $("#mapaArrumar").addEventListener("click", acaoSegura("organizar o mapa", arrumarMapa));
+    $("#mlCriar").addEventListener("click", acaoSegura("criar as mesas", criarLoteMesas));
+    $("#mlQtd").addEventListener("input", atualizarPreviaLote);
+    $("#mlInicio").addEventListener("input", atualizarPreviaLote);
+    $("#mlLugares").addEventListener("input", (e) => {
+      mlLugares = Math.max(1, Math.min(30, parseInt(e.target.value, 10) || 1));
+      atualizarPreviaLote();
+    });
+    $("#mlTamanhos").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mltam]");
+      if (!b) return;
+      if (b.dataset.mltam === "manual") { mlManual = true; }
+      else { mlManual = false; mlLugares = Number(b.dataset.mltam); }
+      desenharLugaresLote();
+    });
     $("#mapaConcluir").addEventListener("click", fecharEditorMapa);
     $("#mapaDobrarBtn").addEventListener("click", alternarDobraDoMapa);
     $("#mapaMaior").addEventListener("click", () => mudarZoom(0.2));
@@ -5179,7 +5398,7 @@
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
-    "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn",
+    "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",
     "loginScreen", "relBtn", "sairBtn", "tabSentados", "sentLista", "sentFiltros", "buscaFiltros", "tabPedidos", "pedLista", "pedFiltros",
   ];

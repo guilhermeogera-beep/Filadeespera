@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=142" />
+<link rel="stylesheet" href="./styles.css?v=144" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -132,6 +132,12 @@
         </button>
         <button type="button" class="btn btn-primary btn-liberar-todas" id="mapaNova" hidden>
           ➕ Nova mesa
+        </button>
+        <button type="button" class="btn btn-primary btn-liberar-todas" id="mapaVarias" hidden>
+          ➕➕ Várias mesas
+        </button>
+        <button type="button" class="btn btn-neutral btn-liberar-todas" id="mapaArrumar" hidden>
+          🧮 Organizar no mapa
         </button>
         <button type="button" class="btn btn-verde btn-liberar-todas" id="mapaConcluir" hidden>
           ✓ Concluir
@@ -435,6 +441,51 @@
   <!-- ============ MODAL: CONFIRMAR CHAMADA ============ -->
   <!-- ============ MODAL: CADASTRO DO MAPA (adm/atendente) ============ -->
 
+  <!-- ============ MODAL: CRIAR VÁRIAS MESAS DE UMA VEZ ============ -->
+  <div class="modal" id="mapaLoteModal" data-fixo hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>➕➕ Várias mesas de uma vez</h3>
+      <p class="hint">Cria a sequência inteira já espalhada no mapa. Números que
+        já existem são pulados — nada é sobrescrito.</p>
+
+      <div class="two-cols">
+        <label class="field">
+          <span>Quantas mesas</span>
+          <input id="mlQtd" type="number" min="1" max="200" step="1" value="10" />
+        </label>
+        <label class="field">
+          <span>Começar no número</span>
+          <input id="mlInicio" type="number" min="1" max="9999" step="1" value="1" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Lugares em cada mesa</span>
+        <div class="tm-lista" id="mlTamanhos"></div>
+      </label>
+      <label class="field" id="mlLugaresField" hidden>
+        <span>Quantos lugares</span>
+        <input id="mlLugares" type="number" min="1" max="30" step="1" value="4" />
+      </label>
+
+      <label class="field" id="mlPetField">
+        <span>Área pet</span>
+        <select id="mlPet">
+          <option value="nao">Não</option>
+          <option value="sim">Sim — todas nesta área</option>
+        </select>
+      </label>
+
+      <p class="ml-previa" id="mlPrevia"></p>
+      <p class="form-msg" id="mlMsg"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-neutral" data-close>Cancelar</button>
+        <button class="btn btn-primary" id="mlCriar">Criar as mesas</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ MODAL: UMA MESA DO CADASTRO ============ -->
   <div class="modal" id="mapaMesaModal" data-fixo hidden>
     <div class="modal-box">
@@ -634,6 +685,7 @@
             <button type="button" class="btn btn-neutral num-add" id="mAddNum" title="Juntar outra mesa">+</button>
           </div>
           <div class="num-chips" id="mNumChips"></div>
+          <div class="num-teclado" id="mNumTeclado"></div>
           <small class="hint">Juntou mesas? Digite a próxima e toque no <b>+</b> — ou simplesmente
             toque fora do campo (ex.: 12 + 13). Lembre de ajustar os lugares acima para o total.</small>
         </div>
@@ -1223,4 +1275,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=142"></script>
+<script src="./app.js?v=144"></script>

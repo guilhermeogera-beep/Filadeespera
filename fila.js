@@ -296,7 +296,9 @@
     const recado = {
       ok: "🔔 Pronto! Você recebe a notificação mesmo com o celular guardado.",
       recusado: "🔔 Alarme ligado. As notificações estão bloqueadas neste navegador — deixe esta tela aberta.",
-      "sem-suporte": "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra quando chegar a sua vez.",
+      "sem-suporte": "🔔 Alarme ligado. Este navegador não entrega notificação — deixe esta tela aberta.",
+      "sem-tabela": "🔔 Alarme ligado (aviso fora da tela ainda não configurado).",
+      erro: "🔔 Alarme ligado. Não deu para ligar o aviso fora da tela — deixe esta tela aberta.",
     };
     $("#alertaNota").textContent = alarmeLigado
       ? (recado[pushEstado] || "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra na hora.")
@@ -306,20 +308,27 @@
   }
 
   // Toca quando o estado MUDA: virou "é a sua vez" ou o pedido ficou pronto.
+  // O primeiro desenho nunca toca (senão tocaria só de abrir a página) — e é
+  // por isso que existe a bandeira: comparar com null não servia, porque o
+  // banco devolve pedido_em = null e a comparação travava para sempre.
+  let primeiroDesenho = true;
   function talvezTocar(me) {
     const st = me ? me.status : null;
     const ped = me ? me.pedido_em : null;
-    if (statusAnterior !== null && st === STATUS.CHAMADO && statusAnterior !== STATUS.CHAMADO) {
+    const eraChamado = statusAnterior === STATUS.CHAMADO;
+    const tinhaPedido = !!pedidoAnterior;
+    if (!primeiroDesenho && st === STATUS.CHAMADO && !eraChamado) {
       tocarAlarme(8, "chamada");
       piscarTitulo("🔔 É A SUA VEZ!");
     }
-    if (pedidoAnterior !== null && ped && !pedidoAnterior) {
+    if (!primeiroDesenho && ped && !tinhaPedido) {
       tocarAlarme(6, "pedido");
       piscarTitulo("🍽️ PEDIDO PRONTO!");
     }
     if (st !== STATUS.CHAMADO && !ped && piscando) pararDePiscar();
     statusAnterior = st;
     pedidoAnterior = ped;
+    primeiroDesenho = false;
   }
 
   // ---------- desenho ----------

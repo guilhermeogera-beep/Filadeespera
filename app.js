@@ -3469,12 +3469,23 @@
   // cliente foi embora. Os três caminhos gravam `liberada_em` na mesa, então
   // basta comparar essa hora com a hora em que a pessoa sentou. É a mesma
   // regra que o mapa já usa para tirar a mesa do vermelho.
+  //
+  // Mesas JUNTAS contam como uma só: o cliente está no bloco inteiro, não numa
+  // mesa. Encerrar qualquer uma delas encerra o atendimento. Por isso não
+  // basta procurar a mesa cujo número bate com o do cliente — é preciso abrir
+  // o bloco dela e olhar todas. É o mesmo critério que o mapa usa para dizer
+  // se a mesa ainda está ocupada.
   function mesaEncerradaDepoisDeSentar(r) {
     const num = String(r.mesa_numero || "").trim();
     if (!num) return false;
     const sentou = new Date(r.sentou_em || r.chamado_em || r.criado_em).getTime();
-    return mapa.some((x) => numeroBate(x.numero, num) && x.liberada_em &&
-      new Date(x.liberada_em).getTime() > sentou);
+    const vistas = new Set();
+    return mapa.filter((x) => numeroBate(x.numero, num)).some((m) =>
+      blocoDaMesa(m).some((x) => {
+        if (vistas.has(x.id)) return false;
+        vistas.add(x.id);
+        return x.liberada_em && new Date(x.liberada_em).getTime() > sentou;
+      }));
   }
 
   function sentados() {

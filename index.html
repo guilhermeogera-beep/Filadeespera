@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=160" />
+<link rel="stylesheet" href="./styles.css?v=162" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -313,15 +313,13 @@
           <span id="fEmailLabel">E-mail</span>
           <input id="fEmail" name="email" type="email" inputmode="email" autocapitalize="none"
                  spellcheck="false" maxlength="60" placeholder="nome@email.com" />
-          <small class="hint" id="fEmailHint">Para avisos e novidades da casa.</small>
-        </label>
+                  </label>
 
         <label class="field" id="fAniversarioField" hidden>
           <span id="fAniversarioLabel">Aniversário</span>
           <input id="fAniversario" name="aniversario" type="text" inputmode="numeric"
                  maxlength="10" placeholder="dia/mês/ano (ex.: 07/03/1990)" />
-          <small class="hint" id="fAniversarioHint">Dia, mês e ano — a casa lembra de você na data.</small>
-        </label>
+                  </label>
 
         <div class="field">
           <span>Quantas pessoas?</span>
@@ -346,20 +344,24 @@
               <span>★ Preferencial</span>
             </label>
           </div>
-          <small class="hint">Preferencial: idosos, gestantes, PCD, crianças de colo.</small>
+          <small class="hint">Idosos, gestantes, PCD, crianças de colo.</small>
         </div>
 
-        <!-- PET: escolhido pelo próprio cliente no totem -->
-        <label class="check-row" id="petRow">
-          <input type="checkbox" id="fPet" />
-          <span class="check-txt"><b>🐾 Estou com pet</b><small>Temos mesas específicas para clientes com animais.</small></span>
-        </label>
+        <!-- PET: escolhido pelo próprio cliente no totem.
+             As duas opções são gêmeas e cabem lado a lado — é o que
+             mais encurta o formulário sem esconder nada de ninguém. -->
+        <div class="two-cols" id="petRows">
+          <label class="check-row" id="petRow">
+            <input type="checkbox" id="fPet" />
+            <span class="check-txt"><b>🐾 Estou com pet</b></span>
+          </label>
 
-        <!-- O contrário: quem NÃO quer ficar perto de animais -->
-        <label class="check-row" id="semPetRow">
-          <input type="checkbox" id="fSemPet" />
-          <span class="check-txt"><b>🚫 Não sentar na área pet</b><small>Por alergia, medo ou preferência — não vamos encaminhar para as mesas com animais.</small></span>
-        </label>
+          <!-- O contrário: quem NÃO quer ficar perto de animais -->
+          <label class="check-row" id="semPetRow">
+            <input type="checkbox" id="fSemPet" />
+            <span class="check-txt"><b>🚫 Não sentar na área pet</b></span>
+          </label>
+        </div>
 
         <!-- COMANDA / PAGER: só na aba da atendente, quando ligados na engrenagem -->
         <div class="two-cols" id="formExtras" hidden>
@@ -377,9 +379,8 @@
         <label class="check-row" id="termosRow">
           <input type="checkbox" id="fTermos" />
           <span class="check-txt">
-            <b>Li e concordo com as regras da fila</b>
-            <small>Inclui o prazo para comparecer e a regra de <b>50% do grupo presente</b>.
-              <button type="button" class="btn-link-inline" id="verTermosBtn">Ler as regras</button></small>
+            <b>Li e concordo com as regras da fila
+              <button type="button" class="btn-link-inline" id="verTermosBtn">ler as regras</button></b>
           </span>
         </label>
 
@@ -1291,4 +1292,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=160"></script>
+<script src="./app.js?v=162"></script>

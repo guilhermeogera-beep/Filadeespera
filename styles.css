@@ -191,7 +191,22 @@ button{font-family:inherit}
 @media (max-width:820px){ .grid{grid-template-columns:1fr} }
 
 /* ---------------- FORMULÁRIO ---------------- */
-.join-form{display:flex;flex-direction:column;gap:16px}
+/* O formulário precisa CABER na tela do balcão e do totem sem rolar. O que
+   encurta de verdade é texto e respiro — não o tamanho dos campos: eles são
+   tocados com o dedo e continuam do mesmo tamanho. */
+.join-form{display:flex;flex-direction:column;gap:11px}
+.join-form .field{gap:4px}
+.join-form .tm-tamanhos{margin:0}
+.join-form .check-row{padding:10px 12px;align-items:center}
+.join-form .check-txt{gap:0;font-size:.95rem}
+/* No balcão a atendente já sabe o que cada campo é — as explicações existem
+   para o cliente sozinho no totem. Escondê-las aqui é o que faz o formulário
+   caber na tela do computador sem rolar. O aviso de mesa grande fica: esse
+   ela precisa ler. */
+#app[data-view="staff"] .join-form .hint:not(#fMesoHint){display:none}
+/* o pop-up de entrar aproveita mais a tela que os outros: é o mais longo */
+#formModal{padding:10px}
+#formModal .modal-box{padding:18px;max-height:96vh}
 /* Quando o formulário não couber na tela, o botão de entrar não some no fim
    da rolagem: fica colado no rodapé do pop-up, sempre à mão.
    A sombra branca por cima esconde o conteúdo que passa atrás dele. */

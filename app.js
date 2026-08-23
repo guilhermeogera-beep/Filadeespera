@@ -4053,9 +4053,11 @@
     const telObrig = CFG.telObrigatorio !== false;
     $("#fTelLabel").innerHTML = telObrig ? 'Telefone <b class="req">*</b>' : "Telefone <small>(opcional)</small>";
     $("#fTel").required = telObrig;
+    // recado curto de propósito: cada linha a mais empurra o botão para fora
+    // da tela e obriga a rolar o formulário
     $("#fTelHint").textContent = telObrig
-      ? "Obrigatório: usamos para avisar quando a sua mesa estiver pronta."
-      : "Se informar, avisamos no WhatsApp quando a mesa estiver pronta.";
+      ? "Avisamos no WhatsApp quando a mesa ficar pronta."
+      : "Se informar, avisamos no WhatsApp quando a mesa ficar pronta.";
     // e-mail: aparece no totem e no balcão conforme a engrenagem
     const modoEmail = CFG.campoEmail || "nao";
     $("#fEmailField").hidden = modoEmail === "nao";
@@ -4075,6 +4077,8 @@
     $("#petRow").hidden = !petLigado;
     // "não sentar na área pet" só faz sentido se existe área pet
     $("#semPetRow").hidden = !petLigado || CFG.campoSemPet === false;
+    // a dupla de pet fica lado a lado; sem nenhuma das duas, a linha some
+    $("#petRows").hidden = $("#petRow").hidden && $("#semPetRow").hidden;
     // as regras são aceitas pelo cliente no totem; a atendente confirma no balcão
     $("#termosRow").hidden = staff || CFG.exigirTermos === false;
     // comanda e pager: só a atendente entrega, e só se estiverem ligados
@@ -4780,6 +4784,20 @@
       // navegador abrir o WhatsApp — era isso que travava o segundo aviso.
       if (t.dataset.pedido) {
         const idPedido = t.dataset.pedido;
+        // Na aba Pedidos os botões ficam um embaixo do outro numa lista: é fácil
+        // encostar no do vizinho e avisar o cliente errado. Ali confirma antes.
+        // Se ela desistir, o link NÃO abre (preventDefault) e nada é gravado.
+        if (t.classList.contains("ped-acao")) {
+          const p = rows.find((r) => r.id === idPedido);
+          const quem = p ? firstName(p.nome) : "este cliente";
+          const jaFoi = p && p.pedido_em;
+          if (!confirm(jaFoi
+            ? `Avisar ${quem} DE NOVO que o pedido está pronto?`
+            : `Avisar ${quem} que o pedido está pronto?`)) {
+            e.preventDefault();
+            return;
+          }
+        }
         setTimeout(() => marcarPedido(idPedido), 0);
         return;
       }

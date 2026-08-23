@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=129" />
+<link rel="stylesheet" href="./styles.css?v=131" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -201,14 +201,10 @@
                placeholder="Procurar por nome, telefone, comanda, pager ou mesa" aria-label="Procurar na fila" />
         <button type="button" id="buscaLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
       </div>
+      <!-- Onde procurar. Nada marcado = procura em tudo. -->
       <div class="busca-filtros staff-only" id="buscaFiltros">
-        <button type="button" class="bf-chip" data-filtro="pref">★ Preferencial</button>
-        <button type="button" class="bf-chip" data-filtro="pet">🐾 Com pet</button>
-        <button type="button" class="bf-chip" data-filtro="meso">🍽 Mesa grande</button>
-        <button type="button" class="bf-chip" data-filtro="comanda">🧾 Com comanda</button>
-        <button type="button" class="bf-chip" data-filtro="pager">🔔 Com pager</button>
-        <button type="button" class="bf-chip" data-filtro="demora">⏱️ Esperando muito</button>
-        <button type="button" class="bf-chip bf-limpar" data-filtro="limpar" hidden>✕ limpar filtros</button>
+        <button type="button" class="bf-chip" data-filtro="comanda">🧾 só comanda</button>
+        <button type="button" class="bf-chip" data-filtro="pager">🔔 só pager</button>
       </div>
       <p class="busca-info" id="buscaInfo" hidden></p>
 
@@ -620,7 +616,7 @@
             toque fora do campo (ex.: 12 + 13). Lembre de ajustar os lugares acima para o total.</small>
         </div>
 
-        <label class="field">
+        <label class="field" id="mIdentField">
           <span>Observação <small>(opcional)</small></span>
           <input id="mIdent" type="text" maxlength="14" placeholder="ex.: varanda, deck" />
         </label>
@@ -1065,6 +1061,19 @@
           <small class="hint">Na fila resumida do garçom quem espera há mais tempo fica no topo; passando desse tempo o cartão fica vermelho e pulsa. 0 desliga o destaque.</small>
         </label>
         <label class="field">
+          <span>Campo "Observação" ao lançar mesa</span>
+          <select id="cfgObsMesa">
+            <option value="sim">Mostrar</option>
+            <option value="nao">Ocultar</option>
+          </select>
+          <small class="hint">É o campo livre ("varanda", "deck") do pop-up do garçom. Ocultando, sobra só tamanho, número e área pet.</small>
+        </label>
+        <label class="field">
+          <span>Quantos mostrar na aba "Na mesa"</span>
+          <input id="cfgSentadosMax" type="number" min="1" max="200" step="1" />
+          <small class="hint">Só os últimos que sentaram aparecem na lista. Padrão: 10.</small>
+        </label>
+        <label class="field">
           <span>Número da mesa ao liberar (garçom)</span>
           <select id="cfgMesaNumObr">
             <option value="sim">Obrigatório</option>
@@ -1184,4 +1193,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=129"></script>
+<script src="./app.js?v=131"></script>

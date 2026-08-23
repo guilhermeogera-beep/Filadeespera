@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v129";
+  const VERSAO = "v131";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2615,38 +2615,35 @@
     return idade >= 0 && idade <= 130 ? idade : null;
   }
 
-  // Filtros da busca da atendente: chips que marcam/desmarcam. Somam-se ao
-  // texto digitado — "com pet" + "maria" mostra só a Maria com pet.
+  // ONDE procurar, na tela da atendente. Sem nada marcado, o campo procura em
+  // tudo (nome, telefone, comanda, pager, mesa). Marcando "só comanda", ele
+  // procura APENAS entre as comandas — é o que evita achar a comanda 12 quando
+  // o que se queria era a mesa 12. Marcando os dois, procura nos dois.
   const filtros = new Set();
-
-  function passaNosFiltros(r) {
-    if (!filtros.size) return true;
-    if (filtros.has("pref") && !r.preferencial) return false;
-    if (filtros.has("pet") && !r.pet) return false;
-    if (filtros.has("meso") && !isMesona(r)) return false;
-    if (filtros.has("comanda") && !String(r.comanda || "").trim()) return false;
-    if (filtros.has("pager") && !String(r.pager || "").trim()) return false;
-    if (filtros.has("demora")) {
-      const min = alertaDoResumo() || 30;
-      if (Date.now() - new Date(entradaEm(r)).getTime() < min * 60000) return false;
-    }
-    return true;
-  }
 
   function desenharFiltros() {
     const box = $("#buscaFiltros");
     if (!box) return;
     $$("#buscaFiltros .bf-chip").forEach((b) => {
-      const f = b.dataset.filtro;
-      if (f === "limpar") { b.hidden = !filtros.size; return; }
-      b.classList.toggle("is-on", filtros.has(f));
+      b.classList.toggle("is-on", filtros.has(b.dataset.filtro));
     });
+    const campo = $("#buscaInput");
+    if (campo) {
+      campo.placeholder = filtros.size
+        ? "Procurar " + [...filtros].map((f) => (f === "pager" ? "pager" : "comanda")).join(" ou ")
+        : "Procurar por nome, telefone, comanda, pager ou mesa";
+    }
   }
 
   function combinaBusca(r) {
-    if (!passaNosFiltros(r)) return false;
     const t = semAcento(busca).trim();
     if (!t) return true;
+    // escopo escolhido nos chips: procura só naquele campo
+    if (filtros.size) {
+      if (filtros.has("comanda") && semAcento(r.comanda).includes(t)) return true;
+      if (filtros.has("pager") && semAcento(r.pager).includes(t)) return true;
+      return false;
+    }
     // nome, comanda, pager e mesa: comparação de texto (sem acento, sem maiúscula)
     if ([r.nome, r.comanda, r.pager, r.mesa_numero].some((c) => semAcento(c).includes(t))) return true;
     // telefone: compara só os números, para achar digitando sem parênteses ou traço
@@ -2840,7 +2837,7 @@
     const staff = isStaff();
 
     // busca (só na tela da atendente): esconde quem não combina, sem tirar da fila
-    const buscando = staff && (!!busca.trim() || filtros.size > 0);
+    const buscando = staff && !!busca.trim();
     desenharFiltros();
     const w = buscando ? wTodos.filter(combinaBusca) : wTodos;
     const c = buscando ? cTodos.filter(combinaBusca) : cTodos;
@@ -3031,12 +3028,20 @@
   let buscaSent = "";
   const filtrosSent = new Set();
 
+  // Quantos aparecem na aba "Na mesa". A lista é para achar quem acabou de
+  // sentar, não é histórico: passar de uma tela cheia só atrapalha.
+  function quantosNaMesa() {
+    const v = Number(CFG.sentadosMax);
+    return isNaN(v) || v < 1 ? 10 : Math.min(200, Math.round(v));
+  }
+
   function sentados() {
     const desde = Date.now() - 14 * 3600 * 1000;   // o serviço de hoje
     return rows
       .filter((r) => r.status === STATUS.SENTADO)
       .filter((r) => new Date(r.sentou_em || r.criado_em).getTime() >= desde)
-      .sort((a, b) => new Date(b.sentou_em || b.criado_em) - new Date(a.sentou_em || a.criado_em));
+      .sort((a, b) => new Date(b.sentou_em || b.criado_em) - new Date(a.sentou_em || a.criado_em))
+      .slice(0, quantosNaMesa());
   }
 
   function combinaSent(r) {
@@ -3075,18 +3080,21 @@
       : "Ninguém sentou ainda hoje.";
     $("#sentLista").innerHTML = lista.map((r) => {
       const mesa = String(r.mesa_numero || "").trim();
-      const selos = [
+      // o que a recepção precisa de relance: mesa, tamanho do grupo, nome,
+      // comanda, pager e telefone
+      const dados = [
+        r.pessoas + (Number(r.pessoas) === 1 ? " pessoa" : " pessoas"),
         r.comanda ? "🧾 " + esc(r.comanda) : "",
         r.pager ? "🔔 " + esc(r.pager) : "",
-        r.pessoas + (Number(r.pessoas) === 1 ? " pessoa" : " pessoas"),
+        r.telefone ? "📞 " + esc(r.telefone) : "",
       ].filter(Boolean).join(" • ");
       return `
       <button type="button" class="sent-item${r.pedido_em ? " tem-pedido" : ""}" data-cliente="${r.id}">
         <span class="sent-mesa${mesa ? "" : " sem"}">${mesa ? esc(mesa) : "—"}<small>mesa</small></span>
         <span class="sent-txt">
           <span class="sent-nome">${esc(r.nome)}</span>
-          <span class="sent-meta">${selos} • sentou ${fmtClock(r.sentou_em)} (há <b data-since="${r.sentou_em}">agora</b>)</span>
-          ${r.pedido_em ? `<span class="sent-selo">🍽 pedido avisado às ${fmtClock(r.pedido_em)}</span>` : ""}
+          <span class="sent-meta">${dados}</span>
+          <span class="sent-meta">sentou ${fmtClock(r.sentou_em)} (há <b data-since="${r.sentou_em}">agora</b>)</span>
         </span>
       </button>`;
     }).join("");
@@ -3592,6 +3600,7 @@
     $("#mIdent").value = (m && m.identificacao) || "";
     $("#mMsg").textContent = "";
     $("#mPetField").hidden = CFG.petAtivo === false;
+    $("#mIdentField").hidden = CFG.obsMesa === false;
     $("#mesaTitulo").textContent = m ? "✏️ Corrigir mesa" : "🍽 Lançar mesa livre";
     $("#mSalvar").textContent = m ? "Salvar alterações" : "🍽 Liberar esta mesa";
     desenharTamanhosMesa();
@@ -4293,8 +4302,7 @@
       const b = e.target.closest("[data-filtro]");
       if (!b) return;
       const f = b.dataset.filtro;
-      if (f === "limpar") filtros.clear();
-      else if (filtros.has(f)) filtros.delete(f);
+      if (filtros.has(f)) filtros.delete(f);
       else filtros.add(f);
       render();
     });
@@ -4579,7 +4587,7 @@
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
-    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta", "pedidoPainelMin", "totemEntrada",
+    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta", "pedidoPainelMin", "totemEntrada", "obsMesa", "sentadosMax",
     "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa", "mesaNumObrigatorio", "liberarAte", "liberarVolta",
   ];
 
@@ -4761,6 +4769,8 @@
     $("#cfgMesaNumObr").value = CFG.mesaNumObrigatorio === false ? "nao" : "sim";
     $("#cfgResumoAlerta").value = alertaDoResumo();
     $("#cfgTotemEntrada").value = CFG.totemEntrada === false ? "nao" : "sim";
+    $("#cfgObsMesa").value = CFG.obsMesa === false ? "nao" : "sim";
+    $("#cfgSentadosMax").value = quantosNaMesa();
     $("#cfgPedidoPainel").value = minutosDoPedidoNoPainel();
     $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
     $("#cfgPinGarcom").value = CFG.pinGarcom || "";
@@ -4840,6 +4850,8 @@
       mesaNumObrigatorio: $("#cfgMesaNumObr").value === "sim",
       resumoAlerta: num("#cfgResumoAlerta", 0, 600, 30),
       totemEntrada: $("#cfgTotemEntrada").value === "sim",
+      obsMesa: $("#cfgObsMesa").value === "sim",
+      sentadosMax: num("#cfgSentadosMax", 1, 200, 10),
       pedidoPainelMin: num("#cfgPedidoPainel", 0, 120, 10),
 
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
@@ -4876,7 +4888,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn",
-    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField",
     "loginScreen", "relBtn", "sairBtn", "tabSentados", "sentLista", "sentFiltros", "buscaFiltros",
   ];
   const LS_RECARGA = "fila_recarga_versao";

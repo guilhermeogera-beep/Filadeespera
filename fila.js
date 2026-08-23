@@ -234,7 +234,20 @@
     return bytes;
   }
 
+  // iPhone/iPad: a Apple só entrega notificação de site se a pessoa tiver
+  // adicionado a página à Tela de Início e aberto por aquele ícone.
+  function ehIOS() {
+    const ua = navigator.userAgent || "";
+    return /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+  function abertoComoAtalho() {
+    return window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  }
+
   async function ligarPush() {
+    if (ehIOS() && !abertoComoAtalho()) return "ios-atalho";
     const chave = CFG.pushChavePublica;
     if (!chave || !client || !meuId) return "sem-push";
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "sem-suporte";
@@ -312,19 +325,24 @@
         ? "🔔 Tocar quando o pedido ficar pronto"
         : (jaUsouAlarme() ? "🔔 Reativar o alarme" : "🔔 Tocar quando for a minha vez");
     }
+    // NÃO FECHE ESTA ABA aparece em todos os casos: mesmo com a notificação
+    // funcionando, é a aba que mantém o aviso ligado neste aparelho.
+    const NAO_FECHE = " ⚠️ Não feche esta aba — pode bloquear a tela, mas não feche.";
     const recado = {
-      ok: "🔔 Pronto! Você recebe a notificação mesmo com o celular guardado.",
-      recusado: "🔔 Alarme ligado. As notificações estão bloqueadas neste navegador — deixe esta tela aberta.",
-      "sem-suporte": "🔔 Alarme ligado. Este navegador não entrega notificação — deixe esta tela aberta.",
-      "sem-tabela": "🔔 Alarme ligado (aviso fora da tela ainda não configurado).",
-      erro: "🔔 Alarme ligado. Não deu para ligar o aviso fora da tela — deixe esta tela aberta.",
+      ok: "🔔 Pronto! O celular avisa mesmo guardado e com a tela apagada." + NAO_FECHE,
+      "ios-atalho": "🔔 Alarme ligado." + NAO_FECHE +
+        " No iPhone, para ser avisado com o celular guardado: toque em Compartilhar (o quadradinho com a seta), depois em \"Adicionar à Tela de Início\", e abra a fila por esse ícone.",
+      recusado: "🔔 Alarme ligado. As notificações estão bloqueadas neste navegador." + NAO_FECHE,
+      "sem-suporte": "🔔 Alarme ligado. Este navegador não entrega notificação." + NAO_FECHE,
+      "sem-tabela": "🔔 Alarme ligado (aviso fora da tela ainda não configurado)." + NAO_FECHE,
+      erro: "🔔 Alarme ligado. Não deu para ligar o aviso fora da tela." + NAO_FECHE,
     };
     // o teste só aparece depois de ligado: serve para a pessoa conferir o
     // volume e a vibração ANTES de a mesa sair
     const bt = $("#alertaTeste");
     if (bt) bt.hidden = !alarmeLigado;
     $("#alertaNota").textContent = alarmeLigado
-      ? (recado[pushEstado] || "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra na hora.")
+      ? (recado[pushEstado] || ("🔔 Alarme ligado." + NAO_FECHE))
       : (esperandoPedido
         ? "Toque uma vez: o celular toca e vibra quando o pedido sair do balcão."
         : "Deixe esta tela aberta. O celular toca e vibra quando a mesa sair.");

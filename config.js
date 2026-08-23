@@ -63,6 +63,8 @@ window.FILA_CONFIG = {
   prefPrazo: 0,           // minutos até a fila PREFERENCIAL ficar vermelha
   normalPrazo: 0,         // minutos até a fila NORMAL ficar vermelha
   totemEntrada: true,     // mostra o botão "Entrar na fila" no totem
+  obsMesa: true,          // campo "Observação" no pop-up de lançar mesa (garçom)
+  sentadosMax: 10,        // quantos aparecem na aba "Na mesa"
   pedidoPainelMin: 10,     // minutos que o "pedido pronto" fica à mostra (totem, atendente e link do cliente)
   resumoAlerta: 30,       // minutos até o grupo ficar destacado na fila do garçom
 

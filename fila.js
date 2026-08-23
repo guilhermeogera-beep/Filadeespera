@@ -167,18 +167,37 @@
     chamada: [500, 200, 500, 200, 900],
     pedido: [250, 120, 250, 120, 250, 120, 250],
   };
-  function tocarAlarme(vezes, tipo) {
+  // `volume`: o teste sai baixinho (é só para conferir que funciona, muitas
+  // vezes com o aparelho no ouvido); o aviso de verdade sai no mais alto que
+  // o navegador permite, porque aí a pessoa está longe e o celular no bolso.
+  const VOLUME = { teste: 0.22, aviso: 0.9 };
+  // O aviso real toca por uns 10 segundos: tempo de a pessoa ouvir, procurar
+  // o celular no bolso e olhar. O teste é curto, só para conferir.
+  const REPETE = { chamada: 24, pedido: 18, teste: 2 };
+  const repetirVibra = (p, voltas) => {
+    let out = [];
+    for (let i = 0; i < voltas; i++) out = out.concat(p, i < voltas - 1 ? [300] : []);
+    return out;
+  };
+  function tocarAlarme(vezes, tipo, volume) {
     if (!alarmeLigado) return;
     const agudo = tipo === "pedido";
+    const vol = volume || VOLUME.aviso;
+    const ehTeste = vol === VOLUME.teste;
     try {
       if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+      // no teste os bipes vêm mais rápido: é só uma amostra, não um alarme
+      const passo = ehTeste ? 0.24 : 0.42;
+      const meio = ehTeste ? 0.12 : 0.2;
       for (let i = 0; i < (vezes || 6); i++) {
-        bip(agudo ? 880 : 1046, i * 0.42, 0.18, 0.3);
-        bip(agudo ? 1318 : 1568, i * 0.42 + 0.2, 0.18, 0.3);
+        bip(agudo ? 880 : 1046, i * passo, ehTeste ? 0.1 : 0.18, vol);
+        bip(agudo ? 1318 : 1568, i * passo + meio, ehTeste ? 0.1 : 0.18, vol);
       }
     } catch (e) { console.warn("Som:", e); }
     try {
-      if (navigator.vibrate) navigator.vibrate(VIBRA[tipo] || VIBRA.chamada);
+      // a vibração acompanha o som: repete o padrão para durar o mesmo tanto
+      const padrao = VIBRA[tipo] || VIBRA.chamada;
+      if (navigator.vibrate) navigator.vibrate(ehTeste ? padrao : repetirVibra(padrao, 3));
     } catch (e) { /* iPhone não vibra pelo navegador */ }
   }
 
@@ -300,6 +319,10 @@
       "sem-tabela": "🔔 Alarme ligado (aviso fora da tela ainda não configurado).",
       erro: "🔔 Alarme ligado. Não deu para ligar o aviso fora da tela — deixe esta tela aberta.",
     };
+    // o teste só aparece depois de ligado: serve para a pessoa conferir o
+    // volume e a vibração ANTES de a mesa sair
+    const bt = $("#alertaTeste");
+    if (bt) bt.hidden = !alarmeLigado;
     $("#alertaNota").textContent = alarmeLigado
       ? (recado[pushEstado] || "🔔 Alarme ligado. Deixe esta tela aberta — o celular toca e vibra na hora.")
       : (esperandoPedido
@@ -318,11 +341,11 @@
     const eraChamado = statusAnterior === STATUS.CHAMADO;
     const tinhaPedido = !!pedidoAnterior;
     if (!primeiroDesenho && st === STATUS.CHAMADO && !eraChamado) {
-      tocarAlarme(8, "chamada");
+      tocarAlarme(REPETE.chamada, "chamada");
       piscarTitulo("🔔 É A SUA VEZ!");
     }
     if (!primeiroDesenho && ped && !tinhaPedido) {
-      tocarAlarme(6, "pedido");
+      tocarAlarme(REPETE.pedido, "pedido");
       piscarTitulo("🍽️ PEDIDO PRONTO!");
     }
     if (st !== STATUS.CHAMADO && !ped && piscando) pararDePiscar();
@@ -460,6 +483,11 @@
     await atualizar();
 
     $("#alertaBtn").addEventListener("click", ligarAlarme);
+    $("#alertaTeste").addEventListener("click", () => {
+      tocarAlarme(REPETE.teste, "chamada", VOLUME.teste);
+      piscarTitulo("🔔 TESTE");
+      setTimeout(pararDePiscar, 4000);
+    });
     // ao voltar para a tela, o navegador solta o wake lock: pede de novo
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {

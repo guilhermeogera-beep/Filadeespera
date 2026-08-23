@@ -1165,3 +1165,4 @@ button{font-family:inherit}
 .alerta-card{text-align:center;display:flex;flex-direction:column;gap:8px}
 .alerta-card .btn-big{width:100%}
 .alerta-nota{margin:0;font-size:.86rem;color:var(--muted);font-weight:600;line-height:1.4}
+.alerta-teste{align-self:center;margin-top:2px}

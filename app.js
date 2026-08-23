@@ -3451,11 +3451,32 @@
     return isNaN(v) || v < 1 ? 10 : Math.min(200, Math.round(v));
   }
 
+  // Sem número de mesa não existe garçom para encerrar o atendimento: ninguém
+  // vai tirar essa pessoa da lista. Então ela sai sozinha depois de 4 horas.
+  const SEM_MESA_MS = 4 * 3600 * 1000;
+
+  // A mesa foi encerrada pelo garçom DEPOIS que esta pessoa sentou?
+  // Marcar a mesa como limpeza, aguardando ou livre é o garçom dizendo que o
+  // cliente foi embora. Os três caminhos gravam `liberada_em` na mesa, então
+  // basta comparar essa hora com a hora em que a pessoa sentou. É a mesma
+  // regra que o mapa já usa para tirar a mesa do vermelho.
+  function mesaEncerradaDepoisDeSentar(r) {
+    const num = String(r.mesa_numero || "").trim();
+    if (!num) return false;
+    const sentou = new Date(r.sentou_em || r.chamado_em || r.criado_em).getTime();
+    return mapa.some((x) => numeroBate(x.numero, num) && x.liberada_em &&
+      new Date(x.liberada_em).getTime() > sentou);
+  }
+
   function sentados() {
-    const desde = Date.now() - 14 * 3600 * 1000;   // o serviço de hoje
+    const agora = Date.now();
+    const desde = agora - 14 * 3600 * 1000;   // o serviço de hoje
     return rows
       .filter((r) => r.status === STATUS.SENTADO)
       .filter((r) => new Date(r.sentou_em || r.criado_em).getTime() >= desde)
+      .filter((r) => !mesaEncerradaDepoisDeSentar(r))
+      .filter((r) => String(r.mesa_numero || "").trim() ||
+        agora - new Date(r.sentou_em || r.criado_em).getTime() < SEM_MESA_MS)
       .sort((a, b) => new Date(b.sentou_em || b.criado_em) - new Date(a.sentou_em || a.criado_em))
       .slice(0, quantosNaMesa());
   }

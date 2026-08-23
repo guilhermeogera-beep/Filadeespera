@@ -1165,3 +1165,19 @@ button{font-family:inherit}
 .alerta-card .btn-big{width:100%}
 .alerta-nota{margin:0;font-size:.86rem;color:var(--muted);font-weight:600;line-height:1.4}
 .alerta-teste{align-self:center;margin-top:2px}
+
+/* ---- Aba "Pedidos" (cozinha/balcão) ----
+   Uma linha por cliente com o botão do aviso à direita: o trabalho ali é achar
+   a pessoa pela comanda ou pelo pager e avisar que o prato saiu. */
+#app[data-view="pedidos"] #queueCard,
+#app[data-view="pedidos"] #mesasCard,
+#app[data-view="pedidos"] #filaResumoCard,
+#app[data-view="pedidos"] #sentadosCard,
+#app[data-view="pedidos"] .mapa-card,
+#app[data-view="pedidos"] .call-panel,
+#app[data-view="pedidos"] .welcome,
+#app[data-view="pedidos"] .closed-banner,
+#app[data-view="pedidos"] .add-bar{display:none !important}
+.ped-item{cursor:default;gap:10px}
+.ped-item:hover{border-color:var(--line);background:#fff}
+.ped-acao{flex:0 0 auto;white-space:nowrap;text-decoration:none}

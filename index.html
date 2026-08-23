@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=134" />
+<link rel="stylesheet" href="./styles.css?v=135" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -57,6 +57,7 @@
         <button id="tabGarcom" class="vs-btn" role="tab">Garçom</button>
         <button id="tabMapa" class="vs-btn" role="tab">Mapa</button>
         <button id="tabSentados" class="vs-btn" role="tab">Na mesa</button>
+        <button id="tabPedidos" class="vs-btn" role="tab">Pedidos</button>
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
       <button id="relBtn" class="icon-btn-h staff-only" title="Relatório" aria-label="Relatório">📊</button>
@@ -160,7 +161,30 @@
       <p class="form-msg" id="staffMsg" role="status"></p>
     </section>
 
-    <!-- ============ A FILA ============ -->
+    <!-- ============ PEDIDOS (cozinha/balcão: avisar que o prato saiu) ============ -->
+    <section class="card sentados-card" id="pedidosCard" hidden>
+      <div class="busca-bar">
+        <span class="busca-lupa" aria-hidden="true">🔎</span>
+        <input id="pedBusca" type="text" name="busca-pedido-x" autocomplete="off"
+               autocapitalize="none" spellcheck="false" inputmode="search" readonly
+               placeholder="Procurar por nome, telefone, comanda, pager ou mesa"
+               aria-label="Procurar cliente" />
+        <button type="button" id="pedLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
+      </div>
+      <!-- Onde procurar. Nada marcado = procura em tudo. -->
+      <div class="busca-filtros" id="pedFiltros">
+        <button type="button" class="bf-chip" data-pfiltro="comanda">🧾 só comanda</button>
+        <button type="button" class="bf-chip" data-pfiltro="pager">🔔 só pager</button>
+      </div>
+
+      <div class="queue-head">
+        <h2 class="card-title">🍽 Pedidos <span class="mesas-count" id="pedCount">0</span></h2>
+        <small class="hint">Toque em "Pedido pronto" para avisar o cliente.</small>
+      </div>
+      <div class="sent-lista" id="pedLista"></div>
+      <div class="mesas-empty" id="pedVazio" hidden>Ninguém na fila no momento.</div>
+    </section>
+
     <!-- ============ NA MESA (aba da atendente: quem já sentou) ============ -->
     <section class="card sentados-card" id="sentadosCard" hidden>
       <div class="busca-bar">
@@ -184,6 +208,7 @@
       <div class="sent-lista" id="sentLista"></div>
       <div class="mesas-empty" id="sentVazio" hidden>Ninguém sentou ainda hoje.</div>
     </section>
+    <!-- ============ A FILA ============ -->
 
     <section class="card queue-card" id="queueCard">
       <!-- Busca: um campo só, que procura em tudo (nome, telefone, comanda, pager, mesa) -->
@@ -1190,4 +1215,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=134"></script>
+<script src="./app.js?v=135"></script>

@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v134";
+  const VERSAO = "v135";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2926,6 +2926,7 @@
     renderResumoFila();
     renderMapa();
     renderSentados();
+    renderPedidos();
 
     // -------- a fila: tudo junto ou separado --------
     // a atendente vê SEMPRE separado (é assim que ela trabalha); o totem segue a configuração
@@ -3032,6 +3033,88 @@
           <span class="resumo-tempo">⏱️ <b data-since="${r.criado_em}">agora</b></span>
         </span>
       </div>`).join("");
+  }
+
+  // ---------- aba "Pedidos": cozinha/balcão ----------
+  // Aqui aparece TODO MUNDO que ainda está sendo atendido — esperando mesa,
+  // chamado ou já sentado. Quem prepara o pedido não sabe (nem precisa saber)
+  // em que pé está a fila: precisa achar a pessoa pela comanda ou pelo pager e
+  // avisar que o prato saiu.
+  let buscaPed = "";
+  const filtrosPed = new Set();
+
+  function emAtendimento() {
+    return rows
+      .filter((r) => r.status === STATUS.AGUARDANDO ||
+                     r.status === STATUS.CHAMADO ||
+                     r.status === STATUS.SENTADO)
+      .sort(byCreatedAsc);            // ordem de chegada, como a cozinha trabalha
+  }
+
+  function combinaPed(r) {
+    const t = semAcento(buscaPed).trim();
+    if (!t) return true;
+    if (filtrosPed.size) {
+      if (filtrosPed.has("comanda") && semAcento(r.comanda).includes(t)) return true;
+      if (filtrosPed.has("pager") && semAcento(r.pager).includes(t)) return true;
+      return false;
+    }
+    if ([r.nome, r.comanda, r.pager, r.mesa_numero].some((c) => semAcento(c).includes(t))) return true;
+    const dig = soDigitos(t);
+    return dig.length >= 3 && soDigitos(r.telefone).includes(dig);
+  }
+
+  // O botão desta tela: com telefone e WhatsApp ligado, vira o link que já
+  // abre a conversa; sem telefone, ainda assim registra o aviso (o cliente
+  // recebe pela notificação e vê no painel do totem).
+  function botaoPedidoHTML(r) {
+    const feito = !!r.pedido_em;
+    const rotulo = feito ? "✅ avisado " + fmtClock(r.pedido_em) : "🍽 Pedido pronto";
+    const classe = "btn btn-sm btn-pedido ped-acao" + (feito ? " is-feito" : "");
+    const link = CFG.whatsAtivo !== false && r.telefone ? waLinkPedido(r) : "";
+    return link
+      ? `<a class="${classe}" href="${link}" target="_blank" rel="noopener" data-pedido="${r.id}">${rotulo}</a>`
+      : `<button type="button" class="${classe}" data-pedido="${r.id}">${rotulo}</button>`;
+  }
+
+  function renderPedidos() {
+    const card = $("#pedidosCard");
+    if (!card) return;
+    card.hidden = appEl.getAttribute("data-view") !== "pedidos";
+    if (card.hidden) return;
+    $$("#pedFiltros .bf-chip").forEach((b) => {
+      b.classList.toggle("is-on", filtrosPed.has(b.dataset.pfiltro));
+    });
+    const campo = $("#pedBusca");
+    if (campo) {
+      campo.placeholder = filtrosPed.size
+        ? "Procurar " + [...filtrosPed].map((f) => (f === "pager" ? "pager" : "comanda")).join(" ou ")
+        : "Procurar por nome, telefone, comanda, pager ou mesa";
+    }
+    const x = $("#pedLimpar");
+    if (x) x.hidden = !buscaPed;
+    const todos = emAtendimento();
+    const lista = todos.filter(combinaPed);
+    $("#pedCount").textContent = lista.length;
+    $("#pedVazio").hidden = lista.length > 0;
+    $("#pedVazio").textContent = todos.length
+      ? "Nada encontrado com essa busca."
+      : "Ninguém na fila no momento.";
+    $("#pedLista").innerHTML = lista.map((r) => {
+      const dados = [
+        r.comanda ? "🧾 " + esc(r.comanda) : "",
+        r.pager ? "🔔 " + esc(r.pager) : "",
+        r.telefone ? "📞 " + esc(r.telefone) : "",
+      ].filter(Boolean).join(" • ") || "sem comanda, pager ou telefone";
+      return `
+      <div class="sent-item ped-item">
+        <span class="sent-txt">
+          <span class="sent-nome">${esc(r.nome)}</span>
+          <span class="sent-meta">${dados}</span>
+        </span>
+        ${botaoPedidoHTML(r)}
+      </div>`;
+    }).join("");
   }
 
   // ---------- aba "Na mesa": quem já sentou ----------
@@ -3248,12 +3331,12 @@
 
   // Quais abas cada perfil enxerga
   function abasPermitidas() {
-    if (!loginLigado()) return ["totem", "staff", "garcom", "mapa", "sentados"];   // como era antes
+    if (!loginLigado()) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos"];   // como era antes
     const p = usuario && usuario.papel;
-    if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa", "sentados"];
+    if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos"];
     if (p === PAPEL.ATENDENTE) return ["staff", "mapa", "sentados"];
     if (p === PAPEL.GARCOM) return ["garcom", "mapa"];
-    if (p === PAPEL.PEDIDOS) return ["sentados"];
+    if (p === PAPEL.PEDIDOS) return ["pedidos"];
     return ["totem"];   // totem (ou sem perfil definido): só a fila
   }
   function podeVer(v) { return abasPermitidas().indexOf(v) >= 0; }
@@ -3263,7 +3346,7 @@
     if (p === PAPEL.ADM) return "staff";
     if (p === PAPEL.ATENDENTE) return "staff";
     if (p === PAPEL.GARCOM) return "garcom";
-    if (p === PAPEL.PEDIDOS) return "sentados";
+    if (p === PAPEL.PEDIDOS) return "pedidos";
     return "totem";
   }
   // Perfil Pedidos: a tela dele é só a aba "Na mesa" e o aviso do pedido.
@@ -3376,7 +3459,7 @@
     // perfil alcançar a aba — mas NÃO de ter a aba "Garçom": a atendente vê o
     // mapa (na versão travada) sem ter nada a ver com a tela do salão.
     const podeMapa = CFG.garcomAtivo !== false && podeVer("mapa") && mapaVisivelPara();
-    const map = { totem: "#tabTotem", staff: "#tabStaff", garcom: "#tabGarcom", mapa: "#tabMapa", sentados: "#tabSentados" };
+    const map = { totem: "#tabTotem", staff: "#tabStaff", garcom: "#tabGarcom", mapa: "#tabMapa", sentados: "#tabSentados", pedidos: "#tabPedidos" };
     Object.keys(map).forEach((v) => {
       const b = $(map[v]);
       if (!b) return;
@@ -3490,6 +3573,7 @@
     $("#tabGarcom").classList.toggle("is-active", v === "garcom");
     $("#tabMapa").classList.toggle("is-active", v === "mapa");
     $("#tabSentados").classList.toggle("is-active", v === "sentados");
+    $("#tabPedidos").classList.toggle("is-active", v === "pedidos");
     $("#staffBar").hidden = v !== "staff";
     // o botão de chamar mesa acompanha a aba da atendente, na barra de baixo
     // (dá para escondê-lo na engrenagem: há casa que só chama pela mesa livre)
@@ -3754,6 +3838,7 @@
     $("#tabGarcom").addEventListener("click", () => setView("garcom"));
     $("#tabMapa").addEventListener("click", () => setView("mapa"));
     $("#tabSentados").addEventListener("click", () => setView("sentados"));
+    $("#tabPedidos").addEventListener("click", () => setView("pedidos"));
 
     // ---- mesas livres ----
     // stepper de lugares (pop-up do garçom)
@@ -4309,6 +4394,23 @@
       $("#sentBusca").value = "";
       renderSentados();
       $("#sentBusca").focus();
+    });
+    // busca e filtros da aba "Pedidos"
+    $("#pedBusca").addEventListener("focus", (e) => e.target.removeAttribute("readonly"));
+    $("#pedBusca").addEventListener("input", (e) => { buscaPed = e.target.value; renderPedidos(); });
+    $("#pedLimpar").addEventListener("click", () => {
+      buscaPed = "";
+      $("#pedBusca").value = "";
+      renderPedidos();
+      $("#pedBusca").focus();
+    });
+    $("#pedFiltros").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-pfiltro]");
+      if (!b) return;
+      const f = b.dataset.pfiltro;
+      if (filtrosPed.has(f)) filtrosPed.delete(f);
+      else filtrosPed.add(f);
+      renderPedidos();
     });
     $("#sentFiltros").addEventListener("click", (e) => {
       const b = e.target.closest("[data-sfiltro]");
@@ -4909,7 +5011,7 @@
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField",
-    "loginScreen", "relBtn", "sairBtn", "tabSentados", "sentLista", "sentFiltros", "buscaFiltros",
+    "loginScreen", "relBtn", "sairBtn", "tabSentados", "sentLista", "sentFiltros", "buscaFiltros", "tabPedidos", "pedLista", "pedFiltros",
   ];
   const LS_RECARGA = "fila_recarga_versao";
 

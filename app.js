@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v144";
+  const VERSAO = "v145";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2445,11 +2445,19 @@
       dx = e.clientX - (r.left + r.width / 2);
       dy = e.clientY - (r.top + r.height / 2);
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* sem pointer real */ }
+      // No editor não existe "rolar a página": a planta ocupa a tela. Travando
+      // a rolagem já no encostar do dedo, o navegador não tem como concluir no
+      // meio do gesto que aquilo era rolagem e cancelar o arrasto.
+      if (modo() === "editar") { piso.classList.add("is-pegando"); travarRolagem(true); }
       // liberada ou ocupada não sai do lugar: arrastar não faria sentido
       if (modo() === "juntar") {
         const eu = mapa.find((x) => x.id === el.dataset.mapamesa);
         if (eu && !podeJuntar(eu)) return;
       }
+      // No editor o toque simples abre o cadastro e o movimento arrasta: não há
+      // por que esperar. No dia a dia continua exigindo segurar, senão a mesa
+      // sairia do lugar quando o garçom só quis abrir as opções.
+      if (modo() === "editar") podeArrastar = true;
       relogio = setTimeout(() => {
         podeArrastar = true;
         ultimoToque = Date.now();        // segurou: o que vier depois não abre
@@ -2465,7 +2473,7 @@
       }, SEGURAR);
     });
 
-    piso.addEventListener("pointermove", (e) => {
+    window.addEventListener("pointermove", (e) => {
       if (!alvo) return;
       const longe = Math.hypot(e.clientX - xInicial, e.clientY - yInicial) > FOLGA;
       if (!podeArrastar) {
@@ -2502,7 +2510,11 @@
       // alguns pixels. Se foi rápido e perto do ponto inicial, é toque.
       const dt = (e && e.timeStamp ? e.timeStamp : 0) - tocouEm;
       const dist = e ? Math.hypot((e.clientX || 0) - xInicial, (e.clientY || 0) - yInicial) : 0;
-      const eraToque = !podeArrastar && (dt <= 0 || dt < SEGURAR + 150) && dist < 24;
+      // No editor, toque é qualquer aperto que não saiu do lugar. No dia a dia
+      // continua sendo o toque rápido, para não confundir com o segurar.
+      const eraToque = modo() === "editar"
+        ? (!moveu && dist < 24)
+        : (!podeArrastar && (dt <= 0 || dt < SEGURAR + 150) && dist < 24);
       const id = el.dataset.mapamesa;
       soltar();
 
@@ -2540,8 +2552,16 @@
       }
     };
 
-    piso.addEventListener("pointerup", fim);
-    piso.addEventListener("pointercancel", () => soltar());
+    // Os eventos de movimento e de fim ficam na JANELA, não no piso: se o mapa
+    // for redesenhado no meio do gesto, o elemento antigo some e os eventos
+    // presos a ele sumiriam junto — a mesa "soltava sozinha".
+    window.addEventListener("pointerup", fim);
+    // Cancelamento não é motivo para perder o trabalho: se a mesa já estava
+    // sendo arrastada, guardamos onde ela parou em vez de devolvê-la.
+    window.addEventListener("pointercancel", (e) => {
+      if (podeArrastar && moveu) fim(e);
+      else soltar();
+    });
 
     // Segunda rede: no Android o "touchend" chega mesmo quando os eventos de
     // ponteiro são cancelados e o clique é engolido.

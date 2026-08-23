@@ -1266,3 +1266,15 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 .num-tecla:hover{border-color:var(--brand)}
 .num-tecla.is-sel{background:var(--brand);border-color:var(--brand);color:#fff}
 .num-tecla.is-lancada{opacity:.45;text-decoration:line-through}
+
+/* ---- Arrastar mesa no modo de edição ----
+   O `touch-action:pan-y` do piso serve para o dia a dia (a página precisa
+   rolar por cima do mapa). No EDITOR ele era justamente o que soltava a mesa
+   no meio do caminho: ao mover o dedo na vertical, o navegador decidia que o
+   gesto era rolagem, cancelava o ponteiro e a mesa voltava para o lugar.
+   No editor a planta ocupa a tela e não há o que rolar — então o mapa fica
+   com o gesto inteiro. */
+.mapa-card.is-editando .mapa-piso,
+.mapa-card.is-editando .mm-mesa{touch-action:none}
+.mapa-piso.is-pegando,
+.mapa-piso.is-pegando .mm-mesa{touch-action:none}

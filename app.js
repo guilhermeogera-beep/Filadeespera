@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v150";
+  const VERSAO = "v151";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1230,6 +1230,49 @@
     if (mesaSelecionada && !mesasLivres.some((m) => m.id === mesaSelecionada)) mesaSelecionada = null;
   }
 
+  // ==========================================================
+  //  O MAPA APRENDE COM O GARÇOM
+  // ----------------------------------------------------------
+  //  Cadastrar quantas cadeiras cada mesa tem, e quais ficam na área pet, é a
+  //  parte chata de montar o mapa — e é justamente o que o garçom sabe de cor.
+  //  Quando ele lança uma mesa à mão, aquilo é a realidade do salão. Então o
+  //  mapa se corrige sozinho: em algumas semanas de uso, ele fica certo sem
+  //  ninguém ter parado para conferir mesa por mesa.
+  //
+  //  Uma trava importante: com mesas JUNTAS ("12 + 13") o total de lugares é
+  //  do conjunto, e não dá para saber quanto é de cada uma — nesse caso só a
+  //  área pet é aprendida.
+  // ==========================================================
+  async function mapaAprendeComOGarcom(numeros, lugares, pet) {
+    if (!Array.isArray(numeros) || !numeros.length || !mapa.length) return;
+    const acha = (n) => mapa.find((m) =>
+      String(m.numero).trim().toLowerCase() === String(n).trim().toLowerCase());
+    const sozinha = numeros.length === 1;
+    const gravacoes = [];
+    const mudou = [];
+    for (const n of numeros) {
+      const m = acha(n);
+      if (!m) continue;                       // número que não está no mapa: não inventa mesa
+      const patch = {};
+      if (sozinha && Number(lugares) > 0 && Number(m.lugares) !== Number(lugares)) {
+        patch.lugares = Number(lugares);
+        mudou.push(`mesa ${m.numero}: ${m.lugares} → ${lugares} lugares`);
+      }
+      if (!!m.pet !== !!pet) {
+        patch.pet = !!pet;
+        mudou.push(`mesa ${m.numero}: ${pet ? "passou a ser" : "deixou de ser"} área pet`);
+      }
+      if (!Object.keys(patch).length) continue;
+      Object.assign(m, patch);                // pinta na hora
+      gravacoes.push(backend.updateMapa(m.id, patch));
+    }
+    if (!gravacoes.length) return;
+    renderMapa();
+    await Promise.allSettled(gravacoes);
+    // aviso curto: se foi engano de digitação, dá para desfazer no editor
+    avisoStaff("🗺 Mapa atualizado — " + mudou.join(" • "), true);
+  }
+
   async function lancarMesa({ lugares, pet, identificacao, numeros }) {
     const nova = {
       id: uuid(),
@@ -1242,6 +1285,8 @@
       usada_em: null,
     };
     const salva = await backend.addMesa(nova);
+    // o que o garçom lançou é a verdade do salão: o mapa se ajusta a ela
+    await mapaAprendeComOGarcom(numeros || [], lugares, pet);
     await refresh();
     return salva || nova;
   }
@@ -1262,6 +1307,8 @@
       delete patch.numeros;
       await backend.updateMesa(id, patch);
     }
+    // corrigir o lançamento também ensina o mapa: a correção é a versão certa
+    await mapaAprendeComOGarcom(numeros || [], lugares, pet);
     await refresh();
   }
 

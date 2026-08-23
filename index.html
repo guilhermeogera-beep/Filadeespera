@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=147" />
+<link rel="stylesheet" href="./styles.css?v=150" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -181,6 +181,7 @@
       <div class="busca-filtros" id="pedFiltros">
         <button type="button" class="bf-chip" data-pfiltro="comanda">🧾 só comanda</button>
         <button type="button" class="bf-chip" data-pfiltro="pager">🔔 só pager</button>
+        <button type="button" class="bf-chip bf-limpar" data-pfiltro="limpar" hidden>✕ limpar busca</button>
       </div>
 
       <div class="queue-head">
@@ -205,6 +206,7 @@
       <div class="busca-filtros" id="sentFiltros">
         <button type="button" class="bf-chip" data-sfiltro="comanda">🧾 só comanda</button>
         <button type="button" class="bf-chip" data-sfiltro="pager">🔔 só pager</button>
+        <button type="button" class="bf-chip bf-limpar" data-sfiltro="limpar" hidden>✕ limpar busca</button>
       </div>
 
       <div class="queue-head">
@@ -233,6 +235,7 @@
       <div class="busca-filtros staff-only" id="buscaFiltros">
         <button type="button" class="bf-chip" data-filtro="comanda">🧾 só comanda</button>
         <button type="button" class="bf-chip" data-filtro="pager">🔔 só pager</button>
+        <button type="button" class="bf-chip bf-limpar" data-filtro="limpar" hidden>✕ limpar busca</button>
       </div>
       <p class="busca-info" id="buscaInfo" hidden></p>
 
@@ -1285,4 +1288,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=147"></script>
+<script src="./app.js?v=150"></script>

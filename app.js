@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v147";
+  const VERSAO = "v150";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2396,10 +2396,15 @@
     // Qual mesa está embaixo da que está sendo arrastada. Comparo as posições
     // no lugar de perguntar ao navegador quem está sob o dedo: com o dedo, o
     // ponto exato erra muito; o centro da mesa não.
+    // Qual mesa está EMBAIXO da que está sendo arrastada. Antes bastava chegar
+    // perto (uma mesa e um terço de distância) e, com as mesas desenhadas
+    // largas, isso agarrava a vizinha errada. Agora tem que estar em cima
+    // mesmo: o centro da mesa arrastada precisa cair DENTRO da outra.
     const soltoEmCima = () => {
       if (!alvo) return null;
       const r = alvo.getBoundingClientRect();
       const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const FOLGA_ENCAIXE = 6;   // px de tolerância, só para o dedo não ter que ser cirúrgico
       let melhor = null, menor = Infinity;
       $$(seletor + " .mm-mesa").forEach((el) => {
         if (el === alvo) return;
@@ -2408,12 +2413,11 @@
           if (m && !podeJuntar(m)) return;
         }
         const o = el.getBoundingClientRect();
-        const ox = o.left + o.width / 2, oy = o.top + o.height / 2;
-        const dist = Math.hypot(cx - ox, cy - oy);
-        // precisa estar encostada, com uma folga para o dedo não ter que ser
-        // exato: até uma mesa e um terço de distância entre os centros
-        const limite = (r.width + o.width) / 2 * 1.35;
-        if (dist < limite && dist < menor) { menor = dist; melhor = el; }
+        const dentro = cx >= o.left - FOLGA_ENCAIXE && cx <= o.right + FOLGA_ENCAIXE &&
+                       cy >= o.top - FOLGA_ENCAIXE && cy <= o.bottom + FOLGA_ENCAIXE;
+        if (!dentro) return;
+        const dist = Math.hypot(cx - (o.left + o.width / 2), cy - (o.top + o.height / 2));
+        if (dist < menor) { menor = dist; melhor = el; }
       });
       return melhor;
     };
@@ -2447,7 +2451,9 @@
       if (modo() === "editar") podeArrastar = true;
       relogio = setTimeout(() => {
         podeArrastar = true;
-        ultimoToque = Date.now();        // segurou: o que vier depois não abre
+        // Aqui NÃO se trava a abertura: segurar sem mover continua sendo um
+        // toque, e trancar isso era o que fazia o pop-up não abrir para quem
+        // aperta um pouco mais devagar.
         el.classList.add("is-pronto");
         // Só agora o mapa toma conta do dedo. O touch-action sozinho não
         // resolveria: o Android decide se o gesto é rolagem no primeiro
@@ -2493,15 +2499,13 @@
       if (!alvo) return;
       const el = alvo, arrastou = podeArrastar && moveu;
       const outra = modo() === "juntar" && arrastou ? soltoEmCima() : null;
-      // No Android o dedo quase nunca fica parado: um toque comum escorrega
-      // alguns pixels. Se foi rápido e perto do ponto inicial, é toque.
-      const dt = (e && e.timeStamp ? e.timeStamp : 0) - tocouEm;
+      // O QUE DECIDE É O MOVIMENTO, NÃO O RELÓGIO. Antes o toque só valia se
+      // fosse rápido (meio segundo); quem apertava um tiquinho mais não abria
+      // nada, e o clique atrasado do Android caía no pop-up e trocava o estado
+      // da mesa sozinho. Dedo que não saiu do lugar é toque, demore o que
+      // demorar; dedo que arrastou é arrasto. Não há terceira possibilidade.
       const dist = e ? Math.hypot((e.clientX || 0) - xInicial, (e.clientY || 0) - yInicial) : 0;
-      // No editor, toque é qualquer aperto que não saiu do lugar. No dia a dia
-      // continua sendo o toque rápido, para não confundir com o segurar.
-      const eraToque = modo() === "editar"
-        ? (!moveu && dist < 24)
-        : (!podeArrastar && (dt <= 0 || dt < SEGURAR + 150) && dist < 24);
+      const eraToque = !moveu && dist < 24;
       const id = el.dataset.mapamesa;
       soltar();
 
@@ -2543,11 +2547,16 @@
     // for redesenhado no meio do gesto, o elemento antigo some e os eventos
     // presos a ele sumiriam junto — a mesa "soltava sozinha".
     window.addEventListener("pointerup", fim);
-    // Cancelamento não é motivo para perder o trabalho: se a mesa já estava
-    // sendo arrastada, guardamos onde ela parou em vez de devolvê-la.
+    // Cancelamento não pode virar gesto perdido. Se a mesa estava sendo
+    // arrastada, guardamos onde ela parou. Se o dedo nem saiu do lugar, aquilo
+    // era um toque — e toque abre as opções, mesmo que o sistema tenha cortado
+    // o gesto no meio (é o que acontecia ao segurar um pouco mais).
     window.addEventListener("pointercancel", (e) => {
-      if (podeArrastar && moveu) fim(e);
-      else soltar();
+      if (podeArrastar && moveu) { fim(e); return; }
+      const id = alvo && alvo.dataset.mapamesa;
+      const parado = !moveu;
+      soltar();
+      if (id && parado) abrirPorToque(id);
     });
 
     // Segunda rede: no Android o "touchend" chega mesmo quando os eventos de
@@ -2816,6 +2825,8 @@
     const box = $("#buscaFiltros");
     if (!box) return;
     $$("#buscaFiltros .bf-chip").forEach((b) => {
+      // o "limpar" só aparece quando há o que limpar
+      if (b.dataset.filtro === "limpar") { b.hidden = !busca.trim() && !filtros.size; return; }
       b.classList.toggle("is-on", filtros.has(b.dataset.filtro));
     });
     const campo = $("#buscaInput");
@@ -3270,6 +3281,7 @@
     card.hidden = appEl.getAttribute("data-view") !== "pedidos";
     if (card.hidden) return;
     $$("#pedFiltros .bf-chip").forEach((b) => {
+      if (b.dataset.pfiltro === "limpar") { b.hidden = !buscaPed.trim() && !filtrosPed.size; return; }
       b.classList.toggle("is-on", filtrosPed.has(b.dataset.pfiltro));
     });
     const campo = $("#pedBusca");
@@ -3346,6 +3358,7 @@
     card.hidden = appEl.getAttribute("data-view") !== "sentados";
     if (card.hidden) return;
     $$("#sentFiltros .bf-chip").forEach((b) => {
+      if (b.dataset.sfiltro === "limpar") { b.hidden = !buscaSent.trim() && !filtrosSent.size; return; }
       b.classList.toggle("is-on", filtrosSent.has(b.dataset.sfiltro));
     });
     const campoSent = $("#sentBusca");
@@ -4366,7 +4379,13 @@
     }));
     $("#mapaAcoes").addEventListener("click", (e) => {
       const b = e.target.closest("[data-macao]");
-      if (b) acaoNaMesa(b.dataset.macao);
+      if (!b) return;
+      // O Android manda um clique atrasado depois do toque. Se o pop-up acabou
+      // de abrir debaixo do dedo, esse clique cai num BOTÃO daqui e muda o
+      // estado da mesa sem ninguém pedir — era a "piscada" que trocava a cor.
+      const abertoEm = Number($("#mapaAcaoModal").dataset.abertoEm) || 0;
+      if (Date.now() - abertoEm < 450) return;
+      acaoNaMesa(b.dataset.macao);
     });
     // cadastro do mapa (pela engrenagem)
     $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {
@@ -4665,18 +4684,30 @@
       const b = e.target.closest("[data-pfiltro]");
       if (!b) return;
       const f = b.dataset.pfiltro;
-      const jaEra = filtrosPed.has(f);
-      filtrosPed.clear();
-      if (!jaEra) filtrosPed.add(f);
+      if (f === "limpar") {
+        filtrosPed.clear();
+        buscaPed = "";
+        $("#pedBusca").value = "";
+      } else {
+        const jaEra = filtrosPed.has(f);
+        filtrosPed.clear();
+        if (!jaEra) filtrosPed.add(f);
+      }
       renderPedidos();
     });
     $("#sentFiltros").addEventListener("click", (e) => {
       const b = e.target.closest("[data-sfiltro]");
       if (!b) return;
       const f = b.dataset.sfiltro;
-      const jaEra = filtrosSent.has(f);
-      filtrosSent.clear();
-      if (!jaEra) filtrosSent.add(f);
+      if (f === "limpar") {
+        filtrosSent.clear();
+        buscaSent = "";
+        $("#sentBusca").value = "";
+      } else {
+        const jaEra = filtrosSent.has(f);
+        filtrosSent.clear();
+        if (!jaEra) filtrosSent.add(f);
+      }
       renderSentados();
     });
     $("#buscaFiltros").addEventListener("click", (e) => {
@@ -4685,9 +4716,15 @@
       // Um escopo por vez: escolher "só pager" tira "só comanda". Tocar no que
       // já está marcado desliga e volta a procurar em tudo.
       const f = b.dataset.filtro;
-      const jaEra = filtros.has(f);
-      filtros.clear();
-      if (!jaEra) filtros.add(f);
+      if (f === "limpar") {
+        filtros.clear();
+        busca = "";
+        $("#buscaInput").value = "";
+      } else {
+        const jaEra = filtros.has(f);
+        filtros.clear();
+        if (!jaEra) filtros.add(f);
+      }
       render();
     });
     $("#buscaInput").addEventListener("input", (e) => { busca = e.target.value; render(); });

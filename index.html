@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=145" />
+<link rel="stylesheet" href="./styles.css?v=147" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -1208,10 +1208,20 @@
           <span>Período</span>
           <select id="relPeriodo">
             <option value="hoje">Hoje</option>
+            <option value="ontem">Ontem</option>
             <option value="7">Últimos 7 dias</option>
             <option value="30">Últimos 30 dias</option>
+            <option value="mes">Este mês</option>
+            <option value="datas">📅 Escolher no calendário…</option>
             <option value="tudo">Tudo</option>
           </select>
+        </label>
+        <label class="rel-filter rel-datas" id="relDatasField" hidden>
+          <span>De / até</span>
+          <span class="rel-datas-linha">
+            <input id="relDe" type="date" aria-label="Data inicial" />
+            <input id="relAte" type="date" aria-label="Data final" />
+          </span>
         </label>
         <div class="rel-actions">
           <button class="btn btn-sm btn-primary" id="relExport">⬇ Exportar CSV</button>
@@ -1275,4 +1285,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=145"></script>
+<script src="./app.js?v=147"></script>

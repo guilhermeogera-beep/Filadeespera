@@ -1066,15 +1066,9 @@ button{font-family:inherit}
 .mm-mesa.is-junta{outline-offset:11px}
 
 /* ---- Mesas juntadas ----
-   Um contorno só por trás do bloco inteiro (as quinas viram uma), bem
-   discreto, e o texto aparece uma vez só — na primeira mesa do bloco. */
-.mm-bloco{
-  position:absolute;border-radius:18px;pointer-events:none;
-  background:rgba(37,99,235,.07);border:2px solid rgba(37,99,235,.34);
-}
-.mm-bloco.is-ocupada{background:rgba(179,38,30,.06);border-color:rgba(179,38,30,.32)}
-.mm-bloco.is-limpar {background:rgba(201,134,31,.08);border-color:rgba(201,134,31,.34)}
-.mm-bloco.is-avisada{background:rgba(30,122,82,.07);border-color:rgba(30,122,82,.32)}
+   Viram UM desenho só, no meio do conjunto: "Mesa 1+4", os lugares somados e
+   o tempo de quem sentou. As outras ficam sobrepostas por baixo. Contorno em
+   volta não é mais preciso — o desenho único já conta a história. */
 /* o anel por mesa sai de cena: quem marca o bloco agora é o contorno */
 .mm-mesa.is-junta{outline:none}
 /* a mesa sem texto mantém a MESMA altura da outra: é isso que faz as bordas
@@ -1086,7 +1080,6 @@ button{font-family:inherit}
    É compromisso com quem ainda vai chegar. Fica de fora das junções e dos
    botões em lote, para uma reserva não sumir sem querer. */
 .mm-mesa.is-reservada{background:#1C1F26;border-color:#000;color:#fff}
-.mm-bloco.is-reservada{background:rgba(0,0,0,.10);border-color:rgba(0,0,0,.45)}
 .ml.reservada{background:#1C1F26;border-color:#000;color:#fff}
 .btn-preto{background:#1C1F26;border:2px solid #000;color:#fff;font-weight:700}
 .btn-preto:hover{background:#31363F}
@@ -1278,3 +1271,13 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 .mapa-card.is-editando .mm-mesa{touch-action:none}
 .mapa-piso.is-pegando,
 .mapa-piso.is-pegando .mm-mesa{touch-action:none}
+.rel-datas-linha{display:flex;gap:8px;flex-wrap:wrap}
+.rel-datas-linha input{border:1.5px solid var(--line);border-radius:10px;padding:9px 10px;font:inherit;background:#FAFAF8;min-width:0}
+
+/* ---- O dedo em cima da mesa é gesto DA MESA ----
+   Com `pan-y` valendo também sobre a mesa, o navegador podia decidir no meio
+   do caminho que aquele arrasto era rolagem da página, cancelar o ponteiro e
+   soltar a mesa sozinha. O piso continua rolando; a mesa, não. */
+.mm-mesa{touch-action:none}
+/* mesas juntadas: sem anel em volta, o desenho único já basta */
+.mm-mesa.is-junta{outline:none;box-shadow:0 3px 10px rgba(0,0,0,.18)}

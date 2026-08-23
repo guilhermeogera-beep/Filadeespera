@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v145";
+  const VERSAO = "v147";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1778,34 +1778,13 @@
       fila(c.topo, "t") + fila(c.base, "b") + fila(c.esq, "l") + fila(c.dir, "r")}</span>`;
   }
 
-  // Contorno do bloco: em vez de um anel em volta de CADA mesa juntada (que
-  // deixava linhas no meio da emenda), desenha-se uma única forma arredondada
-  // por trás do bloco inteiro. As quinas viram uma só.
-  function blocosHTML() {
-    const grupos = new Map();
-    mapa.forEach((m) => {
-      if (!m.grupo) return;
-      if (!grupos.has(m.grupo)) grupos.set(m.grupo, []);
-      grupos.get(m.grupo).push(m);
-    });
-    let html = "";
-    grupos.forEach((ms) => {
-      if (ms.length < 2) return;
-      let x1 = 999, y1 = 999, x2 = -999, y2 = -999;
-      for (const m of ms) {
-        const t = tamanhoDaMesaPct(m);
-        if (!t) return;
-        const x = Number(m.x) || 50, y = Number(m.y) || 50;
-        x1 = Math.min(x1, x - t.w / 2); x2 = Math.max(x2, x + t.w / 2);
-        y1 = Math.min(y1, y - t.h / 2); y2 = Math.max(y2, y + t.h / 2);
-      }
-      // os 12px de folga cobrem as cadeiras, que avançam para fora do tampo
-      const est = estadoDaMesa(ms[0]);
-      html += `<div class="mm-bloco is-${est}" aria-hidden="true" style="` +
-        `left:calc(${x1.toFixed(2)}% - 12px);top:calc(${y1.toFixed(2)}% - 12px);` +
-        `width:calc(${(x2 - x1).toFixed(2)}% + 24px);height:calc(${(y2 - y1).toFixed(2)}% + 24px)"></div>`;
-    });
-    return html;
+  // Centro do bloco: é onde o desenho único das mesas juntadas fica.
+  function centroDoBloco(bloco) {
+    const n = bloco.length || 1;
+    return {
+      x: bloco.reduce((s, m) => s + (Number(m.x) || 50), 0) / n,
+      y: bloco.reduce((s, m) => s + (Number(m.y) || 50), 0) / n,
+    };
   }
 
   function mesaMapaHTML(m, editando) {
@@ -1813,27 +1792,28 @@
     const oc = editando ? null : ocupanteDaMesa(m);
     const desde = oc && (oc.sentou_em || oc.chamado_em);
     const junta = !editando && m.grupo;
-    // Num bloco de mesas juntadas o texto aparece UMA vez só, na primeira mesa
-    // do bloco: "Mesa 1+4 / 8 lug. / tempo". As outras ficam só com o tampo,
-    // senão o mesmo dado aparece repetido dentro do mesmo desenho.
+    // Mesas juntadas viram UM desenho só, no meio do conjunto: "Mesa 1+4",
+    // os lugares somados e o tempo de quem sentou. As outras do bloco não são
+    // desenhadas — ficam sobrepostas por baixo desta. Contorno em volta não
+    // precisa mais existir: o desenho único já diz que viraram uma mesa.
     const bloco = junta ? blocoDaMesa(m) : [m];
-    const dono = !junta || bloco[0].id === m.id;
     const lugares = junta ? lugaresDoBloco(m) : m.lugares;
     const rotulo = junta ? "Mesa " + esc(numerosDoBloco(m).join("+")) : "Mesa " + esc(m.numero);
     const petBloco = junta ? petDoBloco(m) : m.pet;
-    const texto = dono ? `
+    const texto = `
       <b class="mm-num">${rotulo}</b>
       <span class="mm-lug">${lugares} lug.${petBloco ? " 🐾" : ""}</span>
-      ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}` : "";
-    // as cadeiras são as DESTA mesa (o bloco soma no texto, não no desenho)
-    const miolo = cadeirasHTML(m.lugares, junta ? ladosColados(m) : "") + texto;
-    const classes = `mm-mesa is-${est}${m.pet ? " is-pet" : ""}${junta ? " is-junta" : ""}${junta && !dono ? " is-mudo" : ""}`;
+      ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}`;
+    // as cadeiras acompanham o tamanho do conjunto
+    const miolo = cadeirasHTML(lugares) + texto;
+    const classes = `mm-mesa is-${est}${petBloco ? " is-pet" : ""}${junta ? " is-junta" : ""}`;
     // `--lados` é quantas cadeiras cabem no lado comprido: é o que dá a largura
     // da mesa no desenho, para uma de 8 lugares ser visivelmente maior que uma de 4
-    const cad = cadeirasDaMesa(m.lugares);
+    const cad = cadeirasDaMesa(lugares);
     const lados = Math.max(cad.topo, cad.base);
     const altas = cad.esq + cad.dir > 0 ? " tem-pontas" : "";
-    const posicao = `style="left:${Number(m.x) || 50}%;top:${Number(m.y) || 50}%;--lados:${lados}"`;
+    const onde = junta ? centroDoBloco(bloco) : { x: Number(m.x) || 50, y: Number(m.y) || 50 };
+    const posicao = `style="left:${onde.x}%;top:${onde.y}%;--lados:${lados}"`;
 
     // No editor a mesa é uma caixa (não um <button>), para poder ter os dois
     // botõezinhos dentro — botão dentro de botão o navegador não aceita.
@@ -1913,8 +1893,15 @@
     // altura sairia curta, deixando um vazio embaixo
     requestAnimationFrame(aplicarZoom);
     setTimeout(aplicarZoom, 300);
-    $("#mapaPiso").innerHTML = (editando ? "" : blocosHTML()) +
-      mapa.map((m) => mesaMapaHTML(m, editando)).join("");
+    // No dia a dia, um bloco de mesas juntadas aparece UMA vez: as demais ficam
+    // sobrepostas por baixo do desenho único. No editor todas aparecem, porque
+    // ali o trabalho é posicionar cada uma.
+    const visiveis = editando ? mapa : mapa.filter((m) => {
+      if (!m.grupo) return true;
+      const bloco = blocoDaMesa(m);
+      return bloco[0] && bloco[0].id === m.id;
+    });
+    $("#mapaPiso").innerHTML = visiveis.map((m) => mesaMapaHTML(m, editando)).join("");
     $("#mapaVazio").hidden = mapa.length > 0;
     _mapaPendente = false;
   }
@@ -4751,6 +4738,8 @@
 
     // relatório
     $("#relPeriodo").addEventListener("change", renderRelatorio);
+    $("#relDe").addEventListener("change", renderRelatorio);
+    $("#relAte").addEventListener("change", renderRelatorio);
     $("#relExport").addEventListener("click", exportarCSV);
     $("#relClear").addEventListener("click", pedirLimpeza);
     $("#relClearOk").addEventListener("click", limparRelatorio);
@@ -4780,11 +4769,52 @@
   // ==========================================================
   //  RELATÓRIO
   // ==========================================================
-  function relInicio() {
+  // Janela do relatório: além dos atalhos, dá para escolher no calendário.
+  // Devolve início e fim em milissegundos; fim = 0 significa "até agora".
+  function janelaRelatorio() {
     const p = $("#relPeriodo").value;
-    if (p === "tudo") return 0;
-    if (p === "hoje") { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
-    return Date.now() - Number(p) * 24 * 3600 * 1000;
+    const meiaNoite = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+    const fimDoDia = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x.getTime(); };
+    if (p === "tudo") return { ini: 0, fim: 0 };
+    if (p === "hoje") return { ini: meiaNoite(new Date()), fim: 0 };
+    if (p === "ontem") {
+      const o = new Date(); o.setDate(o.getDate() - 1);
+      return { ini: meiaNoite(o), fim: fimDoDia(o) };
+    }
+    if (p === "mes") {
+      const d = new Date(); d.setDate(1);
+      return { ini: meiaNoite(d), fim: 0 };
+    }
+    if (p === "datas") {
+      // As datas vêm como "2026-08-23": monto na mão para o navegador não
+      // interpretar como UTC e jogar o dia para trás no nosso fuso.
+      const paraData = (txt) => {
+        const [a, m, d] = String(txt || "").split("-").map(Number);
+        return a && m && d ? new Date(a, m - 1, d) : null;
+      };
+      const de = paraData($("#relDe").value);
+      const ate = paraData($("#relAte").value);
+      if (!de && !ate) return { ini: 0, fim: 0 };
+      return {
+        ini: de ? meiaNoite(de) : 0,
+        fim: ate ? fimDoDia(ate) : (de ? fimDoDia(de) : 0),   // só a data inicial = aquele dia
+      };
+    }
+    return { ini: Date.now() - Number(p) * 24 * 3600 * 1000, fim: 0 };
+  }
+
+  function relInicio() {
+    return janelaRelatorio().ini;
+  }
+
+  // Texto do período, para o aviso de apagar e para o nome do arquivo
+  function nomeDoPeriodo() {
+    const sel = $("#relPeriodo");
+    if (sel.value !== "datas") return sel.selectedOptions[0].textContent.toLowerCase();
+    const de = $("#relDe").value, ate = $("#relAte").value;
+    const br = (t) => t ? t.split("-").reverse().join("/") : "";
+    if (de && ate && de !== ate) return `${br(de)} a ${br(ate)}`;
+    return br(de || ate) || "período escolhido";
   }
 
   function openRelatorio() {
@@ -4794,13 +4824,24 @@
   }
 
   async function renderRelatorio() {
-    const ini = relInicio();
+    const { ini, fim } = janelaRelatorio();
+    // o campo de datas só aparece quando é ele que manda
+    const escolhendo = $("#relPeriodo").value === "datas";
+    $("#relDatasField").hidden = !escolhendo;
+    if (escolhendo && !$("#relDe").value && !$("#relAte").value) {
+      const hoje = new Date();
+      const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      $("#relDe").value = iso(hoje);
+      $("#relAte").value = iso(hoje);
+      return renderRelatorio();          // redesenha já com as datas de hoje
+    }
     $("#relMsg").textContent = "Carregando…";
     $("#relMsg").className = "form-msg";
     let lista;
     try {
       // consulta própria: o relatório enxerga todo o histórico, não só o que está na tela
       lista = (await backend.listRelatorio(ini))
+        .filter((r) => !fim || new Date(r.criado_em).getTime() <= fim)
         .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
       $("#relMsg").textContent = "";
     } catch (e) {
@@ -4926,7 +4967,7 @@
       $("#relMsg").className = "form-msg err";
       return;
     }
-    const periodo = $("#relPeriodo").selectedOptions[0].textContent.toLowerCase();
+    const periodo = nomeDoPeriodo();
     $("#relClearTxt").textContent = `Serão apagados ${n} atendimentos finalizados de "${periodo}". Exporte o CSV antes, se ainda precisar dos dados.`;
     $("#relClearModal").hidden = false;
   }

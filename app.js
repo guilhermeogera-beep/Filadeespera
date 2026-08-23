@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v136";
+  const VERSAO = "v139";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -1828,7 +1828,8 @@
   }
 
   function mapaVisivelPara() {
-    if (mapaSoDeOlhar()) return true;   // a versão travada não depende do ajuste do salão
+    // a versão travada tem chave própria: a atendente pode ou não ver o salão
+    if (mapaSoDeOlhar()) return CFG.mapaAtendente !== false;
     const admLogado = loginLigado() && usuario && usuario.papel === PAPEL.ADM;
     return admLogado ? CFG.mapaAdm !== false : CFG.mapaGarcom !== false;
   }
@@ -4403,24 +4404,29 @@
       const b = e.target.closest("[data-pfiltro]");
       if (!b) return;
       const f = b.dataset.pfiltro;
-      if (filtrosPed.has(f)) filtrosPed.delete(f);
-      else filtrosPed.add(f);
+      const jaEra = filtrosPed.has(f);
+      filtrosPed.clear();
+      if (!jaEra) filtrosPed.add(f);
       renderPedidos();
     });
     $("#sentFiltros").addEventListener("click", (e) => {
       const b = e.target.closest("[data-sfiltro]");
       if (!b) return;
       const f = b.dataset.sfiltro;
-      if (filtrosSent.has(f)) filtrosSent.delete(f);
-      else filtrosSent.add(f);
+      const jaEra = filtrosSent.has(f);
+      filtrosSent.clear();
+      if (!jaEra) filtrosSent.add(f);
       renderSentados();
     });
     $("#buscaFiltros").addEventListener("click", (e) => {
       const b = e.target.closest("[data-filtro]");
       if (!b) return;
+      // Um escopo por vez: escolher "só pager" tira "só comanda". Tocar no que
+      // já está marcado desliga e volta a procurar em tudo.
       const f = b.dataset.filtro;
-      if (filtros.has(f)) filtros.delete(f);
-      else filtros.add(f);
+      const jaEra = filtros.has(f);
+      filtros.clear();
+      if (!jaEra) filtros.add(f);
       render();
     });
     $("#buscaInput").addEventListener("input", (e) => { busca = e.target.value; render(); });
@@ -4704,7 +4710,7 @@
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
-    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta", "pedidoPainelMin", "totemEntrada", "obsMesa", "sentadosMax",
+    "campoComanda", "campoPager", "mesonaAtiva", "mesonaMin", "mesonaPrazo", "prefPrazo", "normalPrazo", "resumoAlerta", "pedidoPainelMin", "totemEntrada", "obsMesa", "sentadosMax", "mapaAtendente",
     "autoFecharAtiva", "autoFecharQtd", "autoFecharArmado", "linkAtivo", "garcomAtivo", "perguntarMesa", "mesaNumObrigatorio", "liberarAte", "liberarVolta",
   ];
 
@@ -4831,7 +4837,137 @@
   }
 
   // preenche e abre a tela de configurações
+  // ==========================================================
+  //  ENGRENAGEM ORGANIZADA POR TELA
+  // ----------------------------------------------------------
+  //  Eram quase setenta ajustes numa rolagem só. Aqui eles são agrupados
+  //  pela TELA que cada um afeta e cada grupo abre e fecha — quem entra
+  //  para mexer numa coisa não precisa passar os olhos por todas as outras.
+  //  A montagem é feita aqui, e não no HTML, para o formulário continuar
+  //  sendo um lugar só: acrescentar um ajuste é escrever o campo e citar o
+  //  id na lista abaixo.
+  // ==========================================================
+  const GRUPOS_CFG = [
+    { id: "casa", titulo: "🏠 O restaurante", campos: ["cfgRest"] },
+    { id: "totem", titulo: "🖥 Totem — entrada na fila", campos: [
+      "cfgTotemEntrada", "cfgBoas", "cfgTelObrig", "cfgTermosOn", "cfgTermosTxt",
+      "cfgCampoEmail", "cfgCampoAniversario", "cfgPetOn", "cfgSemPetOn",
+      "cfgMaxP", "cfgTamanhosGrupo"] },
+    { id: "cliente", titulo: "👀 O que o cliente enxerga", campos: [
+      "cfgFilasJuntas", "cfgMostrarHora", "cfgMostrarTempo", "cfgMostrarMedia", "cfgMostrarFila"] },
+    { id: "atendente", titulo: "👩‍💼 Atendente — chamada das mesas", campos: [
+      "cfgPrazo", "cfgAutoFim", "cfgAlt", "cfgTamanhos", "cfgRegra", "cfgSom",
+      "cfgPerguntarMesa", "cfgBtnChamar", "cfgFilasColunas"] },
+    { id: "espera", titulo: "⏳ Filas e alerta de espera", campos: [
+      "cfgMesoAtiva", "cfgMesoMin", "cfgMesoPrazo", "cfgPrefPrazo", "cfgNormalPrazo", "cfgResumoAlerta"] },
+    { id: "salao", titulo: "🍽 Garçom e mapa do salão", campos: [
+      "cfgGarcomOn", "cfgMapaGarcom", "cfgMapaAdm", "cfgMapaAtendente", "cfgMapaBtn",
+      "cfgLiberarAte", "cfgLiberarVolta", "cfgMesaNumObr", "cfgObsMesa"] },
+    { id: "mesa", titulo: "🧾 Comanda, pager e a aba “Na mesa”", campos: [
+      "cfgComandaOn", "cfgPagerOn", "cfgSentadosMax"] },
+    { id: "avisos", titulo: "📱 WhatsApp e avisos", campos: [
+      "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoPainel", "cfgMsgPedido"] },
+    { id: "fechar", titulo: "🔒 Fechamento automático da fila", campos: [
+      "cfgAutoFecha", "cfgAutoFechaQtd"] },
+    { id: "equipe", titulo: "👥 Equipe e acesso", campos: [
+      "cfgPinAtend", "cfgPinGarcom"] },
+  ];
+
+  const LS_CFG_ABERTOS = "fila_cfg_abertos";
+  function gruposAbertos() {
+    try { return new Set(JSON.parse(localStorage.getItem(LS_CFG_ABERTOS)) || []); }
+    catch (e) { return new Set(); }
+  }
+  function guardarAbertos(s) {
+    try { localStorage.setItem(LS_CFG_ABERTOS, JSON.stringify([...s])); } catch (e) { /* ignora */ }
+  }
+
+  let engrenagemPronta = false;
+  function organizarEngrenagem() {
+    if (engrenagemPronta) return;
+    const form = document.querySelector(".cfg-form");
+    if (!form) return;
+
+    // o que fica FORA dos grupos (rodapé): versão e mensagem de status
+    const rodape = [$("#cfgVersao"), $("#cfgMsgStatus")]
+      .filter(Boolean).map((e) => e.closest("p") || e);
+
+    // caixa que contém o campo: pode ser a linha de duas colunas, o rótulo
+    // ou o próprio elemento (caso do botão de configurar o mapa)
+    const caixaDe = (el) => el.closest(".two-cols") || el.closest("label") ||
+      el.closest(".field") || el;
+
+    const usados = new Set();
+    const grupos = GRUPOS_CFG.map((g) => {
+      const box = document.createElement("div");
+      box.className = "cfg-grupo";
+      box.dataset.grupo = g.id;
+      const cabecalho = document.createElement("button");
+      cabecalho.type = "button";
+      cabecalho.className = "cfg-sec cfg-toggle";
+      cabecalho.innerHTML = `<span>${g.titulo}</span><span class="cfg-seta">▾</span>`;
+      const corpo = document.createElement("div");
+      corpo.className = "cfg-corpo";
+      g.campos.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const caixa = caixaDe(el);
+        if (usados.has(caixa)) return;      // duas colunas entram uma vez só
+        usados.add(caixa);
+        corpo.appendChild(caixa);
+      });
+      box.appendChild(cabecalho);
+      box.appendChild(corpo);
+      return { g, box, corpo };
+    });
+
+    // o que sobrou (cabeçalhos antigos, textos soltos) sai de cena
+    [...form.children].forEach((el) => {
+      if (rodape.includes(el)) return;
+      el.remove();
+    });
+    grupos.forEach(({ box, corpo }) => { if (corpo.children.length) form.appendChild(box); });
+    rodape.forEach((el) => form.appendChild(el));
+
+    // atalho para abrir/fechar tudo
+    const barra = document.createElement("div");
+    barra.className = "cfg-barra";
+    barra.innerHTML = `<button type="button" class="btn btn-sm btn-neutral" id="cfgAbrirTudo">Abrir tudo</button>` +
+      `<button type="button" class="btn btn-sm btn-neutral" id="cfgFecharTudo">Fechar tudo</button>`;
+    form.insertBefore(barra, form.firstChild);
+
+    const aplicar = () => {
+      const abertos = gruposAbertos();
+      $$(".cfg-grupo").forEach((box) => {
+        box.classList.toggle("is-aberto", abertos.has(box.dataset.grupo));
+      });
+    };
+    form.addEventListener("click", (e) => {
+      const cab = e.target.closest(".cfg-toggle");
+      if (cab) {
+        const box = cab.closest(".cfg-grupo");
+        const abertos = gruposAbertos();
+        if (abertos.has(box.dataset.grupo)) abertos.delete(box.dataset.grupo);
+        else abertos.add(box.dataset.grupo);
+        guardarAbertos(abertos);
+        aplicar();
+        return;
+      }
+      if (e.target.id === "cfgAbrirTudo") {
+        guardarAbertos(new Set(GRUPOS_CFG.map((g) => g.id)));
+        aplicar();
+      }
+      if (e.target.id === "cfgFecharTudo") {
+        guardarAbertos(new Set());
+        aplicar();
+      }
+    });
+    aplicar();
+    engrenagemPronta = true;
+  }
+
   function openCfg() {
+    organizarEngrenagem();
     const vv = $("#cfgVersao");
     if (vv) vv.textContent = VERSAO;
     $("#cfgPrazo").value = CFG.prazoComparecer || 5;
@@ -4887,6 +5023,7 @@
     $("#cfgResumoAlerta").value = alertaDoResumo();
     $("#cfgTotemEntrada").value = CFG.totemEntrada === false ? "nao" : "sim";
     $("#cfgObsMesa").value = CFG.obsMesa === false ? "nao" : "sim";
+    $("#cfgMapaAtendente").value = CFG.mapaAtendente === false ? "nao" : "sim";
     $("#cfgSentadosMax").value = quantosNaMesa();
     $("#cfgPedidoPainel").value = minutosDoPedidoNoPainel();
     $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
@@ -4968,6 +5105,7 @@
       resumoAlerta: num("#cfgResumoAlerta", 0, 600, 30),
       totemEntrada: $("#cfgTotemEntrada").value === "sim",
       obsMesa: $("#cfgObsMesa").value === "sim",
+      mapaAtendente: $("#cfgMapaAtendente").value === "sim",
       sentadosMax: num("#cfgSentadosMax", 1, 200, 10),
       pedidoPainelMin: num("#cfgPedidoPainel", 0, 120, 10),
 
@@ -5005,7 +5143,7 @@
     "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn",
-    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField",
+    "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",
     "loginScreen", "relBtn", "sairBtn", "tabSentados", "sentLista", "sentFiltros", "buscaFiltros", "tabPedidos", "pedLista", "pedFiltros",
   ];
   const LS_RECARGA = "fila_recarga_versao";

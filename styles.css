@@ -1181,3 +1181,72 @@ button{font-family:inherit}
 .ped-item{cursor:default;gap:10px}
 .ped-item:hover{border-color:var(--line);background:#fff}
 .ped-acao{flex:0 0 auto;white-space:nowrap;text-decoration:none}
+
+/* =====================================================================
+   CABER NA TELA — regras gerais de encaixe
+   ---------------------------------------------------------------------
+   O que cortava os campos: numa grade, cada item tem largura mínima
+   automática, e a mínima de um <input> é a de umas vinte letras. Com duas
+   colunas num celular estreito isso estoura a caixa e o campo aparece
+   cortado. As regras abaixo valem para o app inteiro, não só para o
+   formulário onde o problema apareceu.
+   ===================================================================== */
+
+/* 1) nenhum campo pode exigir mais largura do que a coluna tem */
+input, select, textarea, button { max-width:100%; min-width:0 }
+.field, .field > * { min-width:0 }
+
+/* 2) duas colunas viram uma sozinhas quando não cabem */
+.two-cols{ grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)) }
+.two-cols > *{ min-width:0 }
+
+/* 3) itens de grade e de flex podem encolher (o padrão é não encolher) */
+.grid > *, .queue-stats > *, .mesas-head > *, .free-row > *{ min-width:0 }
+
+/* 4) texto comprido quebra em vez de empurrar a caixa */
+.field > span, .hint, .card-title, .q-name, .sent-nome, .cc-name{ overflow-wrap:anywhere }
+
+/* 5) telas estreitas de verdade: respira menos, mas cabe */
+@media (max-width:380px){
+  .modal-box{ padding:16px }
+  .field input[type=text], .field input[type=tel], .field input[type=number]{ padding:12px; font-size:1rem }
+  .two-cols{ gap:8px }
+  .free-row .btn-big{ min-width:0 }
+}
+
+/* 6) A barra de abas cresceu (são seis). Em tela estreita ela rola de lado
+   em vez de empurrar o cabeçalho para fora — e continua inteira em tela
+   grande, sem barra de rolagem à vista. */
+.viewswitch{
+  flex:1 1 auto;max-width:100%;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.viewswitch::-webkit-scrollbar{display:none}
+.vs-btn{flex:0 0 auto;white-space:nowrap}
+@media (max-width:480px){
+  .vs-btn{padding:7px 12px;font-size:.84rem}
+  .topbar{gap:8px;padding:10px 12px}
+}
+/* o lado direito do cabeçalho é quem segurava a barra de abas: sem poder
+   encolher, ele empurrava tudo para fora da tela */
+.topbar-right{min-width:0;max-width:100%;flex:1 1 auto}
+.brand{min-width:0}
+.brand-txt{min-width:0;overflow:hidden}
+.brand-txt strong,.brand-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+
+/* ---- Engrenagem em seções que abrem e fecham ----
+   Cada grupo diz a TELA que ele afeta. Fechados por padrão: quem entra para
+   mexer numa coisa não passa os olhos por todas as outras. */
+.cfg-barra{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px}
+.cfg-grupo{border:1.5px solid var(--line);border-radius:14px;margin-bottom:10px;overflow:hidden;background:#fff}
+.cfg-grupo .cfg-sec{
+  width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin:0;padding:13px 14px;border:0;background:var(--brand-soft);
+  font:inherit;font-weight:800;color:var(--ink);text-align:left;cursor:pointer;
+}
+.cfg-grupo .cfg-sec:hover{filter:brightness(.97)}
+.cfg-seta{transition:transform .15s ease;opacity:.65;font-size:.9rem}
+.cfg-grupo.is-aberto .cfg-seta{transform:rotate(180deg)}
+.cfg-corpo{display:none;padding:14px;flex-direction:column;gap:14px}
+.cfg-grupo.is-aberto .cfg-corpo{display:flex}
+.cfg-versao{margin-top:14px}

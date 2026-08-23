@@ -95,6 +95,7 @@ window.FILA_CONFIG = {
   // Mapa do salão: dá para ocultar por perfil (o cadastro continua na engrenagem)
   mapaGarcom: true,
   mapaAdm: true,
+  mapaAtendente: true,   // aba "Mapa" (só consulta) para a atendente
 
   // Formato da planta do salão: largura ÷ altura (1.5 = 3 por 2)
   mapaProporcao: 1.5,

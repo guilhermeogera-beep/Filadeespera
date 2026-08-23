@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v133";
+  const VERSAO = "v134";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -2770,7 +2770,12 @@
     const linha = (rotulo, valor) => valor ? `<dt>${rotulo}</dt><dd>${valor}</dd>` : "";
     $("#cliDados").innerHTML =
       linha("Pessoas", `${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}`) +
-      linha("Entrou", `${fmtClock(entradaEm(r))} — esperando há <b data-since="${entradaEm(r)}">agora</b>`) +
+      // "esperando há X" só vale para quem AINDA espera. Para quem já sentou,
+      // o relógio da espera parou — mostrar o de agora seria mentira.
+      linha("Entrou", r.status === STATUS.SENTADO
+        ? fmtClock(entradaEm(r))
+        : `${fmtClock(entradaEm(r))} — esperando há <b data-since="${entradaEm(r)}">agora</b>`) +
+      linha("Sentou", r.sentou_em ? fmtClock(r.sentou_em) : "") +
       linha("Telefone", r.telefone ? esc(r.telefone) : "") +
       linha("E-mail", r.email ? esc(r.email) : "") +
       linha("Aniversário", r.aniversario ? esc(r.aniversario) : "") +

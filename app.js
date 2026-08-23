@@ -9,7 +9,7 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v139";
+  const VERSAO = "v140";
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -4885,7 +4885,9 @@
   let engrenagemPronta = false;
   function organizarEngrenagem() {
     if (engrenagemPronta) return;
-    const form = document.querySelector(".cfg-form");
+    // '.cfg-form' também é a classe do modal de EDITAR CLIENTE: sem prender a
+    // busca à engrenagem, os ajustes iam parar dentro de um modal escondido.
+    const form = document.querySelector("#cfgModal .cfg-form");
     if (!form) return;
 
     // o que fica FORA dos grupos (rodapé): versão e mensagem de status
@@ -4938,7 +4940,7 @@
 
     const aplicar = () => {
       const abertos = gruposAbertos();
-      $$(".cfg-grupo").forEach((box) => {
+      $$("#cfgModal .cfg-grupo").forEach((box) => {
         box.classList.toggle("is-aberto", abertos.has(box.dataset.grupo));
       });
     };

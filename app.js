@@ -2881,16 +2881,32 @@
     return h;
   }
 
-  // Botão "pedido pronto": avisa o cliente no WhatsApp que pode retirar.
-  // É um link de verdade (e não um window.open) para o navegador não bloquear.
+  // Este aviso abre o WhatsApp, ou só é registrado?
+  // Quem decide é a engrenagem (`pedidoWhats`). Com o WhatsApp desligado o
+  // cliente continua sendo avisado — pela notificação no celular e pelo painel
+  // do totem —, só não abre conversa nenhuma na tela da atendente.
+  function pedidoUsaWhats(r) {
+    return CFG.pedidoWhats !== false && CFG.whatsAtivo !== false && !!r.telefone;
+  }
+
+  // Botão "pedido pronto": avisa o cliente que pode retirar.
+  // Com WhatsApp é um link de verdade (e não um window.open) para o navegador
+  // não bloquear; sem WhatsApp é um botão comum, que só registra.
   function pedidoBtnHTML(r) {
-    if (CFG.avisoPedido === false || CFG.whatsAtivo === false || !r.telefone) return "";
-    const link = waLinkPedido(r);
-    if (!link) return "";
+    if (CFG.avisoPedido === false) return "";
+    // com o WhatsApp ligado e sem telefone não há o que fazer por aqui
+    if (CFG.pedidoWhats !== false && (CFG.whatsAtivo === false || !r.telefone)) return "";
     const feito = !!r.pedido_em;
-    return `<a class="btn btn-sm btn-pedido ${feito ? "is-feito" : ""}" href="${link}" target="_blank" rel="noopener"
-      data-pedido="${r.id}" title="${feito ? "Último aviso às " + fmtClock(r.pedido_em) + " — pode avisar de novo" : "Avisar no WhatsApp que o pedido está pronto"}">
-      ${feito ? "🔁 avisar de novo" : "🍽 Pedido pronto"}</a>`;
+    const classe = `btn btn-sm btn-pedido ${feito ? "is-feito" : ""}`;
+    const rotulo = feito ? "🔁 avisar de novo" : "🍽 Pedido pronto";
+    const titulo = feito
+      ? "Último aviso às " + fmtClock(r.pedido_em) + " — pode avisar de novo"
+      : "Avisar que o pedido está pronto";
+    const link = pedidoUsaWhats(r) ? waLinkPedido(r) : "";
+    return link
+      ? `<a class="${classe}" href="${link}" target="_blank" rel="noopener"
+          data-pedido="${r.id}" title="${titulo}">${rotulo}</a>`
+      : `<button type="button" class="${classe}" data-pedido="${r.id}" title="${titulo}">${rotulo}</button>`;
   }
 
   // ==========================================================
@@ -3425,7 +3441,7 @@
     // ser tocado quantas vezes a atendente precisar.
     const rotulo = feito ? "🔁 avisar de novo · " + fmtClock(r.pedido_em) : "🍽 Pedido pronto";
     const classe = "btn btn-sm btn-pedido ped-acao" + (feito ? " is-feito" : "");
-    const link = CFG.whatsAtivo !== false && r.telefone ? waLinkPedido(r) : "";
+    const link = pedidoUsaWhats(r) ? waLinkPedido(r) : "";
     return link
       ? `<a class="${classe}" href="${link}" target="_blank" rel="noopener" data-pedido="${r.id}">${rotulo}</a>`
       : `<button type="button" class="${classe}" data-pedido="${r.id}">${rotulo}</button>`;
@@ -5303,7 +5319,7 @@
   // ATENÇÃO: esta lista é gravada na tabela `fila_config`, que QUALQUER cliente lê
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
-    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
+    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "pedidoWhats", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
@@ -5463,7 +5479,7 @@
     { id: "mesa", titulo: "🧾 Comanda, pager e a aba “Na mesa”", campos: [
       "cfgComandaOn", "cfgPagerOn", "cfgSentadosMax"] },
     { id: "avisos", titulo: "📱 WhatsApp e avisos", campos: [
-      "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoPainel", "cfgMsgPedido"] },
+      "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoWhats", "cfgPedidoPainel", "cfgMsgPedido"] },
     { id: "fechar", titulo: "🔒 Fechamento automático da fila", campos: [
       "cfgAutoFecha", "cfgAutoFechaQtd"] },
     { id: "equipe", titulo: "👥 Equipe e acesso", campos: [
@@ -5613,6 +5629,7 @@
     $("#cfgMsg").value = CFG.msgWhats || "";
     $("#cfgMsgLink").value = CFG.msgLink || "";
     $("#cfgAvisoPedido").value = CFG.avisoPedido === false ? "nao" : "sim";
+    $("#cfgPedidoWhats").value = CFG.pedidoWhats === false ? "nao" : "sim";
     $("#cfgMsgPedido").value = CFG.msgPedido || window.MSG_PEDIDO_PADRAO || "";
 
     $("#cfgRest").value = CFG.restaurante || "";
@@ -5696,6 +5713,7 @@
       msgWhats: $("#cfgMsg").value.trim(),
       msgLink: $("#cfgMsgLink").value.trim(),
       avisoPedido: $("#cfgAvisoPedido").value === "sim",
+      pedidoWhats: $("#cfgPedidoWhats").value === "sim",
       msgPedido: $("#cfgMsgPedido").value.trim(),
 
       garcomAtivo: $("#cfgGarcomOn").value === "sim",
@@ -5739,7 +5757,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",

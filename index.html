@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=162" />
+<link rel="stylesheet" href="./styles.css?v=163" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -1130,7 +1130,15 @@
             <option value="sim">Mostrar na aba da atendente</option>
             <option value="nao">Não usar</option>
           </select>
-          <small class="hint">Avisa o cliente no WhatsApp que o pedido pode ser retirado.</small>
+          <small class="hint">Avisa o cliente que o pedido pode ser retirado.</small>
+        </label>
+        <label class="field">
+          <span>Ao avisar o pedido pronto</span>
+          <select id="cfgPedidoWhats">
+            <option value="sim">Abrir o WhatsApp com a mensagem</option>
+            <option value="nao">Só registrar — não abrir o WhatsApp</option>
+          </select>
+          <small class="hint">Sem o WhatsApp, o cliente ainda é avisado pela notificação no celular e pelo painel do totem.</small>
         </label>
         <label class="field">
           <span>Tempo do aviso de pedido pronto (min)</span>
@@ -1292,4 +1300,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=162"></script>
+<script src="./app.js?v=163"></script>

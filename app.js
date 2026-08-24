@@ -11,7 +11,20 @@
   const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu", FINALIZADO: "finalizado" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
-  const VERSAO = "v151";
+  //
+  // Ela é LIDA do `?v=` da própria tag <script> que carregou este arquivo, em
+  // vez de escrita à mão aqui. Escrita à mão, ela desandava: quem publicava
+  // subia o número no index.html e no sw.js e esquecia deste, e a engrenagem
+  // passava meses mostrando uma versão que não existia mais. Agora só existe
+  // um número para manter — o do endereço do arquivo.
+  const VERSAO = (function () {
+    try {
+      const s = document.currentScript ||
+        Array.prototype.slice.call(document.scripts).filter((x) => /app\.js/.test(x.src)).pop();
+      const m = s && s.src && s.src.match(/[?&]v=([^&]+)/);
+      return m ? "v" + m[1] : "?";
+    } catch (e) { return "?"; }
+  })();
 
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
@@ -988,6 +1001,192 @@
     b.title = ok
       ? "Cópia em arquivo ativa: " + nome
       : "Cópia em arquivo pausada — toque para reativar (" + nome + ")";
+  }
+
+  // ==========================================================
+  //  PAGER POR RÁDIO (ESP32-C3 + CC1101)
+  // ----------------------------------------------------------
+  //  A base é o ESP32 com o rádio. Ela NÃO fala com esta página direto: o
+  //  app roda em HTTPS e o navegador bloqueia chamada para a rede local.
+  //  Então a conversa é pelo Supabase — aqui a gente escreve ordens, a base
+  //  lê, executa e escreve de volta o que ouviu.
+  //
+  //  Enquanto o rádio não chega, esta tela já funciona: ela só não vai ver
+  //  a base acender nem receber captura nenhuma.
+  // ==========================================================
+  let pagers = [];             // { numero, codigo }
+  let capturas = [];           // o que a base ouviu e ainda não tem dono
+  let pagerCanais = [];        // assinaturas de tempo real, para desligar depois
+  let pagerRelogio = null;
+  let pagerSemTabela = false;
+
+  const cli = () => (backend && backend.client) || null;
+
+  // A base carimba `visto_em` a cada consulta. Se o carimbo é recente, ela
+  // está viva — é o "ela está aí?" sem precisar de ping nenhum.
+  function baseViva(estado) {
+    if (!estado || !estado.visto_em) return false;
+    return Date.now() - new Date(estado.visto_em).getTime() < 15000;
+  }
+
+  async function abrirPager() {
+    if (!cli()) { avisoStaff("⚠ O pager precisa do Supabase ligado."); return; }
+    pagerSemTabela = false;
+    $("#pgMsg").textContent = "";
+    $("#pagerModal").hidden = false;
+    await recarregarPager();
+    ligarTempoRealDoPager();
+    clearInterval(pagerRelogio);
+    pagerRelogio = setInterval(lerEstadoDaBase, 5000);   // a luz da base
+  }
+
+  function fecharPager() {
+    clearInterval(pagerRelogio);
+    pagerRelogio = null;
+    pagerCanais.forEach((c) => { try { cli().removeChannel(c); } catch (e) { /* ignora */ } });
+    pagerCanais = [];
+    // deixar a base escutando para sempre gastaria bateria e encheria a
+    // tabela de lixo: fechou a tela, para a escuta
+    mandarComando("parar").catch(() => { /* silencioso */ });
+  }
+
+  async function recarregarPager() {
+    try {
+      const [p, c] = await Promise.all([
+        cli().from("fila_pagers").select("numero,codigo").order("numero"),
+        cli().from("fila_pager_capturas").select("id,codigo,criado_em")
+          .order("criado_em", { ascending: false }).limit(20),
+      ]);
+      if (p.error) throw p.error;
+      if (c.error) throw c.error;
+      pagers = p.data || [];
+      capturas = c.data || [];
+      renderPager();
+      await lerEstadoDaBase();
+    } catch (e) {
+      // 42P01 = tabela não existe: é o caso de quem ainda não rodou o SQL
+      pagerSemTabela = e && (e.code === "42P01" || /does not exist/i.test(e.message || ""));
+      $("#pgSemTabela").hidden = !pagerSemTabela;
+      if (!pagerSemTabela) console.warn("Pager:", e);
+    }
+  }
+
+  async function lerEstadoDaBase() {
+    if (pagerSemTabela || !cli() || $("#pagerModal").hidden) return;
+    try {
+      const { data } = await cli().from("fila_pager_estado")
+        .select("modo,visto_em,detalhe").eq("id", 1).maybeSingle();
+      pintarEstadoDaBase(data);
+    } catch (e) { pintarEstadoDaBase(null); }
+  }
+
+  function pintarEstadoDaBase(estado) {
+    const viva = baseViva(estado);
+    const escutando = viva && estado.modo === "escutando";
+    $("#pgLuz").className = "pg-luz" + (viva ? (escutando ? " is-escuta" : " is-on") : "");
+    $("#pgBaseTxt").textContent = !viva
+      ? "Base não encontrada — confira se o ESP32 está ligado e na internet."
+      : (escutando ? "Base conectada — escutando o transmissor…" : "Base conectada e pronta.");
+    $("#pgEscutar").hidden = escutando;
+    $("#pgParar").hidden = !escutando;
+  }
+
+  // Toda ordem para a base é uma linha nesta tabela. Ela consome na ordem.
+  async function mandarComando(acao, numero) {
+    if (pagerSemTabela || !cli()) return;
+    const { error } = await cli().from("fila_pager_comandos")
+      .insert({ acao, numero: numero || null });
+    if (error) throw error;
+  }
+
+  function recadoPager(txt, erro) {
+    const m = $("#pgMsg");
+    if (!m) return;
+    m.textContent = txt;
+    m.className = "form-msg" + (erro ? " err" : " ok");
+    clearTimeout(recadoPager._t);
+    recadoPager._t = setTimeout(() => { m.textContent = ""; }, 4000);
+  }
+
+  function renderPager() {
+    // --- capturas sem dono ---
+    $("#pgCapturasVazio").hidden = capturas.length > 0;
+    $("#pgCapturas").innerHTML = capturas.map((c) => `
+      <div class="pg-cap" data-cap="${c.id}">
+        <span class="pg-cap-cod">
+          <b>${esc(c.codigo)}</b>
+          <small>ouvido às ${fmtClock(c.criado_em)}</small>
+        </span>
+        <input class="pg-cap-num" type="text" maxlength="8" inputmode="numeric"
+               placeholder="nº do pager" data-capnum="${c.id}" />
+        <button type="button" class="btn btn-sm btn-primary" data-capsalvar="${c.id}">Salvar</button>
+        <button type="button" class="btn btn-sm btn-ghost btn-danger" data-capapagar="${c.id}">✕</button>
+      </div>`).join("");
+
+    // --- cadastrados ---
+    $("#pgCount").textContent = pagers.length;
+    $("#pgListaVazio").hidden = pagers.length > 0;
+    $("#pgLista").innerHTML = pagers.map((p) => `
+      <div class="pg-item">
+        <span class="pg-num">${esc(p.numero)}</span>
+        <span class="pg-cod">${esc(p.codigo)}</span>
+        <button type="button" class="btn btn-sm btn-accent" data-pgtocar="${esc(p.numero)}">🔔 Tocar</button>
+        <button type="button" class="btn btn-sm btn-ghost btn-danger" data-pgapagar="${esc(p.numero)}">🗑</button>
+      </div>`).join("");
+  }
+
+  // Dar número a uma captura: vira pager cadastrado e sai da lista de cima
+  async function salvarCaptura(id) {
+    const campo = document.querySelector(`[data-capnum="${id}"]`);
+    const numero = (campo ? campo.value : "").trim();
+    if (!numero) { recadoPager("Digite o número do pager.", true); campo && campo.focus(); return; }
+    const cap = capturas.find((c) => c.id === id);
+    if (!cap) return;
+    if (pagers.some((p) => p.numero === numero) &&
+        !confirm(`O pager ${numero} já tem um código. Trocar pelo novo?`)) return;
+    try {
+      const { error } = await cli().from("fila_pagers")
+        .upsert({ numero, codigo: cap.codigo }, { onConflict: "numero" });
+      if (error) throw error;
+      await cli().from("fila_pager_capturas").delete().eq("id", id);
+      await recarregarPager();
+      recadoPager(`✅ Pager ${numero} guardado.`);
+    } catch (e) {
+      console.warn(e);
+      recadoPager("Não deu para guardar. Tente de novo.", true);
+    }
+  }
+
+  async function tocarPager(numero) {
+    const n = String(numero || "").trim();
+    if (!n) { recadoPager("Digite o número do pager.", true); return; }
+    if (!pagers.some((p) => p.numero === n)) {
+      recadoPager(`O pager ${n} ainda não foi aprendido — capture o código dele primeiro.`, true);
+      return;
+    }
+    try {
+      await mandarComando("tocar", n);
+      recadoPager(`🔔 Ordem enviada para o pager ${n}.`);
+    } catch (e) {
+      console.warn(e);
+      recadoPager("Não deu para enviar a ordem.", true);
+    }
+  }
+
+  // Tempo real: a captura tem que aparecer no instante em que você aperta a
+  // tecla do transmissor. Recarregar de 5 em 5s daria a impressão de travado.
+  function ligarTempoRealDoPager() {
+    if (pagerSemTabela || !cli() || pagerCanais.length) return;
+    try {
+      pagerCanais.push(cli().channel("pager-cap-rt")
+        .on("postgres_changes", { event: "*", schema: "public", table: "fila_pager_capturas" },
+          () => { if (!$("#pagerModal").hidden) recarregarPager(); })
+        .subscribe());
+      pagerCanais.push(cli().channel("pager-estado-rt")
+        .on("postgres_changes", { event: "*", schema: "public", table: "fila_pager_estado" },
+          (p) => pintarEstadoDaBase(p.new))
+        .subscribe());
+    } catch (e) { console.warn("Pager em tempo real:", e); }
   }
 
   // ==========================================================
@@ -5079,6 +5278,9 @@
       // fechar o pop-up de chamar solta a mesa que estava escolhida: senão ela
       // ficaria grudada numa chamada feita depois, por outro motivo
       if (m.id === "tamanhoModal" && mesaSelecionada) { mesaSelecionada = null; render(); }
+      // o pager desliga a escuta e o tempo real ao sair: deixar ligado gastaria
+      // bateria da base e encheria a tabela de captura à toa
+      if (m.id === "pagerModal") fecharPager();
     }
     document.addEventListener("click", (e) => {
       const x = e.target.closest("[data-close]");
@@ -5224,6 +5426,36 @@
     // resetar média
     $("#resetAvgBtn").addEventListener("click", () => { $("#resetModal").hidden = false; });
     $("#resetAvgOk").addEventListener("click", () => { resetMedia(); $("#resetModal").hidden = true; });
+
+    // pager por rádio
+    $("#cfgPagerBtn").addEventListener("click", acaoSegura("abrir o pager", abrirPager));
+    $("#pgEscutar").addEventListener("click", acaoSegura("escutar o transmissor", async () => {
+      await mandarComando("escutar");
+      recadoPager("👂 Escuta ligada — digite uma chamada no seu transmissor.");
+      lerEstadoDaBase();
+    }));
+    $("#pgParar").addEventListener("click", acaoSegura("parar a escuta", async () => {
+      await mandarComando("parar");
+      lerEstadoDaBase();
+    }));
+    $("#pgTestarBtn").addEventListener("click", acaoSegura("tocar o pager",
+      () => tocarPager($("#pgTesteNum").value)));
+    // botões das listas (elas são redesenhadas o tempo todo: delegação)
+    $("#pagerModal").addEventListener("click", async (e) => {
+      const t = e.target.closest("[data-capsalvar],[data-capapagar],[data-pgtocar],[data-pgapagar]");
+      if (!t) return;
+      if (t.dataset.capsalvar) return void await acaoSegura("guardar o pager", () => salvarCaptura(t.dataset.capsalvar))();
+      if (t.dataset.pgtocar) return void await acaoSegura("tocar o pager", () => tocarPager(t.dataset.pgtocar))();
+      if (t.dataset.capapagar) {
+        await cli().from("fila_pager_capturas").delete().eq("id", t.dataset.capapagar);
+        return void await recarregarPager();
+      }
+      if (t.dataset.pgapagar) {
+        if (!confirm(`Apagar o código do pager ${t.dataset.pgapagar}?`)) return;
+        await cli().from("fila_pagers").delete().eq("numero", t.dataset.pgapagar);
+        return void await recarregarPager();
+      }
+    });
 
     // QR fixo do balcão
     $("#cfgQrBaixar").addEventListener("click", acaoSegura("baixar o QR", baixarQrFixo));
@@ -5714,6 +5946,8 @@
       "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoWhats", "cfgPedidoPainel", "cfgMsgPedido"] },
     { id: "fechar", titulo: "🔒 Fechamento automático da fila", campos: [
       "cfgAutoFecha", "cfgAutoFechaQtd"] },
+    { id: "pager", titulo: "🔔 Pager por rádio", campos: [
+      "cfgPagerBtn"] },
     { id: "qrfixo", titulo: "🔳 QR Code fixo do balcão", campos: [
       "cfgQrFixo"] },
     { id: "backup", titulo: "💾 Cópia de segurança em arquivo", campos: [
@@ -5995,7 +6229,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",

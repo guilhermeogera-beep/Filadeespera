@@ -1332,3 +1332,48 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 }
 .busca-tel input:focus{outline:none;border-color:var(--brand);background:#fff}
 .sem-codigo-pe{font-size:.85rem;color:var(--muted)}
+
+/* ---------------- CONFIGURAR PAGER (ESP32 + CC1101) ---------------- */
+.pg-base{
+  display:flex;align-items:center;gap:10px;margin:0 0 14px;
+  border:1.5px solid var(--line);border-radius:12px;padding:11px 14px;background:#FAFAF8;
+  font-weight:600;font-size:.95rem;
+}
+/* a luz diz de relance se a base está viva e o que ela está fazendo */
+.pg-luz{width:12px;height:12px;border-radius:50%;background:#c8ccd0;flex:0 0 auto}
+.pg-luz.is-on{background:#1E7A52}
+.pg-luz.is-escuta{background:#E8A33D;animation:pgPisca 1.1s ease-in-out infinite}
+@keyframes pgPisca{0%,100%{opacity:1}50%{opacity:.35}}
+
+.pg-secao{margin:0 0 18px}
+.pg-tit{margin:0 0 4px;font-size:1rem;color:var(--brand-dark)}
+.pg-botoes{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+.pg-vazio{color:var(--muted);font-size:.9rem;margin:8px 0 0}
+
+.pg-capturas,.pg-lista{display:flex;flex-direction:column;gap:8px}
+.pg-cap,.pg-item{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;
+}
+.pg-cap{border-style:dashed;background:#FFFDF6}
+.pg-cap-cod{display:flex;flex-direction:column;flex:1 1 140px;min-width:0}
+.pg-cap-cod b{font-family:ui-monospace,Consolas,monospace;font-size:.95rem;word-break:break-all}
+.pg-cap-cod small{color:var(--muted);font-size:.8rem}
+.pg-cap-num{
+  width:110px;border:1.5px solid var(--line);border-radius:10px;padding:9px 10px;
+  font-size:1rem;background:#FAFAF8;
+}
+.pg-cap-num:focus{outline:none;border-color:var(--brand);background:#fff}
+
+.pg-num{
+  min-width:44px;text-align:center;font-weight:800;font-size:1.1rem;
+  background:var(--brand-soft);color:var(--brand-dark);border-radius:10px;padding:6px 10px;
+}
+.pg-cod{flex:1 1 120px;font-family:ui-monospace,Consolas,monospace;font-size:.85rem;
+  color:var(--muted);word-break:break-all;min-width:0}
+
+.pg-teste{display:flex;align-items:flex-end;gap:10px;margin-top:12px;flex-wrap:wrap}
+.pg-teste .field{flex:1 1 160px}
+.pg-teste input{border:1.5px solid var(--line);border-radius:12px;padding:12px;
+  font-size:1rem;background:#FAFAF8;width:100%}
+.pg-teste input:focus{outline:none;border-color:var(--brand);background:#fff}

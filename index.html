@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=165" />
+<link rel="stylesheet" href="./styles.css?v=166" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -1153,6 +1153,14 @@
           <textarea id="cfgMsgPedido" rows="3"></textarea>
           <small class="hint">Use {nome}, {restaurante}, {comanda} e {pager}.</small>
         </label>
+        <div class="cfg-sec">Pager por rádio</div>
+        <div class="field">
+          <span>Pagers da casa</span>
+          <button type="button" class="btn btn-neutral" id="cfgPagerBtn">🔔 Configurar pager</button>
+          <small class="hint">Aprende os códigos do seu transmissor e testa cada pager.
+            Precisa da base (ESP32 + CC1101) ligada.</small>
+        </div>
+
         <div class="cfg-sec">QR Code fixo do balcão</div>
         <div class="field">
           <span>Para imprimir e deixar no balcão</span>
@@ -1307,6 +1315,56 @@
     </div>
   </div>
 
+  <!-- ============ MODAL: CONFIGURAR O PAGER POR RÁDIO ============ -->
+  <div class="modal" id="pagerModal" data-fixo hidden>
+    <div class="modal-box modal-box-lg">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>🔔 Configurar pager</h3>
+
+      <!-- a base é o ESP32 + CC1101; sem ela nada aqui funciona -->
+      <div class="pg-base" id="pgBase">
+        <span class="pg-luz" id="pgLuz"></span>
+        <span id="pgBaseTxt">Procurando a base…</span>
+      </div>
+
+      <p class="form-msg err" id="pgSemTabela" hidden>
+        As tabelas do pager ainda não existem no banco. Rode o arquivo
+        <b>supabase-pager.sql</b> no Supabase e abra esta tela de novo.
+      </p>
+
+      <!-- ---- APRENDER ---- -->
+      <div class="pg-secao">
+        <h4 class="pg-tit">1. Aprender os códigos</h4>
+        <p class="hint">Ligue a escuta e digite no seu transmissor Retekess, como você
+          faria para chamar. Cada chamada aparece aqui embaixo — dê a ela o número do pager.</p>
+        <div class="pg-botoes">
+          <button type="button" class="btn btn-primary" id="pgEscutar">▶ Escutar o transmissor</button>
+          <button type="button" class="btn btn-neutral" id="pgParar" hidden>⏹ Parar a escuta</button>
+        </div>
+        <div class="pg-capturas" id="pgCapturas"></div>
+        <p class="pg-vazio" id="pgCapturasVazio">Nada capturado ainda.</p>
+      </div>
+
+      <!-- ---- CADASTRADOS / TESTE ---- -->
+      <div class="pg-secao">
+        <h4 class="pg-tit">2. Pagers cadastrados <span class="mesas-count" id="pgCount">0</span></h4>
+        <p class="hint">Toque em <b>🔔 Tocar</b> para fazer o pager vibrar e conferir se é ele mesmo.</p>
+        <div class="pg-lista" id="pgLista"></div>
+        <p class="pg-vazio" id="pgListaVazio">Nenhum pager cadastrado ainda.</p>
+
+        <div class="pg-teste">
+          <label class="field">
+            <span>Testar um número direto</span>
+            <input id="pgTesteNum" type="text" maxlength="8" inputmode="numeric" placeholder="nº do pager" />
+          </label>
+          <button type="button" class="btn btn-accent" id="pgTestarBtn">🔔 Tocar</button>
+        </div>
+      </div>
+
+      <p class="form-msg" id="pgMsg" role="status"></p>
+    </div>
+  </div>
+
   <!-- ============ MODAL: LINK/QR DA PÁGINA DO CLIENTE ============ -->
   <div class="modal" id="publicModal" hidden>
     <div class="modal-box">
@@ -1330,4 +1388,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=165"></script>
+<script src="./app.js?v=166"></script>

@@ -848,8 +848,220 @@
       termos_em: aceitouTermos ? agora : null,
     };
     const salvo = await backend.add(entry);
+    anotarNoArquivo(salvo || entry);   // cópia no computador, se estiver ligada
     await refresh();
     return salvo || entry;
+  }
+
+  // ==========================================================
+  //  CÓPIA EM ARQUIVO (só no computador do administrador)
+  // ----------------------------------------------------------
+  //  Uma linha de CSV no disco a cada cliente que entra na fila — rede de
+  //  segurança para abrir no Excel se algum dia faltar acesso ao banco.
+  //
+  //  Página da web não escreve em arquivo do sistema por conta própria. A
+  //  File System Access API resolve: o administrador escolhe o arquivo UMA
+  //  vez, autoriza, e o app passa a acrescentar linhas nele. Existe só no
+  //  Chrome/Edge de computador — em tablet e celular a API não existe e o
+  //  recurso nem aparece na tela.
+  // ==========================================================
+  const temArquivoLocal = () => typeof window.showSaveFilePicker === "function";
+  const LS_BACKUP_NOME = "fila_backup_nome";
+  let arquivoBackup = null;    // FileSystemFileHandle escolhido pelo administrador
+
+  // O "endereço" do arquivo não cabe no localStorage (não é texto): vai para o
+  // IndexedDB, que guarda objetos de verdade.
+  function bancoDoBackup() {
+    return new Promise((ok, erro) => {
+      const req = indexedDB.open("fila_backup", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("handles");
+      req.onsuccess = () => ok(req.result);
+      req.onerror = () => erro(req.error);
+    });
+  }
+  async function guardarArquivoBackup(h) {
+    const db = await bancoDoBackup();
+    await new Promise((ok, erro) => {
+      const t = db.transaction("handles", "readwrite");
+      t.objectStore("handles").put(h, "arquivo");
+      t.oncomplete = ok;
+      t.onerror = () => erro(t.error);
+    });
+  }
+  async function lerArquivoBackup() {
+    try {
+      const db = await bancoDoBackup();
+      return await new Promise((ok) => {
+        const t = db.transaction("handles", "readonly");
+        const r = t.objectStore("handles").get("arquivo");
+        r.onsuccess = () => ok(r.result || null);
+        r.onerror = () => ok(null);
+      });
+    } catch (e) { return null; }
+  }
+
+  // `pedir: false` só confere (pode rodar a qualquer momento);
+  // `pedir: true` abre o pedido do navegador, que exige um clique da pessoa.
+  async function permissaoDoArquivo(pedir) {
+    if (!arquivoBackup) return false;
+    const opc = { mode: "readwrite" };
+    try {
+      if ((await arquivoBackup.queryPermission(opc)) === "granted") return true;
+      if (!pedir) return false;
+      return (await arquivoBackup.requestPermission(opc)) === "granted";
+    } catch (e) { return false; }
+  }
+
+  const CAB_BACKUP = ["Entrou", "Nome", "Telefone", "Pessoas", "Tipo", "Pet", "Comanda", "Pager", "Código"];
+
+  // Acrescenta no FIM do arquivo, sem apagar o que já estava
+  async function escreverNoArquivo(texto) {
+    if (!arquivoBackup) return false;
+    try {
+      const f = await arquivoBackup.getFile();
+      const w = await arquivoBackup.createWritable({ keepExistingData: true });
+      await w.write({ type: "write", position: f.size, data: texto });
+      await w.close();
+      return true;
+    } catch (e) {
+      console.warn("Cópia em arquivo:", e);
+      return false;
+    }
+  }
+
+  async function escolherArquivoBackup() {
+    if (!temArquivoLocal()) return;
+    try {
+      const h = await window.showSaveFilePicker({
+        suggestedName: "fila-backup.csv",
+        types: [{ description: "Planilha CSV", accept: { "text/csv": [".csv"] } }],
+      });
+      arquivoBackup = h;
+      await guardarArquivoBackup(h);
+      localStorage.setItem(LS_BACKUP_NOME, h.name || "");
+      // arquivo novo (ou vazio) começa pelo cabeçalho das colunas.
+      // O BOM faz o Excel abrir os acentos certos.
+      const f = await h.getFile();
+      if (!f.size) await escreverNoArquivo("﻿" + CAB_BACKUP.join(";") + "\n");
+      atualizarSeloBackup();
+    } catch (e) {
+      // a pessoa fechou o seletor: não é erro
+    }
+  }
+
+  async function desligarArquivoBackup() {
+    arquivoBackup = null;
+    localStorage.removeItem(LS_BACKUP_NOME);
+    try { await guardarArquivoBackup(null); } catch (e) { /* ignora */ }
+    atualizarSeloBackup();
+  }
+
+  function linhaDoBackup(r) {
+    return [
+      fmtDataHora(entradaEm(r)), r.nome, r.telefone || "", r.pessoas,
+      r.preferencial ? "Preferencial" : "Normal",
+      r.pet ? "Sim" : "Não", r.comanda || "", r.pager || "", r.id,
+    ].map(csvCampo).join(";") + "\n";
+  }
+
+  // Chamado a cada entrada na fila. Nunca atrapalha o cadastro: se o arquivo
+  // sumiu ou a permissão caiu, só acende o aviso no cabeçalho e segue a vida.
+  async function anotarNoArquivo(r) {
+    if (!arquivoBackup || !ehAdm()) return;
+    if (!(await permissaoDoArquivo(false))) { atualizarSeloBackup(); return; }
+    const ok = await escreverNoArquivo(linhaDoBackup(r));
+    if (!ok) atualizarSeloBackup();
+  }
+
+  // O selo do cabeçalho conta o que está acontecendo: verde = gravando,
+  // cadeado = precisa de um clique para reativar. Sem isso a atendente não
+  // teria como saber que a cópia parou.
+  async function atualizarSeloBackup() {
+    const b = $("#backupBtn");
+    if (!b) return;
+    if (!temArquivoLocal() || !ehAdm() || !arquivoBackup) { b.hidden = true; return; }
+    b.hidden = false;
+    const ok = await permissaoDoArquivo(false);
+    const nome = localStorage.getItem(LS_BACKUP_NOME) || "arquivo";
+    b.classList.toggle("is-off", !ok);
+    b.textContent = ok ? "💾" : "🔒";
+    b.title = ok
+      ? "Cópia em arquivo ativa: " + nome
+      : "Cópia em arquivo pausada — toque para reativar (" + nome + ")";
+  }
+
+  // ==========================================================
+  //  QR CODE FIXO DO BALCÃO
+  // ----------------------------------------------------------
+  //  O link pessoal (fila.html?id=...) continua existindo. Este é o segundo
+  //  caminho: um QR só, impresso e colado no balcão, que abre a mesma página
+  //  SEM código. Lá o cliente digita o próprio telefone e vê a vez dele.
+  //  Como não leva o código de ninguém, o mesmo papel serve para o dia todo
+  //  e para sempre.
+  // ==========================================================
+  function linkDoQrFixo() { return publicUrl(null); }
+
+  function desenharQrFixo() {
+    const box = $("#cfgQrFixo");
+    if (!box) return;
+    const url = linkDoQrFixo();
+    drawQR(box, url);
+    const t = $("#cfgQrLink");
+    if (t) t.textContent = url;
+  }
+
+  // Baixa em PNG grande: é o formato que entra no Word, no Canva e na gráfica
+  // sem ninguém perguntar nada. 1024px imprime nítido num quadrado de 10cm.
+  function baixarQrFixo() {
+    const svg = $("#cfgQrFixo") && $("#cfgQrFixo").querySelector("svg");
+    if (!svg) { avisoStaff("⚠ O QR ainda não foi desenhado. Feche e abra as configurações."); return; }
+    const LADO = 1024;
+    const texto = new XMLSerializer().serializeToString(svg);
+    const urlSvg = URL.createObjectURL(new Blob([texto], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = c.height = LADO;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff";                 // fundo branco: QR não lê em transparente
+      ctx.fillRect(0, 0, LADO, LADO);
+      ctx.drawImage(img, 0, 0, LADO, LADO);
+      URL.revokeObjectURL(urlSvg);
+      c.toBlob((blob) => {
+        if (!blob) { avisoStaff("⚠ Não deu para gerar a imagem."); return; }
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "qr-fila-" + (CFG.restaurante || "balcao").toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".png";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      }, "image/png");
+    };
+    img.onerror = () => { URL.revokeObjectURL(urlSvg); avisoStaff("⚠ Não deu para gerar a imagem do QR."); };
+    img.src = urlSvg;
+  }
+
+  // Como a seção aparece dentro da engrenagem
+  async function mostrarEstadoDoBackup() {
+    const campo = $("#cfgBackupField");
+    if (!campo) return;
+    // navegador sem a API (tablet, celular, Firefox): a seção some inteira,
+    // melhor do que um botão que não faz nada
+    campo.hidden = !temArquivoLocal() || !ehAdm();
+    if (campo.hidden) return;
+    const nome = localStorage.getItem(LS_BACKUP_NOME) || "";
+    const ligado = !!arquivoBackup;
+    $("#cfgBackupDesligar").hidden = !ligado;
+    $("#cfgBackupEscolher").textContent = ligado ? "📄 Trocar de arquivo" : "📄 Escolher o arquivo";
+    const ok = ligado && await permissaoDoArquivo(false);
+    $("#cfgBackupEstado").textContent = !ligado
+      ? "Nenhum arquivo escolhido — a cópia está desligada."
+      : (ok ? "✅ Gravando em " + nome : "🔒 " + nome + " — toque no 🔒 do cabeçalho para reativar.");
+  }
+
+  async function reativarBackup() {
+    if (await permissaoDoArquivo(true)) avisoStaff("💾 Cópia em arquivo reativada.", true);
+    atualizarSeloBackup();
   }
 
   async function callPerson(id, extras) {
@@ -2793,6 +3005,15 @@
     if (h > 0) return `${h}h${String(m % 60).padStart(2, "0")}`;
     return `${m}min${m < 1 ? " " + String(s).padStart(2, "0") + "s" : ""}`;
   }
+  // Uma célula de CSV, pronta para o Excel. Nome, telefone e comanda são texto
+  // digitado no totem: se a célula começa com = + - @ o Excel abre como
+  // FÓRMULA; o apóstrofo força a leitura como texto.
+  function csvCampo(v) {
+    let s = String(v == null ? "" : v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
   // Hora "de relógio" (ex.: 19:05) a partir de um ISO
   function fmtClock(iso) {
     const d = new Date(iso);
@@ -3913,6 +4134,7 @@
     if (ra) ra.hidden = !ehAdm();
     // o administrador mantém os controles do cabeçalho em qualquer aba
     appEl.setAttribute("data-papel", (ligado && usuario && usuario.papel) || "");
+    atualizarSeloBackup();   // o selo da cópia é só do administrador
 
     if (ligado && usuario) {
       $("#brandSub").textContent = (CFG.restaurante || "") +
@@ -5003,6 +5225,22 @@
     $("#resetAvgBtn").addEventListener("click", () => { $("#resetModal").hidden = false; });
     $("#resetAvgOk").addEventListener("click", () => { resetMedia(); $("#resetModal").hidden = true; });
 
+    // QR fixo do balcão
+    $("#cfgQrBaixar").addEventListener("click", acaoSegura("baixar o QR", baixarQrFixo));
+    $("#cfgQrCopiar").addEventListener("click", () => copiarLink(linkDoQrFixo(), $("#cfgQrLink")));
+
+    // cópia em arquivo (só o administrador, só no computador)
+    $("#backupBtn").addEventListener("click", acaoSegura("reativar a cópia", reativarBackup));
+    $("#cfgBackupEscolher").addEventListener("click", acaoSegura("escolher o arquivo", async () => {
+      await escolherArquivoBackup();
+      await mostrarEstadoDoBackup();
+    }));
+    $("#cfgBackupDesligar").addEventListener("click", acaoSegura("desligar a cópia", async () => {
+      if (!confirm("Parar de gravar a cópia neste arquivo? O que já foi gravado continua lá.")) return;
+      await desligarArquivoBackup();
+      await mostrarEstadoDoBackup();
+    }));
+
     // configurações (engrenagem) — pede senha TODA vez
     $("#cfgBtn").addEventListener("click", () => {
       // Com login ligado, quem chegou aqui já é o administrador — e a senha das
@@ -5233,13 +5471,7 @@
       r.chamadas_perdidas || 0,
       r.status,
     ]);
-    const escCSV = (v) => {
-      let s = String(v == null ? "" : v);
-      // Nome, telefone e comanda são texto digitado no totem. Se a célula começa com
-      // = + - @ o Excel abre como FÓRMULA; o apóstrofo força a leitura como texto.
-      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-      return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-    };
+    const escCSV = csvCampo;
     // ﻿ (BOM) faz o Excel abrir os acentos corretamente
     const csv = "﻿" + [cab, ...linhas].map((l) => l.map(escCSV).join(";")).join("\r\n");
     const hoje = new Date().toISOString().slice(0, 10);
@@ -5482,6 +5714,10 @@
       "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoWhats", "cfgPedidoPainel", "cfgMsgPedido"] },
     { id: "fechar", titulo: "🔒 Fechamento automático da fila", campos: [
       "cfgAutoFecha", "cfgAutoFechaQtd"] },
+    { id: "qrfixo", titulo: "🔳 QR Code fixo do balcão", campos: [
+      "cfgQrFixo"] },
+    { id: "backup", titulo: "💾 Cópia de segurança em arquivo", campos: [
+      "cfgBackupField"] },
     { id: "equipe", titulo: "👥 Equipe e acesso", campos: [
       "cfgPinAtend", "cfgPinGarcom"] },
   ];
@@ -5630,6 +5866,8 @@
     $("#cfgMsgLink").value = CFG.msgLink || "";
     $("#cfgAvisoPedido").value = CFG.avisoPedido === false ? "nao" : "sim";
     $("#cfgPedidoWhats").value = CFG.pedidoWhats === false ? "nao" : "sim";
+    mostrarEstadoDoBackup();
+    desenharQrFixo();
     $("#cfgMsgPedido").value = CFG.msgPedido || window.MSG_PEDIDO_PADRAO || "";
 
     $("#cfgRest").value = CFG.restaurante || "";
@@ -5757,7 +5995,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",
@@ -5863,6 +6101,11 @@
     // a planta se reajusta quando a tela gira ou muda de tamanho
     window.addEventListener("resize", () => aplicarZoom());
     window.addEventListener("orientationchange", () => setTimeout(aplicarZoom, 250));
+
+    // retoma o arquivo escolhido antes (a permissão pode ter caído: o selo avisa)
+    if (temArquivoLocal()) {
+      lerArquivoBackup().then((h) => { arquivoBackup = h || null; atualizarSeloBackup(); });
+    }
 
     setInterval(tickTimes, 1000);          // tempos ao vivo
     setInterval(checkExpired, 3000);       // move sozinho quem estourou o prazo

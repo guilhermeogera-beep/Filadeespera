@@ -5,7 +5,7 @@
 <title>Sua vez na fila — Fila Fácil</title>
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=163" />
+<link rel="stylesheet" href="./styles.css?v=165" />
 
 <div id="app" data-view="publico">
 
@@ -36,12 +36,22 @@
       <button type="button" class="btn btn-sm alerta-teste" id="alertaTeste" hidden>▶ Testar o alarme</button>
     </section>
 
-    <!-- Sem código no endereço, não há o que mostrar -->
+    <!-- Sem código no endereço: o cliente se identifica pelo telefone.
+         É o caminho do QR Code fixo do balcão. -->
     <section class="card sem-codigo" id="semCodigo" hidden>
       <h2 class="card-title">Acompanhe a sua vez</h2>
-      <p>Este endereço mostra <b>a sua posição</b> na fila — e só a sua.</p>
-      <p>Para receber o seu, peça na recepção: a atendente gera um <b>QR Code</b>
-         só para você, ou envia o link pelo WhatsApp quando você entra na fila.</p>
+      <p>Digite o telefone que você informou ao entrar na fila.</p>
+      <form class="busca-tel" id="buscaTelForm" autocomplete="off">
+        <label class="field">
+          <span>Seu telefone (com DDD)</span>
+          <input id="buscaTel" type="tel" inputmode="tel" maxlength="20"
+                 placeholder="(11) 90000-0000" required />
+        </label>
+        <button type="submit" class="btn btn-primary btn-big" id="buscaTelBtn">Ver a minha vez</button>
+        <p class="form-msg" id="buscaTelMsg" role="status"></p>
+      </form>
+      <p class="sem-codigo-pe">Só encontra quem está na fila <b>agora</b>. Terminado o
+         atendimento, esta busca não mostra mais nada.</p>
     </section>
 
     <!-- Tempo de espera da casa (só se estiver ligado na engrenagem) -->
@@ -61,4 +71,4 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config-publico.js"></script>
-<script src="./fila.js?v=163"></script>
+<script src="./fila.js?v=165"></script>

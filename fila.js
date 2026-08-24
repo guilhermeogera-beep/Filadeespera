@@ -16,7 +16,22 @@
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   // código do cliente que abriu o link (?id=...) — para destacar "você"
-  const meuId = new URLSearchParams(location.search).get("id") || "";
+  // Dois caminhos chegam nesta página:
+  //  1) o link/QR pessoal do cliente  ->  fila.html?id=...
+  //  2) o QR FIXO do balcão           ->  fila.html (sem código)
+  // No segundo, o cliente digita o telefone e o banco devolve o código dele.
+  // Guardamos em sessionStorage, e não em localStorage, de propósito: fechou
+  // o navegador, acabou. Ninguém pega o celular do outro e vê a fila dele.
+  const SS_MEU_ID = "fila_meu_id";
+  let meuId = new URLSearchParams(location.search).get("id") || "";
+  if (!meuId) {
+    try { meuId = sessionStorage.getItem(SS_MEU_ID) || ""; } catch (e) { meuId = ""; }
+  }
+
+  function esquecerMeuId() {
+    meuId = "";
+    try { sessionStorage.removeItem(SS_MEU_ID); } catch (e) { /* ignora */ }
+  }
 
   // A vitrine (view) já entrega só o primeiro nome e nada de telefone,
   // comanda ou pager — a proteção está no banco, não só nesta tela.
@@ -477,13 +492,52 @@
       $("#resumoCard").hidden = !mostrarMedia || !naFila;
     } else {
       meCard.hidden = true;
-      // sem código no link (ou código que não está mais na fila): não há o que mostrar
+      // Código que não está mais na fila: o serviço acabou. Esquece quem era e
+      // volta para a busca — que, por sua vez, também não vai achar mais nada.
+      // É isto que faz a página "fechar" no fim do dia.
+      if (meuId) esquecerMeuId();
       $("#semCodigo").hidden = false;
       $("#resumoCard").hidden = true;
     }
 
     tick();
     $("#pubUpdated").textContent = "atualizado às " + fmtClock(new Date().toISOString());
+  }
+
+  // ---------- QR fixo do balcão: achar o cliente pelo telefone ----------
+  // Quem faz a comparação é o BANCO, pela função `acompanhar_por_telefone`.
+  // Ela devolve só o código do cliente — o telefone de ninguém sai de lá.
+  async function buscarPeloTelefone(e) {
+    e.preventDefault();
+    const campo = $("#buscaTel"), msg = $("#buscaTelMsg"), btn = $("#buscaTelBtn");
+    const digitos = (campo.value || "").replace(/\D/g, "");
+    const erro = (t) => { msg.textContent = t; msg.className = "form-msg err"; };
+
+    if (digitos.length < 10) return erro("Digite o telefone completo, com DDD.");
+    if (!client) return erro("Sem ligação com o servidor. Tente de novo em instantes.");
+
+    btn.disabled = true;
+    msg.textContent = "Procurando…";
+    msg.className = "form-msg";
+    try {
+      const { data, error } = await client.rpc("acompanhar_por_telefone", { tel: digitos });
+      if (error) throw error;
+      const achado = Array.isArray(data) ? data[0] : data;
+      if (!achado || !achado.id) {
+        erro("Não encontramos esse telefone na fila de agora. Confira o número ou fale com a recepção.");
+        return;
+      }
+      meuId = achado.id;
+      try { sessionStorage.setItem(SS_MEU_ID, meuId); } catch (err) { /* segue sem guardar */ }
+      campo.value = "";
+      msg.textContent = "";
+      await atualizar();
+    } catch (err) {
+      console.warn("Busca pelo telefone:", err);
+      erro("Não deu para procurar agora. Tente de novo em instantes.");
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   function tick() {
@@ -536,6 +590,7 @@
     await carregarConfig();
     await atualizar();
 
+    $("#buscaTelForm").addEventListener("submit", buscarPeloTelefone);
     $("#alertaBtn").addEventListener("click", ligarAlarme);
     $("#alertaTeste").addEventListener("click", () => {
       tocarAlarme(REPETE.teste, "chamada", VOLUME.teste);

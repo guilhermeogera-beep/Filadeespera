@@ -1308,3 +1308,27 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 .mm-mesa{touch-action:none}
 /* mesas juntadas: sem anel em volta, o desenho único já basta */
 .mm-mesa.is-junta{outline:none;box-shadow:0 3px 10px rgba(0,0,0,.18)}
+
+/* ---------------- CÓPIA EM ARQUIVO (administrador, no computador) ---------------- */
+/* O selo do cabeçalho precisa dizer de longe se a cópia está gravando: verde
+   quando está, laranja piscando quando parou e espera um clique. */
+#backupBtn{background:rgba(255,255,255,.16)}
+#backupBtn.is-off{background:#FFD9A8;color:#8a4b00;animation:backupPisca 1.6s ease-in-out infinite}
+@keyframes backupPisca{0%,100%{opacity:1}50%{opacity:.55}}
+.cfg-backup{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ---------------- QR FIXO DO BALCÃO (engrenagem) ---------------- */
+.qr-fixo{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.qr-fixo .qr-box{flex:0 0 auto;width:160px;height:160px;background:#fff;border-radius:12px;padding:8px}
+.qr-fixo .qr-box svg{width:100%;height:100%;display:block}
+.qr-fixo-lado{display:flex;flex-direction:column;gap:8px;flex:1 1 200px;min-width:200px}
+.qr-fixo-lado .hint{word-break:break-all}
+
+/* ---------------- BUSCA PELO TELEFONE (página do cliente) ---------------- */
+.busca-tel{display:flex;flex-direction:column;gap:12px;margin:14px 0 10px}
+.busca-tel input{
+  border:1.5px solid var(--line);border-radius:12px;padding:14px;
+  font-size:1.15rem;background:#FAFAF8;width:100%;
+}
+.busca-tel input:focus{outline:none;border-color:var(--brand);background:#fff}
+.sem-codigo-pe{font-size:.85rem;color:var(--muted)}

@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=163" />
+<link rel="stylesheet" href="./styles.css?v=165" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -64,6 +64,9 @@
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
       <button id="relBtn" class="icon-btn-h staff-only" title="Relatório" aria-label="Relatório">📊</button>
+      <!-- selo da cópia em arquivo: só aparece no computador do administrador
+           quando ele escolheu um arquivo na engrenagem -->
+      <button id="backupBtn" class="icon-btn-h staff-only" title="Cópia em arquivo" aria-label="Cópia em arquivo" hidden>💾</button>
       <button id="cfgBtn" class="icon-btn-h staff-only" title="Configurações" aria-label="Configurações">⚙️</button>
       <button id="sairBtn" class="icon-btn-h btn-sair" title="Sair" aria-label="Sair" hidden>Sair</button>
     </div>
@@ -1150,6 +1153,33 @@
           <textarea id="cfgMsgPedido" rows="3"></textarea>
           <small class="hint">Use {nome}, {restaurante}, {comanda} e {pager}.</small>
         </label>
+        <div class="cfg-sec">QR Code fixo do balcão</div>
+        <div class="field">
+          <span>Para imprimir e deixar no balcão</span>
+          <div class="qr-fixo">
+            <div class="qr-box" id="cfgQrFixo"></div>
+            <div class="qr-fixo-lado">
+              <button type="button" class="btn btn-primary" id="cfgQrBaixar">⬇ Baixar o QR Code</button>
+              <button type="button" class="btn btn-neutral" id="cfgQrCopiar">🔗 Copiar o link</button>
+              <small class="hint" id="cfgQrLink"></small>
+            </div>
+          </div>
+          <small class="hint">Este QR é sempre o mesmo — imprima uma vez e deixe à vista.
+            Quem ler digita o próprio telefone e vê a sua vez na fila. Terminado o
+            atendimento, a página não mostra mais nada.</small>
+        </div>
+
+        <div class="cfg-sec">Cópia de segurança em arquivo</div>
+        <div class="field" id="cfgBackupField">
+          <span>Salvar cópia num arquivo deste computador</span>
+          <div class="cfg-backup">
+            <button type="button" class="btn btn-neutral" id="cfgBackupEscolher">📄 Escolher o arquivo</button>
+            <button type="button" class="btn btn-ghost btn-danger" id="cfgBackupDesligar" hidden>Desligar</button>
+          </div>
+          <small class="hint" id="cfgBackupEstado"></small>
+          <small class="hint">Grava uma linha a cada cliente que entra na fila, para abrir no Excel. Vale só neste computador e só para o administrador — em tablet e celular o navegador não deixa gravar em arquivo.</small>
+        </div>
+
         <div class="cfg-sec">Equipe e acesso</div>
 
         <label class="field">
@@ -1300,4 +1330,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=163"></script>
+<script src="./app.js?v=165"></script>

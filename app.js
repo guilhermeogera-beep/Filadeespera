@@ -3797,6 +3797,19 @@
     // Quem já está na mesa tem UMA ação: voltar para a fila. Qualquer correção
     // (nome, comanda, pager) a atendente faz na fila, onde o cadastro é dela.
     // Menos botão aqui é menos chance de mexer sem querer em quem já sentou.
+    // Fila da fila: as ações dela são outras. Nada de chamar mesa nem de
+    // pedido pronto — essa pessoa ainda nem está na fila de espera.
+    if (r.status === STATUS.PREVIA) {
+      const avisado = !!r.previa_avisado_em;
+      $("#cliAcoes").innerHTML =
+        `<button class="btn btn-sm btn-verde" data-ffpromover="${r.id}">➡ Colocar na fila de espera</button>
+         <button class="btn btn-sm ${avisado ? "" : "btn-accent"}" data-ffavisar="${r.id}">${
+           avisado ? "🔁 Avisar de novo" : "🔔 Avisar que abriu vaga"}</button>
+         <button class="btn btn-sm" data-edit="${r.id}">✏️ Editar</button>
+         <button class="btn btn-sm btn-ghost btn-danger" data-drop="${r.id}">🗑 Remover</button>`;
+      $("#clienteModal").hidden = false;
+      return;
+    }
     if (r.status === STATUS.SENTADO) {
       $("#cliAcoes").innerHTML =
         `<button class="btn btn-sm btn-verde" data-finish="${r.id}">🏁 Finalizado</button>
@@ -3870,8 +3883,11 @@
     // A busca não mexe aqui: o cabeçalho mostra a fila inteira, sempre.
     const topo = $("#filaTopo");
     if (topo) {
-      // nunca no totem: aquela tela é do cliente, não do controle do salão
-      topo.hidden = !podeVer("staff") || appEl.getAttribute("data-view") === "totem";
+      // nunca no totem: aquela tela é do cliente, não do controle do salão.
+      // A fila da fila também vê: é por este número que ela sabe se já pode
+      // passar alguém da antessala para a fila de espera.
+      topo.hidden = (!podeVer("staff") && !podeVer("filafila")) ||
+        appEl.getAttribute("data-view") === "totem";
       if (!topo.hidden) {
         const pessoasNaFila = wTodos.reduce((a, r) => a + Number(r.pessoas || 0), 0);
         topo.innerHTML = `👥 <b>${pessoasNaFila}</b> ${pessoasNaFila === 1 ? "pessoa" : "pessoas"}` +
@@ -4236,33 +4252,28 @@
       lot.className = "hint" + (vagas === 0 ? " ff-cheio" : "");
     }
 
+    // A linha é só informação; as ações moram na ficha, que abre ao tocar.
+    // Com quatro botões por linha, a lista virava um paredão e o toque errado
+    // ficava fácil demais — ainda mais numa ação que promove alguém de fila.
     $("#ffLista").innerHTML = lista.map((r, i) => {
       const avisado = !!r.previa_avisado_em;
-      const wa = (CFG.whatsAtivo !== false && r.telefone && waLinkPrevia(r))
-        ? `<a class="btn btn-sm ci-wa" href="${waLinkPrevia(r)}" target="_blank" rel="noopener"
-             data-ffavisar="${r.id}">${avisado ? "🔁 avisar de novo" : "📲 Avisar que abriu vaga"}</a>`
-        : `<button type="button" class="btn btn-sm" data-ffavisar="${r.id}">${
-             avisado ? "🔁 avisar de novo" : "🔔 Avisar que abriu vaga"}</button>`;
       const dados = [
         `👥 ${r.pessoas} ${Number(r.pessoas) === 1 ? "pessoa" : "pessoas"}`,
         r.telefone ? "📞 " + esc(r.telefone) : "",
+        r.comanda ? "🧾 " + esc(r.comanda) : "",
+        r.pager ? "🔔 " + esc(r.pager) : "",
         avisado ? "✅ avisado às " + fmtClock(r.previa_avisado_em) : "",
       ].filter(Boolean).join(" • ");
       return `
-      <div class="previa-item ${avisado ? "is-avisado" : ""}">
+      <button type="button" class="previa-item ${avisado ? "is-avisado" : ""}" data-cliente="${r.id}">
         <span class="previa-pos">${i + 1}º</span>
         <span class="previa-txt">
           <span class="previa-nome">${esc(r.nome)}</span>
           <span class="previa-meta">${dados} • entrou ${fmtClock(entradaEm(r))}
             (há <b data-since="${entradaEm(r)}">agora</b>)</span>
         </span>
-        <span class="previa-acoes">
-          ${wa}
-          <button type="button" class="btn btn-sm btn-primary" data-ffpromover="${r.id}">➡ Colocar na fila de espera</button>
-          <button type="button" class="btn btn-sm" data-edit="${r.id}">✏️ Editar</button>
-          <button type="button" class="btn btn-sm btn-ghost btn-danger" data-drop="${r.id}">🗑</button>
-        </span>
-      </div>`;
+        <span class="previa-seta" aria-hidden="true">›</span>
+      </button>`;
     }).join("");
   }
 
@@ -4851,7 +4862,9 @@
 
   // Ajusta o formulário conforme as configurações (telefone, pet, termos)
   function prepararFormulario() {
-    const staff = isStaff();
+    // "staff" aqui quer dizer "quem digita é a equipe, não o cliente". A aba
+    // da fila da fila também é balcão: quem cadastra ali é funcionário nosso.
+    const staff = isStaff() || naAbaPrevia();
     const telObrig = CFG.telObrigatorio !== false;
     $("#fTelLabel").innerHTML = telObrig ? 'Telefone <b class="req">*</b>' : "Telefone <small>(opcional)</small>";
     $("#fTel").required = telObrig;
@@ -5020,7 +5033,10 @@
   function abrirFormulario() {
     $("#joinForm").reset();
     grupoManual = false;
-    pessoas = valorDaLista(tamanhosDeGrupo().filter((n) => n <= (isStaff() ? TETO_EQUIPE : (Number(CFG.maxPessoas) || MAX_P))), 2);
+    // no balcão (inclusive na fila da fila) não há teto artificial de grupo:
+    // quem digita é a equipe, e ela lança o tamanho real
+    const noBalcao = isStaff() || naAbaPrevia();
+    pessoas = valorDaLista(tamanhosDeGrupo().filter((n) => n <= (noBalcao ? TETO_EQUIPE : (Number(CFG.maxPessoas) || MAX_P))), 2);
     $("#fPessoas").textContent = pessoas;
     $('input[name="tipo"][value="normal"]').checked = true;
     $("#fPet").checked = false;
@@ -5600,18 +5616,19 @@
       // O registro sai DEPOIS do clique (setTimeout): ele redesenha a lista, e
       // redesenhar no meio do clique arrancava o próprio link da tela antes do
       // navegador abrir o WhatsApp — era isso que travava o segundo aviso.
-      // "avisar que abriu vaga" costuma ser um link do WhatsApp: o registro
-      // sai DEPOIS do clique, senão o redesenho arranca o link antes de o
-      // navegador abrir a conversa (o mesmo problema do botão de pedido)
+      // "Avisar que abriu vaga" é BOTÃO, não link — mas ele ainda abre o
+      // WhatsApp. Por isso o window.open acontece antes de qualquer `await`:
+      // o navegador só libera abrir aba se for na mesma batida do toque.
       if (t.dataset.ffavisar) {
         const idAviso = t.dataset.ffavisar;
         const p = rows.find((r) => r.id === idAviso);
         const quem = p ? firstName(p.nome) : "este cliente";
-        if (!confirm(`Avisar ${quem} de que já abriu vaga na fila de espera?`)) {
-          e.preventDefault();
-          return;
+        if (!confirm(`Avisar ${quem} de que já abriu vaga na fila de espera?`)) return;
+        const link = (p && CFG.whatsAtivo !== false) ? waLinkPrevia(p) : "";
+        if (link && !window.open(link, "_blank")) {
+          avisoStaff("Aviso registrado. O navegador bloqueou o WhatsApp — abra a conversa na mão.");
         }
-        setTimeout(() => avisarDaPrevia(idAviso), 0);
+        avisarDaPrevia(idAviso);
         return;
       }
       if (t.dataset.pedido) {

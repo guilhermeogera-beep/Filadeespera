@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=176" />
+<link rel="stylesheet" href="./styles.css?v=177" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -218,6 +218,19 @@
         <small class="hint" id="ffLotacao"></small>
       </div>
 
+      <!-- os dois relógios: quanto se espera na fila de espera e quanto se
+           espera AQUI, que são coisas diferentes e ambas importam -->
+      <div class="ff-tempos">
+        <span class="ff-tempo">
+          <small>na fila de espera</small>
+          <b id="ffEsperaFila">—</b>
+        </span>
+        <span class="ff-tempo">
+          <small>aqui na fila da fila</small>
+          <b id="ffEsperaPrevia">—</b>
+        </span>
+      </div>
+
       <p class="hint previa-explica">Quem entra aqui <b>ainda não está na fila de espera</b> —
         não conta na lotação nem aparece no totem. Abrindo vaga, avise e depois passe para a fila.</p>
 
@@ -334,7 +347,7 @@
           <input id="fNome" name="nome" type="text" required maxlength="40" placeholder="Nome do cliente" />
         </label>
 
-        <label class="field">
+        <label class="field" id="fTelField">
           <span id="fTelLabel">Telefone</span>
           <input id="fTel" name="telefone" type="tel" inputmode="tel" maxlength="20" placeholder="(11) 90000-0000" />
           <small class="hint" id="fTelHint">Usamos só para avisar quando a sua mesa estiver pronta.</small>
@@ -363,7 +376,7 @@
           <small class="hint" id="fMesoHint" hidden></small>
         </div>
 
-        <div class="field">
+        <div class="field" id="fTipoField">
           <span>Tipo de atendimento</span>
           <div class="segmented">
             <label class="seg">
@@ -1189,6 +1202,67 @@
             entrar. Use {nome} e {restaurante}.</small>
         </label>
 
+        <p class="hint cfg-nota">Os campos abaixo valem <b>só no cadastro da fila da fila</b>.
+          Deixando "igual à fila de espera", ela segue o que você já configurou lá em cima —
+          mexa só no que quiser diferente. O nome e o tamanho do grupo são sempre pedidos,
+          e as regras nunca aparecem (quem cadastra ali é a equipe).</p>
+
+        <label class="field">
+          <span>Telefone</span>
+          <select id="cfgFfTel">
+            <option value="">Igual à fila de espera</option>
+            <option value="obrigatorio">Obrigatório</option>
+            <option value="opcional">Opcional</option>
+            <option value="nao">Não pedir</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>E-mail</span>
+          <select id="cfgFfEmail">
+            <option value="">Igual à fila de espera</option>
+            <option value="obrigatorio">Obrigatório</option>
+            <option value="opcional">Opcional</option>
+            <option value="nao">Não pedir</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Aniversário</span>
+          <select id="cfgFfAniv">
+            <option value="">Igual à fila de espera</option>
+            <option value="obrigatorio">Obrigatório</option>
+            <option value="opcional">Opcional</option>
+            <option value="nao">Não pedir</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Preferencial (tipo de atendimento)</span>
+          <select id="cfgFfTipo">
+            <option value="">Igual à fila de espera</option>
+            <option value="sim">Perguntar</option>
+            <option value="nao">Não perguntar</option>
+          </select>
+          <small class="hint">A fila da fila é única, sem prioridade — mas o que for marcado aqui
+            acompanha a pessoa quando ela passa para a fila de espera.</small>
+        </label>
+        <div class="two-cols">
+          <label class="field">
+            <span>🐾 Pet</span>
+            <select id="cfgFfPet">
+              <option value="">Igual à fila de espera</option>
+              <option value="sim">Perguntar</option>
+              <option value="nao">Não perguntar</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>🧾 Comanda e 🔔 pager</span>
+            <select id="cfgFfExtras">
+              <option value="">Igual à fila de espera</option>
+              <option value="sim">Mostrar</option>
+              <option value="nao">Ocultar</option>
+            </select>
+          </label>
+        </div>
+
         <div class="cfg-sec">Pager por rádio</div>
         <div class="field">
           <span>Pagers da casa</span>
@@ -1438,4 +1512,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=176"></script>
+<script src="./app.js?v=177"></script>

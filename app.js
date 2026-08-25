@@ -491,8 +491,19 @@
         const res = await comFallback((corpo) => client.from(T).insert(corpo).select().single(), entry);
         return res.data;
       },
+      // O `.select("id")` no fim não é enfeite. Sem ele, um UPDATE barrado
+      // pela permissão do banco volta como SUCESSO com zero linhas mexidas —
+      // e o app pinta a mudança na tela, o servidor ignora, e no `refresh`
+      // seguinte tudo "volta sozinho", sem erro nenhum em lugar nenhum.
+      // Com o select, sabemos quantas linhas mudaram de verdade.
       async update(id, patch) {
-        await comFallback((corpo) => client.from(T).update(corpo).eq("id", id), patch);
+        const res = await comFallback(
+          (corpo) => client.from(T).update(corpo).eq("id", id).select("id"), patch);
+        if (!res.data || !res.data.length) {
+          const e = new Error("O banco não deixou gravar esta alteração (permissão).");
+          e.semPermissao = true;
+          throw e;
+        }
       },
       async updateSeStatus(id, statusEsperado, patch) {
         await comFallback((corpo) => client.from(T).update(corpo).eq("id", id).eq("status", statusEsperado), patch);
@@ -4192,7 +4203,9 @@
       await backend.update(id, patch);
     } catch (e) {
       console.error("Falha ao promover:", e);
-      avisoStaff("⚠ Não deu para passar para a fila de espera. Confira a internet.");
+      avisoStaff(e && e.semPermissao
+        ? "⚠ O banco recusou a mudança: este perfil não tem permissão para passar alguém para a fila de espera. Rode o supabase-fila-da-fila.sql."
+        : "⚠ Não deu para passar para a fila de espera. Confira a internet.");
     }
     await refresh();
   }
@@ -4251,6 +4264,21 @@
             : "A fila de espera está no limite.");
       lot.className = "hint" + (vagas === 0 ? " ff-cheio" : "");
     }
+
+    // Dois relógios, porque são duas esperas diferentes e a atendente precisa
+    // das duas: quanto se espera DEPOIS de entrar na fila (para explicar ao
+    // cliente o que ainda vem pela frente) e quanto se está esperando AQUI
+    // (que é o tamanho do problema dela agora).
+    const naFila = esperaStats();
+    $("#ffEsperaFila").textContent = naFila ? "~" + fmtElapsed(naFila.meio) : "—";
+    // aqui não há "chamadas concluídas" para medir: a espera é a que está
+    // acontecendo. Mediana de quem está na antessala neste momento.
+    const agora = Date.now();
+    const emCurso = todos
+      .map((r) => Math.max(0, agora - new Date(entradaEm(r)).getTime()))
+      .sort((a, b) => a - b);
+    $("#ffEsperaPrevia").textContent = emCurso.length
+      ? "~" + fmtElapsed(percentil(emCurso, 0.5)) : "—";
 
     // A linha é só informação; as ações moram na ficha, que abre ao tocar.
     // Com quatro botões por linha, a lista virava um paredão e o toque errado
@@ -4865,16 +4893,29 @@
     // "staff" aqui quer dizer "quem digita é a equipe, não o cliente". A aba
     // da fila da fila também é balcão: quem cadastra ali é funcionário nosso.
     const staff = isStaff() || naAbaPrevia();
-    const telObrig = CFG.telObrigatorio !== false;
+
+    // A antessala pode pedir campos diferentes da fila de espera. Cada ajuste
+    // dela aceita ficar VAZIO, e vazio quer dizer "igual à fila de espera" —
+    // assim quem não mexer em nada continua com o comportamento de sempre, e
+    // quem mexer altera só o que quis.
+    const previa = naAbaPrevia();
+    const daFila = (chaveFF, padrao) => {
+      const v = previa ? String(CFG[chaveFF] || "") : "";
+      return v || padrao;
+    };
+
+    const modoTel = daFila("ffTel", CFG.telObrigatorio !== false ? "obrigatorio" : "opcional");
+    const telObrig = modoTel === "obrigatorio";
+    $("#fTelField").hidden = modoTel === "nao";
     $("#fTelLabel").innerHTML = telObrig ? 'Telefone <b class="req">*</b>' : "Telefone <small>(opcional)</small>";
-    $("#fTel").required = telObrig;
+    $("#fTel").required = telObrig && modoTel !== "nao";
     // recado curto de propósito: cada linha a mais empurra o botão para fora
     // da tela e obriga a rolar o formulário
     $("#fTelHint").textContent = telObrig
       ? "Avisamos no WhatsApp quando a mesa ficar pronta."
       : "Se informar, avisamos no WhatsApp quando a mesa ficar pronta.";
     // e-mail: aparece no totem e no balcão conforme a engrenagem
-    const modoEmail = CFG.campoEmail || "nao";
+    const modoEmail = daFila("ffEmail", CFG.campoEmail || "nao");
     $("#fEmailField").hidden = modoEmail === "nao";
     $("#fEmail").required = modoEmail === "obrigatorio";
     $("#fEmailLabel").innerHTML = modoEmail === "obrigatorio"
@@ -4882,23 +4923,32 @@
 
     desenharTamanhosGrupo();
     // aniversário: mesma lógica do e-mail, só dia e mês
-    const modoAniv = CFG.campoAniversario || "nao";
+    const modoAniv = daFila("ffAniv", CFG.campoAniversario || "nao");
     $("#fAniversarioField").hidden = modoAniv === "nao";
     $("#fAniversario").required = modoAniv === "obrigatorio";
     $("#fAniversarioLabel").innerHTML = modoAniv === "obrigatorio"
       ? 'Aniversário <b class="req">*</b>' : "Aniversário <small>(opcional)</small>";
 
-    const petLigado = CFG.petAtivo !== false;
+    const petLigado = daFila("ffPet", CFG.petAtivo !== false ? "sim" : "nao") === "sim";
     $("#petRow").hidden = !petLigado;
     // "não sentar na área pet" só faz sentido se existe área pet
     $("#semPetRow").hidden = !petLigado || CFG.campoSemPet === false;
     // a dupla de pet fica lado a lado; sem nenhuma das duas, a linha some
     $("#petRows").hidden = $("#petRow").hidden && $("#semPetRow").hidden;
+    // Preferencial: a antessala é fila única, mas o que for marcado aqui
+    // acompanha a pessoa quando ela passa para a fila de espera — onde a
+    // prioridade volta a valer.
+    const perguntaTipo = daFila("ffTipo", "sim") === "sim";
+    $("#fTipoField").hidden = !perguntaTipo;
+    if (!perguntaTipo) $('input[name="tipo"][value="normal"]').checked = true;
     // as regras são aceitas pelo cliente no totem; a atendente confirma no balcão
     $("#termosRow").hidden = staff || CFG.exigirTermos === false;
     // comanda e pager: só a atendente entrega, e só se estiverem ligados
-    const temComanda = staff && CFG.campoComanda !== false;
-    const temPager = staff && CFG.campoPager !== false;
+    // na antessala um ajuste só liga/desliga os dois: quem quer comanda ali
+    // quer pager junto, e dois seletores seriam ruído na engrenagem
+    const extrasFF = daFila("ffExtras", "");
+    const temComanda = staff && (extrasFF ? extrasFF === "sim" : CFG.campoComanda !== false);
+    const temPager = staff && (extrasFF ? extrasFF === "sim" : CFG.campoPager !== false);
     $("#formComandaField").hidden = !temComanda;
     $("#formPagerField").hidden = !temPager;
     $("#formExtras").hidden = !temComanda && !temPager;
@@ -5355,21 +5405,24 @@
       const erro = (t) => { msg.textContent = t; msg.className = "form-msg err"; };
 
       if (!nome) return erro("Digite o nome.");
-      if (CFG.telObrigatorio !== false) {
+      // a antessala pode cobrar campos diferentes: vazio = igual à fila de espera
+      const ff = (chave, padrao) => (naAbaPrevia() && String(CFG[chave] || "")) || padrao;
+      const modoTel = ff("ffTel", CFG.telObrigatorio !== false ? "obrigatorio" : "opcional");
+      if (modoTel === "obrigatorio") {
         const dig = tel.replace(/\D/g, "");
         if (!dig) return erro("Digite o telefone (com DDD).");
         if (dig.length < 10) return erro("Telefone incompleto — digite o DDD + número.");
       }
       // e-mail: só cobra se estiver ligado na engrenagem
       const email = $("#fEmail").value.trim();
-      const modoEmail = CFG.campoEmail || "nao";
+      const modoEmail = ff("ffEmail", CFG.campoEmail || "nao");
       if (modoEmail !== "nao") {
         if (modoEmail === "obrigatorio" && !email) return erro("Digite o e-mail.");
         if (email && !emailValido(email)) return erro("E-mail inválido — confira se está completo (nome@email.com).");
       }
       // aniversário: só cobra se estiver ligado na engrenagem
       const anivTxt = $("#fAniversario").value.trim();
-      const modoAniv = CFG.campoAniversario || "nao";
+      const modoAniv = ff("ffAniv", CFG.campoAniversario || "nao");
       if (modoAniv !== "nao") {
         if (modoAniv === "obrigatorio" && !anivTxt) return erro("Digite a data de aniversário (dia, mês e ano).");
         if (anivTxt && !normalizaAniversario(anivTxt)) return erro("Aniversário inválido — digite dia, mês e ano, como 07/03/1990.");
@@ -6214,7 +6267,8 @@
   // ATENÇÃO: esta lista é gravada na tabela `fila_config`, que QUALQUER cliente lê
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
-    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "msgPrevia", "avisoPedido", "pedidoWhats", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
+    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "msgPrevia", "avisoPedido", "pedidoWhats",
+    "ffTel", "ffEmail", "ffAniv", "ffTipo", "ffPet", "ffExtras", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
@@ -6376,7 +6430,7 @@
     { id: "avisos", titulo: "📱 WhatsApp e avisos", campos: [
       "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoWhats", "cfgPedidoPainel", "cfgMsgPedido"] },
     { id: "filafila", titulo: "🎟 Fila da fila", campos: [
-      "cfgMsgPrevia"] },
+      "cfgMsgPrevia", "cfgFfTel", "cfgFfEmail", "cfgFfAniv", "cfgFfTipo", "cfgFfPet", "cfgFfExtras"] },
     { id: "fechar", titulo: "🔒 Fechamento automático da fila", campos: [
       "cfgAutoFecha", "cfgAutoFechaQtd"] },
     { id: "pager", titulo: "🔔 Pager por rádio", campos: [
@@ -6537,6 +6591,12 @@
     desenharQrFixo();
     $("#cfgMsgPedido").value = CFG.msgPedido || window.MSG_PEDIDO_PADRAO || "";
     $("#cfgMsgPrevia").value = CFG.msgPrevia || window.MSG_PREVIA_PADRAO || "";
+    $("#cfgFfTel").value = CFG.ffTel || "";
+    $("#cfgFfEmail").value = CFG.ffEmail || "";
+    $("#cfgFfAniv").value = CFG.ffAniv || "";
+    $("#cfgFfTipo").value = CFG.ffTipo || "";
+    $("#cfgFfPet").value = CFG.ffPet || "";
+    $("#cfgFfExtras").value = CFG.ffExtras || "";
 
     $("#cfgRest").value = CFG.restaurante || "";
     $("#cfgPinAtend").value = CFG.pinAtendente || "";
@@ -6622,6 +6682,12 @@
       pedidoWhats: $("#cfgPedidoWhats").value === "sim",
       msgPedido: $("#cfgMsgPedido").value.trim(),
       msgPrevia: $("#cfgMsgPrevia").value.trim(),
+      ffTel: $("#cfgFfTel").value,
+      ffEmail: $("#cfgFfEmail").value,
+      ffAniv: $("#cfgFfAniv").value,
+      ffTipo: $("#cfgFfTipo").value,
+      ffPet: $("#cfgFfPet").value,
+      ffExtras: $("#cfgFfExtras").value,
 
       garcomAtivo: $("#cfgGarcomOn").value === "sim",
       perguntarMesa: $("#cfgPerguntarMesa").value,
@@ -6664,7 +6730,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn", "pgProprioBtn", "semRedeBanner", "tabFilaFila", "filaFilaCard", "cfgMsgPrevia",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn", "pgProprioBtn", "semRedeBanner", "tabFilaFila", "filaFilaCard", "cfgMsgPrevia", "cfgFfTel", "ffEsperaFila", "fTelField", "fTipoField",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",

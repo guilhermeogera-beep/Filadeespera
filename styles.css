@@ -1441,3 +1441,13 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 .previa-meta{color:var(--muted);font-size:.85rem}
 /* as ações da fila da fila ficam na ficha do cliente, não na lista */
 #cliAcoes .btn{min-height:44px}
+
+/* os dois relógios da fila da fila */
+.ff-tempos{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.ff-tempo{
+  display:flex;flex-direction:column;gap:2px;flex:1 1 140px;
+  border:1.5px solid var(--line);border-radius:12px;padding:9px 13px;background:#fff;
+}
+.ff-tempo small{color:var(--muted);font-size:.78rem}
+.ff-tempo b{font-size:1.15rem;color:var(--brand-dark)}
+.cfg-nota{background:#F6F4FD;border-radius:10px;padding:10px 12px;margin:10px 0}

@@ -8,7 +8,7 @@
   const CFG = window.FILA_CONFIG || {};
   // FINALIZADO = comeu e foi embora. É diferente de DESISTIU (foi embora sem
   // sentar): no relatório um é atendimento cumprido, o outro é cliente perdido.
-  const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu", FINALIZADO: "finalizado" };
+  const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", DESISTIU: "desistiu", FINALIZADO: "finalizado", PREVIA: "previa" };
   // Versão do programa. Aparece no rodapé das configurações: quando algo não
   // bate entre dois aparelhos, é a primeira coisa a conferir.
   //
@@ -35,7 +35,7 @@
 
   // Colunas que podem ainda não existir no banco do cliente.
   // Se faltarem, o app continua funcionando sem elas (e avisa nas configurações).
-  const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em", "sem_area_pet", "pedido_em", "mesa_numero", "email", "aniversario"];
+  const COLS_OPCIONAIS = ["chamadas_perdidas", "pet", "comanda", "pager", "sentou_em", "termos_em", "entrou_em", "sem_area_pet", "pedido_em", "mesa_numero", "email", "aniversario", "previa_em", "previa_avisado_em"];
   const LS_COLS = "fila_cols_ausentes";
   const LS_PIN = "fila_pin_atendente";
   const LS_PIN_G = "fila_pin_garcom";
@@ -444,8 +444,10 @@
           }
           return r;
         };
+        // a antessala entra aqui junto com os ativos: ela não pode depender da
+        // janela de 24h do histórico, senão quem espera desde ontem sumiria
         const ativos = await busca((q) => q
-          .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO])
+          .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO, STATUS.PREVIA])
           .order("criado_em", { ascending: true }).limit(PAGINA));
         if (ativos.error) throw ativos.error;
         const desde = new Date(Date.now() - JANELA_HIST_MS).toISOString();
@@ -853,7 +855,10 @@
       sem_area_pet: !pet && !!semAreaPet,   // nunca os dois juntos
       comanda: (comanda || "").trim() || null,
       pager: (pager || "").trim() || null,
-      status: STATUS.AGUARDANDO,
+      // cadastrado pela aba da antessala? entra como 'previa': fica guardado,
+      // mas fora da fila de verdade até alguém promovê-lo
+      status: naAbaPrevia() ? STATUS.PREVIA : STATUS.AGUARDANDO,
+      previa_em: naAbaPrevia() ? agora : null,
       criado_em: agora,
       entrou_em: agora,
       chamado_em: null,
@@ -3817,7 +3822,7 @@
     // Tem casa que não quer o cliente se cadastrando sozinho: o totem vira só
     // painel de acompanhamento e quem lança na fila é a recepção. O botão some
     // apenas no totem — a atendente e o garçom continuam com o deles.
-    const soPainel = !isStaff() && !isGarcom() && CFG.totemEntrada === false;
+    const soPainel = !isStaff() && !isGarcom() && !naAbaPrevia() && CFG.totemEntrada === false;
     btn.hidden = soPainel;
     // sem botão nenhum, a barra fixa de baixo some junto: senão fica uma
     // tarja cinza ocupando o pé da tela do totem
@@ -3930,6 +3935,7 @@
     renderMapa();
     renderSentados();
     renderPedidos();
+    renderFilaFila();
 
     // -------- a fila: tudo junto ou separado --------
     // a atendente vê SEMPRE separado (é assim que ela trabalha); o totem segue a configuração
@@ -4115,6 +4121,147 @@
           <span class="sent-meta">${dados}</span>
         </span>
         ${botaoPedidoHTML(r)}
+      </div>`;
+    }).join("");
+  }
+
+  // ==========================================================
+  //  FILA DA FILA (a antessala)
+  // ----------------------------------------------------------
+  //  A casa tem um teto de gente que consegue atender. Passado o teto, quem
+  //  chega fica aqui: cadastrado, mas fora da fila de verdade. Não conta na
+  //  lotação, não aparece no totem, não entra na média de espera.
+  //
+  //  É fila ÚNICA, sem preferencial e sem mesa grande — de propósito. A
+  //  prioridade só faz sentido quando existe mesa para dar; aqui todo mundo
+  //  espera a mesma coisa: uma vaga na fila.
+  // ==========================================================
+  let buscaPrevia = "";
+
+  function naPrevia() {
+    return rows
+      .filter((r) => r.status === STATUS.PREVIA)
+      .sort(byCreatedAsc);          // ordem de chegada, e só
+  }
+
+  function combinaPrevia(r) {
+    const t = semAcento(buscaPrevia).trim();
+    if (!t) return true;
+    if (semAcento(r.nome).includes(t)) return true;
+    const dig = soDigitos(t);
+    return dig.length >= 3 && soDigitos(r.telefone).includes(dig);
+  }
+
+  // Quantas pessoas a fila de espera comporta ainda. É o MESMO limite que
+  // fecha a fila sozinha — não inventamos um segundo número para a casa
+  // manter em dia.
+  function vagasNaFila() {
+    const lim = Number(CFG.autoFecharQtd);
+    if (!lim || isNaN(lim) || lim < 1) return null;      // sem limite definido
+    const dentro = waiting().reduce((a, r) => a + Number(r.pessoas || 0), 0);
+    return Math.max(0, lim - dentro);
+  }
+
+  // Passa da antessala para a fila de espera.
+  // A POSIÇÃO conta a partir de agora (`criado_em`), como quem chega neste
+  // instante — a fila da fila já é ordenada, então promover na ordem mantém
+  // a justiça sozinho. `entrou_em` também vira agora, senão a espera dele
+  // entraria na conta do tempo típico e inflaria o número do totem. A hora
+  // real da antessala fica guardada em `previa_em`.
+  async function promoverDaPrevia(id) {
+    const agora = new Date().toISOString();
+    const patch = { status: STATUS.AGUARDANDO, criado_em: agora, entrou_em: agora };
+    pintarLocal(id, patch);
+    try {
+      await backend.update(id, patch);
+    } catch (e) {
+      console.error("Falha ao promover:", e);
+      avisoStaff("⚠ Não deu para passar para a fila de espera. Confira a internet.");
+    }
+    await refresh();
+  }
+
+  // Avisar que já pode entrar na fila. NÃO move ninguém: a pessoa pode estar
+  // longe, e ocupar vaga com quem ainda não chegou seria pior que esperar.
+  async function avisarDaPrevia(id) {
+    const patch = { previa_avisado_em: new Date().toISOString() };
+    pintarLocal(id, patch);
+    try {
+      await backend.update(id, patch);
+      avisarNoCelular(id, "previa");
+    } catch (e) {
+      console.warn("Aviso da fila da fila não registrado:", e);
+    }
+    await refresh();
+  }
+
+  // Link do WhatsApp avisando que a vaga abriu
+  function waLinkPrevia(r) {
+    const num = waNumber(r.telefone);
+    if (!num) return "";
+    const msg = (CFG.msgPrevia || window.MSG_PREVIA_PADRAO ||
+      "Olá {nome}! Já abriu vaga na fila de espera da {restaurante}. Pode vir até a recepção para entrar na fila.")
+      .replace(/\{nome\}/g, firstName(r.nome))
+      .replace(/\{restaurante\}/g, CFG.restaurante || "");
+    return "https://wa.me/" + num + "?text=" + encodeURIComponent(msg);
+  }
+
+  function renderFilaFila() {
+    const card = $("#filaFilaCard");
+    if (!card) return;
+    card.hidden = appEl.getAttribute("data-view") !== "filafila";
+    if (card.hidden) return;
+
+    const x = $("#ffLimpar");
+    if (x) x.hidden = !buscaPrevia;
+
+    const todos = naPrevia();
+    const lista = todos.filter(combinaPrevia);
+    $("#ffCount").textContent = lista.length;
+    $("#ffVazio").hidden = lista.length > 0;
+    $("#ffVazio").textContent = todos.length
+      ? "Nada encontrado com essa busca."
+      : "Ninguém na fila da fila.";
+
+    // quantas pessoas ainda cabem na fila de espera: é o número que diz para
+    // a atendente se ela já pode promover alguém
+    const vagas = vagasNaFila();
+    const lot = $("#ffLotacao");
+    if (lot) {
+      lot.textContent = vagas == null
+        ? "Sem limite de lotação configurado na engrenagem."
+        : (vagas > 0
+            ? `Cabem mais ${vagas} ${vagas === 1 ? "pessoa" : "pessoas"} na fila de espera.`
+            : "A fila de espera está no limite.");
+      lot.className = "hint" + (vagas === 0 ? " ff-cheio" : "");
+    }
+
+    $("#ffLista").innerHTML = lista.map((r, i) => {
+      const avisado = !!r.previa_avisado_em;
+      const wa = (CFG.whatsAtivo !== false && r.telefone && waLinkPrevia(r))
+        ? `<a class="btn btn-sm ci-wa" href="${waLinkPrevia(r)}" target="_blank" rel="noopener"
+             data-ffavisar="${r.id}">${avisado ? "🔁 avisar de novo" : "📲 Avisar que abriu vaga"}</a>`
+        : `<button type="button" class="btn btn-sm" data-ffavisar="${r.id}">${
+             avisado ? "🔁 avisar de novo" : "🔔 Avisar que abriu vaga"}</button>`;
+      const dados = [
+        `👥 ${r.pessoas} ${Number(r.pessoas) === 1 ? "pessoa" : "pessoas"}`,
+        r.telefone ? "📞 " + esc(r.telefone) : "",
+        avisado ? "✅ avisado às " + fmtClock(r.previa_avisado_em) : "",
+      ].filter(Boolean).join(" • ");
+      return `
+      <div class="previa-item ${avisado ? "is-avisado" : ""}">
+        <span class="previa-pos">${i + 1}º</span>
+        <span class="previa-txt">
+          <span class="previa-nome">${esc(r.nome)}</span>
+          <span class="previa-meta">${dados} • entrou ${fmtClock(entradaEm(r))}
+            (há <b data-since="${entradaEm(r)}">agora</b>)</span>
+        </span>
+        <span class="previa-acoes">
+          ${wa}
+          <button type="button" class="btn btn-sm btn-primary" data-ffpromover="${r.id}">➡ Colocar na fila de espera</button>
+          <button type="button" class="btn btn-sm" data-edit="${r.id}">✏️ Editar</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-danger" data-drop="${r.id}">🗑</button>
+        </span>
       </div>`;
     }).join("");
   }
@@ -4379,7 +4526,7 @@
   // ==========================================================
   // PEDIDOS é o perfil da cozinha/balcão: só acompanha quem já está na mesa e
   // avisa quando o prato fica pronto. Não mexe na fila nem no salão.
-  const PAPEL = { ADM: "adm", ATENDENTE: "atendente", GARCOM: "garcom", PEDIDOS: "pedidos", TOTEM: "totem" };
+  const PAPEL = { ADM: "adm", ATENDENTE: "atendente", GARCOM: "garcom", PEDIDOS: "pedidos", TOTEM: "totem", FILADAFILA: "atendentefiladafila" };
   const LS_TOTEM = "fila_modo_totem";
   let usuario = null;   // { email, papel, nome } — null quando não há login
 
@@ -4389,9 +4536,11 @@
 
   // Quais abas cada perfil enxerga
   function abasPermitidas() {
-    if (!loginLigado()) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos"];   // como era antes
+    if (!loginLigado()) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos", "filafila"];   // como era antes
     const p = usuario && usuario.papel;
-    if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos"];
+    if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos", "filafila"];
+    // a antessala tem dono próprio: ele não mexe na fila de espera
+    if (p === PAPEL.FILADAFILA) return ["filafila"];
     if (p === PAPEL.ATENDENTE) return ["staff", "mapa", "sentados"];
     if (p === PAPEL.GARCOM) return ["garcom", "mapa"];
     // Pedidos também precisa da aba "Na mesa": muita gente pede depois de
@@ -4407,6 +4556,7 @@
     if (p === PAPEL.ATENDENTE) return "staff";
     if (p === PAPEL.GARCOM) return "garcom";
     if (p === PAPEL.PEDIDOS) return "pedidos";
+    if (p === PAPEL.FILADAFILA) return "filafila";
     return "totem";
   }
   // Perfil Pedidos: a tela dele é só a aba "Na mesa" e o aviso do pedido.
@@ -4519,7 +4669,7 @@
     // perfil alcançar a aba — mas NÃO de ter a aba "Garçom": a atendente vê o
     // mapa (na versão travada) sem ter nada a ver com a tela do salão.
     const podeMapa = CFG.garcomAtivo !== false && podeVer("mapa") && mapaVisivelPara();
-    const map = { totem: "#tabTotem", staff: "#tabStaff", garcom: "#tabGarcom", mapa: "#tabMapa", sentados: "#tabSentados", pedidos: "#tabPedidos" };
+    const map = { totem: "#tabTotem", staff: "#tabStaff", garcom: "#tabGarcom", mapa: "#tabMapa", sentados: "#tabSentados", pedidos: "#tabPedidos", filafila: "#tabFilaFila" };
     Object.keys(map).forEach((v) => {
       const b = $(map[v]);
       if (!b) return;
@@ -4608,6 +4758,8 @@
   // ==========================================================
   const appEl = $("#app");
   function isStaff() { return appEl.getAttribute("data-view") === "staff"; }
+  // a antessala: o formulário é o mesmo, só o destino do cadastro muda
+  function naAbaPrevia() { return appEl.getAttribute("data-view") === "filafila"; }
   function isGarcom() { return appEl.getAttribute("data-view") === "garcom"; }
 
   // qual PIN a aba pediu (para o pop-up saber o que conferir)
@@ -4635,13 +4787,15 @@
     $("#tabMapa").classList.toggle("is-active", v === "mapa");
     $("#tabSentados").classList.toggle("is-active", v === "sentados");
     $("#tabPedidos").classList.toggle("is-active", v === "pedidos");
+    $("#tabFilaFila").classList.toggle("is-active", v === "filafila");
     $("#staffBar").hidden = v !== "staff";
     // o botão de chamar mesa acompanha a aba da atendente, na barra de baixo
     // (dá para escondê-lo na engrenagem: há casa que só chama pela mesa livre)
     const fb2 = $("#freeTableBtn");
     if (fb2) fb2.hidden = v !== "staff" || CFG.mostrarBtnChamar === false;
     ajustarBarraStaff();
-    const rotulo = v === "staff" ? "Adicionar cliente" : "Entrar na fila";
+    const rotulo = v === "filafila" ? "Adicionar na fila da fila"
+      : (v === "staff" ? "Adicionar cliente" : "Entrar na fila");
     $("#formTitle").textContent = rotulo;
     $("#joinBtn").textContent = rotulo;
     render();
@@ -5177,7 +5331,9 @@
       const petLigado = CFG.petAtivo !== false;
       const pet = $("#fPet").checked && petLigado;
       const semAreaPet = $("#fSemPet").checked && petLigado && CFG.campoSemPet !== false;
-      const precisaTermos = !isStaff() && CFG.exigirTermos !== false;
+      // a antessala é balcão: quem digita é a equipe, não o cliente
+      const noBalcao = isStaff() || naAbaPrevia();
+      const precisaTermos = !noBalcao && CFG.exigirTermos !== false;
       const msg = $("#formMsg");
       const erro = (t) => { msg.textContent = t; msg.className = "form-msg err"; };
 
@@ -5202,7 +5358,8 @@
         if (anivTxt && !normalizaAniversario(anivTxt)) return erro("Aniversário inválido — digite dia, mês e ano, como 07/03/1990.");
       }
       if (precisaTermos && !$("#fTermos").checked) return erro("É preciso aceitar as regras da fila para entrar.");
-      if (!isStaff() && CFG.filaFechada === true) return erro("A fila está fechada no momento.");
+      // fila fechada NÃO impede a antessala — ela existe justamente para isso
+      if (!noBalcao && CFG.filaFechada === true) return erro("A fila está fechada no momento.");
 
       $("#joinBtn").disabled = true;
       try {
@@ -5212,13 +5369,25 @@
           aniversario: modoAniv === "nao" ? "" : anivTxt,
           preferencial: tipo === "preferencial",
           pet, semAreaPet,
-          comanda: isStaff() && CFG.campoComanda !== false ? $("#fComanda").value : "",
-          pager: isStaff() && CFG.campoPager !== false ? $("#fPager").value : "",
+          comanda: noBalcao && CFG.campoComanda !== false ? $("#fComanda").value : "",
+          pager: noBalcao && CFG.campoPager !== false ? $("#fPager").value : "",
           aceitouTermos: precisaTermos,
         });
         msg.textContent = "";
         $("#formModal").hidden = true;
-        mostrarEntrou(pessoa);
+        // O pop-up de "você está na fila" fala de posição e QR de
+        // acompanhamento — nada disso vale para quem está na antessala, que
+        // ainda nem tem lugar na fila. Ali basta a confirmação.
+        if (naAbaPrevia()) {
+          const ff = $("#ffMsg");
+          if (ff) {
+            ff.textContent = `✅ ${firstName(pessoa.nome)} entrou na fila da fila.`;
+            ff.className = "form-msg ok";
+            setTimeout(() => { ff.textContent = ""; }, 5000);
+          }
+        } else {
+          mostrarEntrou(pessoa);
+        }
       } catch (err) {
         console.error(err);
         erro("Erro ao entrar na fila. Tente de novo.");
@@ -5411,7 +5580,7 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente],[data-finish]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente],[data-finish],[data-ffpromover],[data-ffavisar]");
       if (!t) return;
       // veio da ficha do cliente? ela sai da frente antes da ação acontecer
       if (t.closest("#clienteModal")) $("#clienteModal").hidden = true;
@@ -5430,6 +5599,20 @@
       // O registro sai DEPOIS do clique (setTimeout): ele redesenha a lista, e
       // redesenhar no meio do clique arrancava o próprio link da tela antes do
       // navegador abrir o WhatsApp — era isso que travava o segundo aviso.
+      // "avisar que abriu vaga" costuma ser um link do WhatsApp: o registro
+      // sai DEPOIS do clique, senão o redesenho arranca o link antes de o
+      // navegador abrir a conversa (o mesmo problema do botão de pedido)
+      if (t.dataset.ffavisar) {
+        const idAviso = t.dataset.ffavisar;
+        const p = rows.find((r) => r.id === idAviso);
+        const quem = p ? firstName(p.nome) : "este cliente";
+        if (!confirm(`Avisar ${quem} de que já abriu vaga na fila de espera?`)) {
+          e.preventDefault();
+          return;
+        }
+        setTimeout(() => avisarDaPrevia(idAviso), 0);
+        return;
+      }
       if (t.dataset.pedido) {
         const idPedido = t.dataset.pedido;
         // Na aba Pedidos os botões ficam um embaixo do outro numa lista: é fácil
@@ -5454,6 +5637,16 @@
       t.disabled = true;   // evita toque duplo enquanto grava
       try {
         if (t.dataset.drop) { if (confirm("Remover este cliente da fila?")) await dropPerson(t.dataset.drop); }
+        else if (t.dataset.ffpromover) {
+          // avisa se a fila já está cheia, mas deixa passar: a decisão de
+          // estourar o limite é da casa, não do programa
+          const vagas = vagasNaFila();
+          const p = rows.find((r) => r.id === t.dataset.ffpromover);
+          const cabe = vagas == null || vagas >= Number((p && p.pessoas) || 1);
+          if (cabe || confirm("A fila de espera já está no limite. Colocar mesmo assim?")) {
+            await promoverDaPrevia(t.dataset.ffpromover);
+          }
+        }
         else if (t.dataset.finish) { if (confirm("Finalizar o atendimento deste cliente?")) await finalizarAtendimento(t.dataset.finish); }
         else if (t.dataset.back) await backToQueue(t.dataset.back);
         else if (t.dataset.discard) { if (confirm("Remover esta chamada?")) await dropPerson(t.dataset.discard); }
@@ -5570,6 +5763,13 @@
     // busca e filtros da aba "Pedidos"
     $("#pedBusca").addEventListener("focus", (e) => e.target.removeAttribute("readonly"));
     $("#pedBusca").addEventListener("input", (e) => { buscaPed = e.target.value; renderPedidos(); });
+    // fila da fila
+    $("#ffBusca").addEventListener("input", (e) => { buscaPrevia = e.target.value; renderFilaFila(); });
+    $("#ffLimpar").addEventListener("click", () => {
+      buscaPrevia = "";
+      $("#ffBusca").value = "";
+      renderFilaFila();
+    });
     $("#pedLimpar").addEventListener("click", () => {
       buscaPed = "";
       $("#pedBusca").value = "";
@@ -5835,6 +6035,7 @@
     const situacao = {
       aguardando: "⏳ na fila", chamado: "🔔 chamado",
       sentado: "✅ sentou", finalizado: "🏁 finalizado", desistiu: "✖ saiu",
+      previa: "🎟 fila da fila",
     };
     // conta desde a hora REAL de chegada (quem perdeu a vez teve o criado_em reescrito)
     const esperaAteChamar = (r) => (r.chamado_em ? new Date(r.chamado_em) - new Date(entradaEm(r)) : null);
@@ -5995,7 +6196,7 @@
   // ATENÇÃO: esta lista é gravada na tabela `fila_config`, que QUALQUER cliente lê
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
-    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "avisoPedido", "pedidoWhats", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
+    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "msgPrevia", "avisoPedido", "pedidoWhats", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
     "termosTexto", "petAtivo", "campoSemPet", "campoEmail", "campoAniversario", "filasJuntas", "mostrarHoraEntrada", "mostrarTempoEspera",
@@ -6156,6 +6357,8 @@
       "cfgComandaOn", "cfgPagerOn", "cfgSentadosMax"] },
     { id: "avisos", titulo: "📱 WhatsApp e avisos", campos: [
       "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoWhats", "cfgPedidoPainel", "cfgMsgPedido"] },
+    { id: "filafila", titulo: "🎟 Fila da fila", campos: [
+      "cfgMsgPrevia"] },
     { id: "fechar", titulo: "🔒 Fechamento automático da fila", campos: [
       "cfgAutoFecha", "cfgAutoFechaQtd"] },
     { id: "pager", titulo: "🔔 Pager por rádio", campos: [
@@ -6315,6 +6518,7 @@
     mostrarEstadoDoBackup();
     desenharQrFixo();
     $("#cfgMsgPedido").value = CFG.msgPedido || window.MSG_PEDIDO_PADRAO || "";
+    $("#cfgMsgPrevia").value = CFG.msgPrevia || window.MSG_PREVIA_PADRAO || "";
 
     $("#cfgRest").value = CFG.restaurante || "";
     $("#cfgPinAtend").value = CFG.pinAtendente || "";
@@ -6399,6 +6603,7 @@
       avisoPedido: $("#cfgAvisoPedido").value === "sim",
       pedidoWhats: $("#cfgPedidoWhats").value === "sim",
       msgPedido: $("#cfgMsgPedido").value.trim(),
+      msgPrevia: $("#cfgMsgPrevia").value.trim(),
 
       garcomAtivo: $("#cfgGarcomOn").value === "sim",
       perguntarMesa: $("#cfgPerguntarMesa").value,
@@ -6441,7 +6646,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn", "pgProprioBtn", "semRedeBanner",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn", "pgProprioBtn", "semRedeBanner", "tabFilaFila", "filaFilaCard", "cfgMsgPrevia",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",

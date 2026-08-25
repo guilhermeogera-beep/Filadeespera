@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=171" />
+<link rel="stylesheet" href="./styles.css?v=174" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -61,6 +61,7 @@
         <button id="tabMapa" class="vs-btn" role="tab">Mapa</button>
         <button id="tabSentados" class="vs-btn" role="tab">Na mesa</button>
         <button id="tabPedidos" class="vs-btn" role="tab">Pedidos</button>
+        <button id="tabFilaFila" class="vs-btn" role="tab">Fila da fila</button>
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
       <button id="relBtn" class="icon-btn-h staff-only" title="Relatório" aria-label="Relatório">📊</button>
@@ -199,6 +200,30 @@
       </div>
       <div class="sent-lista" id="pedLista"></div>
       <div class="mesas-empty" id="pedVazio" hidden>Ninguém na fila no momento.</div>
+    </section>
+
+    <!-- ============ FILA DA FILA (a antessala) ============ -->
+    <section class="card previa-card" id="filaFilaCard" hidden>
+      <div class="busca-bar">
+        <span class="busca-lupa" aria-hidden="true">🔎</span>
+        <input id="ffBusca" type="text" name="busca-previa-x" autocomplete="off"
+               autocapitalize="none" spellcheck="false" inputmode="search"
+               placeholder="Procurar por nome ou telefone"
+               aria-label="Procurar na fila da fila" />
+        <button type="button" id="ffLimpar" class="busca-x" aria-label="Limpar busca" hidden>✕</button>
+      </div>
+
+      <div class="queue-head">
+        <h2 class="card-title">🎟 Fila da fila <span class="mesas-count" id="ffCount">0</span></h2>
+        <small class="hint" id="ffLotacao"></small>
+      </div>
+
+      <p class="hint previa-explica">Quem entra aqui <b>ainda não está na fila de espera</b> —
+        não conta na lotação nem aparece no totem. Abrindo vaga, avise e depois passe para a fila.</p>
+
+      <div class="previa-lista" id="ffLista"></div>
+      <div class="mesas-empty" id="ffVazio" hidden>Ninguém na fila da fila.</div>
+      <p class="form-msg" id="ffMsg" role="status"></p>
     </section>
 
     <!-- ============ NA MESA (aba da atendente: quem já sentou) ============ -->
@@ -1156,6 +1181,14 @@
           <textarea id="cfgMsgPedido" rows="3"></textarea>
           <small class="hint">Use {nome}, {restaurante}, {comanda} e {pager}.</small>
         </label>
+        <div class="cfg-sec">Fila da fila</div>
+        <label class="field">
+          <span>Mensagem de "abriu vaga na fila"</span>
+          <textarea id="cfgMsgPrevia" rows="3"></textarea>
+          <small class="hint">Enviada a quem está na fila da fila quando você avisa que já pode
+            entrar. Use {nome} e {restaurante}.</small>
+        </label>
+
         <div class="cfg-sec">Pager por rádio</div>
         <div class="field">
           <span>Pagers da casa</span>
@@ -1405,4 +1438,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=171"></script>
+<script src="./app.js?v=174"></script>

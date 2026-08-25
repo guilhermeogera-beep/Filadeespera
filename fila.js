@@ -7,7 +7,7 @@
   "use strict";
 
   const CFG = window.FILA_CONFIG || {};
-  const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado" };
+  const STATUS = { AGUARDANDO: "aguardando", CHAMADO: "chamado", SENTADO: "sentado", PREVIA: "previa" };
   const LS_KEY = "fila_espera_v1";
   const T = "fila_publica";   // a "vitrine": fila sem telefone e só com o primeiro nome
 
@@ -37,7 +37,8 @@
   // comanda ou pager — a proteção está no banco, não só nesta tela.
   // sentou_em e pedido_em entram para a página avisar quando o pedido fica
   // pronto; se a vitrine do banco ainda não os tiver, o app segue sem eles
-  const COLS_FILA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,sentou_em,pedido_em,mesa_numero,pet";
+  const COLS_FILA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,sentou_em,pedido_em,mesa_numero,previa_avisado_em,pet";
+  const COLS_SEM_PREVIA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,sentou_em,pedido_em,mesa_numero,pet";
   const COLS_SEM_MESA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,sentou_em,pedido_em,pet";
   const COLS_ANTIGAS = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
 
@@ -137,7 +138,7 @@
   // ainda não existe, o PostgREST devolve 42703 — aí caímos para o conjunto
   // anterior. Assim a página funciona ANTES de o dono rodar o SQL novo: só
   // deixa de mostrar o que aquele SQL traria, sem quebrar nada.
-  const GERACOES = [COLS_FILA, COLS_SEM_MESA, COLS_ANTIGAS];
+  const GERACOES = [COLS_FILA, COLS_SEM_PREVIA, COLS_SEM_MESA, COLS_ANTIGAS];
   let geracao = 0;
   async function buscar(monta) {
     let r = await monta(client.from(T).select(GERACOES[geracao]));
@@ -156,7 +157,7 @@
     // Lê a "vitrine" (view fila_publica): a fila já vem sem telefone, sem
     // comanda e só com o primeiro nome — nem o banco entrega mais que isso.
     const ativos = await buscar((q) => q
-      .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO])
+      .in("status", [STATUS.AGUARDANDO, STATUS.CHAMADO, STATUS.PREVIA])
       .order("criado_em", { ascending: true }).limit(PAGINA));
     if (ativos.error) throw ativos.error;
     const desde = new Date(Date.now() - JANELA_HIST_MS).toISOString();
@@ -201,6 +202,7 @@
   let telaAcesa = null;          // WakeLockSentinel
   let statusAnterior = null;     // para tocar só na MUDANÇA de estado
   let pedidoAnterior = null;
+  let vagaAnterior = null;   // fila da fila: ja foi avisado de que abriu vaga?
   let piscando = null;
   let meAtual = null;             // o cliente deste link, como está agora
   const TITULO = document.title;
@@ -369,7 +371,10 @@
     // Vale enquanto ele espera a mesa E enquanto espera o pedido: era aqui que
     // o aviso de "pedido pronto" se perdia — o botão sumia quando a pessoa
     // sentava, e quem recarregava a página ficava sem alarme nenhum.
-    const esperandoMesa = r && (r.status === STATUS.AGUARDANDO || r.status === STATUS.CHAMADO);
+    // a antessala entra aqui: sem pager, o alarme no celular é o unico aviso
+    // que essa pessoa tem de que abriu vaga
+    const esperandoVaga = r && r.status === STATUS.PREVIA && !r.previa_avisado_em;
+    const esperandoMesa = r && (r.status === STATUS.AGUARDANDO || r.status === STATUS.CHAMADO || esperandoVaga);
     const esperandoPedido = r && r.status === STATUS.SENTADO && !r.pedido_em && CFG.avisoPedido !== false;
     card.hidden = !(esperandoMesa || esperandoPedido);
     if (card.hidden) return;
@@ -378,7 +383,9 @@
     if (!alarmeLigado) {
       btn.textContent = esperandoPedido
         ? "🔔 Tocar quando o pedido ficar pronto"
-        : (jaUsouAlarme() ? "🔔 Reativar o alarme" : "🔔 Tocar quando for a minha vez");
+        : esperandoVaga
+        ? "🔔 Tocar quando abrir vaga na fila"
+        : (jaUsouAlarme() ? "🔔 Ativar alarme" : "🔔 Tocar quando for a minha vez");
     }
     // NÃO FECHE ESTA ABA aparece em todos os casos: mesmo com a notificação
     // funcionando, é a aba que mantém o aviso ligado neste aparelho.
@@ -421,9 +428,17 @@
       tocarAlarme(REPETE.pedido, "pedido");
       piscarTitulo("🍽️ PEDIDO PRONTO!");
     }
-    if (st !== STATUS.CHAMADO && !ped && piscando) pararDePiscar();
+    // fila da fila: abriu vaga. Toca com a mesma força da chamada — para
+    // quem está na antessala, este é O aviso, não existe pager nem outro.
+    const vaga = me ? me.previa_avisado_em : null;
+    if (!primeiroDesenho && vaga && !vagaAnterior) {
+      tocarAlarme(REPETE.chamada, "chamada");
+      piscarTitulo("🎟️ ABRIU VAGA NA FILA!");
+    }
+    if (st !== STATUS.CHAMADO && !ped && !vaga && piscando) pararDePiscar();
     statusAnterior = st;
     pedidoAnterior = ped;
+    vagaAnterior = vaga;
     primeiroDesenho = false;
   }
 
@@ -460,6 +475,18 @@
         corpo = `<div class="me-big">🔔 É a sua vez!</div>
           <div class="me-sub">Dirija-se à recepção agora. Você foi chamado às ${fmtClock(me.chamado_em)}
           e tem até ${esc(String(CFG.prazoComparecer || 5))} minutos para comparecer.</div>`;
+      } else if (me.status === STATUS.PREVIA) {
+        // A antessala: ainda NÃO é a fila de espera, e a página não pode
+        // sugerir que é. Sem posição e sem previsão — ele está aguardando
+        // uma vaga abrir, e ninguém sabe quando.
+        corpo = me.previa_avisado_em
+          ? `<div class="me-big">🎟️ Abriu vaga na fila!</div>
+             <div class="me-sub">Vá até a recepção para entrar na fila de espera.
+               Avisamos às ${fmtClock(me.previa_avisado_em)}.</div>`
+          : `<div class="me-big">🎟️ Você está na fila da fila</div>
+             <div class="me-sub">A fila de espera está cheia no momento. Avisamos aqui
+               assim que abrir vaga para você entrar nela.</div>
+             <div class="me-note">Ainda não há previsão: depende de quantas mesas vagarem.</div>`;
       } else if (me.status === STATUS.AGUARDANDO) {
         // O que realmente conta para ele: quantos grupos DO MESMO TAMANHO estão
         // na frente — porque as mesas são chamadas pelo tamanho do grupo.

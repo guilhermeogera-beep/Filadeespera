@@ -1404,3 +1404,29 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 .sem-rede-banner[hidden]{display:none !important}
 /* cliente que ainda não subiu: a atendente precisa ver qual é */
 .q-chip.chip-pendente{background:#FFE9C7;color:#7a4a00;border-color:#E8A33D}
+
+/* ---------------- FILA DA FILA (a antessala) ---------------- */
+.previa-card{border:2px dashed #6B5BA8;background:#FBFAFF}
+.previa-explica{margin:0 0 12px}
+.ff-cheio{color:var(--danger);font-weight:700}
+
+.previa-lista{display:flex;flex-direction:column;gap:10px}
+.previa-item{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;background:#fff;
+}
+/* já avisado que abriu vaga: some do "a fazer" da atendente sem sumir da lista */
+.previa-item.is-avisado{background:#F4FBF7;border-color:#BEDFCD}
+.previa-pos{
+  min-width:46px;text-align:center;font-weight:800;font-size:1.05rem;
+  background:#EDEAF7;color:#4B3E7D;border-radius:10px;padding:8px 6px;flex:0 0 auto;
+}
+.previa-txt{display:flex;flex-direction:column;gap:3px;flex:1 1 220px;min-width:0}
+.previa-nome{font-weight:700;font-size:1.05rem}
+.previa-meta{color:var(--muted);font-size:.85rem}
+.previa-acoes{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.previa-acoes .btn{min-height:40px}
+@media (max-width:560px){
+  .previa-acoes{width:100%}
+  .previa-acoes .btn{flex:1 1 auto}
+}

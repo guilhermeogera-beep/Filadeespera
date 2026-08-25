@@ -26,6 +26,14 @@
     } catch (e) { return "?"; }
   })();
 
+  // Textos padrão das mensagens. Ficam AQUI, e não espalhados como
+  // `window.MSG_..._PADRAO` (que nunca existiu em lugar nenhum): sem isso a
+  // engrenagem abria com o campo VAZIO e parecia que não havia mensagem
+  // nenhuma configurada — quando na verdade o texto existia, escondido num
+  // fallback lá no meio do código.
+  const MSG_PEDIDO_PADRAO = "Olá {nome}! Seu pedido está pronto, pode retirar no balcão.";
+  const MSG_PREVIA_PADRAO = "Olá {nome}! Já abriu vaga na fila de espera da {restaurante}. Pode vir até a recepção para entrar na fila.";
+
   const MIN_P = 1, MAX_P = 20;
   // O "máximo de pessoas" da engrenagem vale SÓ para o cliente no totem.
   // No balcão a atendente lança o tamanho real do grupo, sem teto artificial.
@@ -3466,7 +3474,7 @@
   function waLinkPedido(r) {
     const num = waNumber(r.telefone);
     if (!num) return "";
-    const msg = (CFG.msgPedido || window.MSG_PEDIDO_PADRAO || "Olá {nome}! Seu pedido está pronto, pode retirar no balcão.")
+    const msg = (CFG.msgPedido || MSG_PEDIDO_PADRAO)
       .replace(/\{nome\}/g, firstName(r.nome))
       .replace(/\{restaurante\}/g, CFG.restaurante || "")
       .replace(/\{comanda\}/g, r.comanda || "")
@@ -4228,8 +4236,7 @@
   function waLinkPrevia(r) {
     const num = waNumber(r.telefone);
     if (!num) return "";
-    const msg = (CFG.msgPrevia || window.MSG_PREVIA_PADRAO ||
-      "Olá {nome}! Já abriu vaga na fila de espera da {restaurante}. Pode vir até a recepção para entrar na fila.")
+    const msg = (CFG.msgPrevia || MSG_PREVIA_PADRAO)
       .replace(/\{nome\}/g, firstName(r.nome))
       .replace(/\{restaurante\}/g, CFG.restaurante || "");
     return "https://wa.me/" + num + "?text=" + encodeURIComponent(msg);
@@ -6589,8 +6596,8 @@
     $("#cfgPedidoWhats").value = CFG.pedidoWhats === false ? "nao" : "sim";
     mostrarEstadoDoBackup();
     desenharQrFixo();
-    $("#cfgMsgPedido").value = CFG.msgPedido || window.MSG_PEDIDO_PADRAO || "";
-    $("#cfgMsgPrevia").value = CFG.msgPrevia || window.MSG_PREVIA_PADRAO || "";
+    $("#cfgMsgPedido").value = CFG.msgPedido || MSG_PEDIDO_PADRAO;
+    $("#cfgMsgPrevia").value = CFG.msgPrevia || MSG_PREVIA_PADRAO;
     $("#cfgFfTel").value = CFG.ffTel || "";
     $("#cfgFfEmail").value = CFG.ffEmail || "";
     $("#cfgFfAniv").value = CFG.ffAniv || "";

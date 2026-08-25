@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=177" />
+<link rel="stylesheet" href="./styles.css?v=178" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -222,17 +222,20 @@
            espera AQUI, que são coisas diferentes e ambas importam -->
       <div class="ff-tempos">
         <span class="ff-tempo">
-          <small>na fila de espera</small>
-          <b id="ffEsperaFila">—</b>
+          <span class="ff-ico" aria-hidden="true">⏱️</span>
+          <span class="ff-tempo-txt">
+            <small>espera na fila</small>
+            <b id="ffEsperaFila">—</b>
+          </span>
         </span>
-        <span class="ff-tempo">
-          <small>aqui na fila da fila</small>
-          <b id="ffEsperaPrevia">—</b>
+        <span class="ff-tempo is-previa">
+          <span class="ff-ico" aria-hidden="true">⏳</span>
+          <span class="ff-tempo-txt">
+            <small>esperando aqui</small>
+            <b id="ffEsperaPrevia">—</b>
+          </span>
         </span>
       </div>
-
-      <p class="hint previa-explica">Quem entra aqui <b>ainda não está na fila de espera</b> —
-        não conta na lotação nem aparece no totem. Abrindo vaga, avise e depois passe para a fila.</p>
 
       <div class="previa-lista" id="ffLista"></div>
       <div class="mesas-empty" id="ffVazio" hidden>Ninguém na fila da fila.</div>
@@ -1512,4 +1515,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=177"></script>
+<script src="./app.js?v=178"></script>

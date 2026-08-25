@@ -3843,6 +3843,7 @@
       ${wa}
       ${CFG.linkAtivo === false ? "" : `<button class="btn btn-qr" data-qrcliente="${r.id}">📱 QR do cliente</button>`}
       ${pedidoBtnHTML(r)}
+      <button class="btn btn-roxo" data-ffrebaixar="${r.id}">🎟 Enviar para a fila da fila</button>
       <button class="btn btn-danger" data-drop="${r.id}">✕ Saiu da fila</button>`;
     $("#clienteModal").hidden = false;
   }
@@ -4214,6 +4215,27 @@
       avisoStaff(e && e.semPermissao
         ? "⚠ O banco recusou a mudança: este perfil não tem permissão para passar alguém para a fila de espera. Rode o supabase-fila-da-fila.sql."
         : "⚠ Não deu para passar para a fila de espera. Confira a internet.");
+    }
+    await refresh();
+  }
+
+  // O caminho de volta: da fila de espera para a antessala.
+  // Serve para quando a atendente percebe que aceitou gente demais, ou quando
+  // o cliente pede para esperar mais um pouco antes de entrar de vez.
+  //
+  // Ele PERDE a posição — quando voltar, entra como quem chega naquele
+  // momento. Não dá para ser diferente: guardar a vaga dele enquanto ele está
+  // fora seria furar a fila de quem ficou. Por isso este confirma antes.
+  async function rebaixarParaPrevia(id) {
+    const patch = { status: STATUS.PREVIA, previa_em: new Date().toISOString(), chamado_em: null };
+    pintarLocal(id, patch);
+    try {
+      await backend.update(id, patch);
+    } catch (e) {
+      console.error("Falha ao enviar para a fila da fila:", e);
+      avisoStaff(e && e.semPermissao
+        ? "⚠ O banco recusou: este perfil não tem permissão para isso."
+        : "⚠ Não deu para enviar para a fila da fila. Confira a internet.");
     }
     await refresh();
   }
@@ -5657,7 +5679,7 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente],[data-finish],[data-ffpromover],[data-ffavisar]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente],[data-finish],[data-ffpromover],[data-ffavisar],[data-ffrebaixar]");
       if (!t) return;
       // veio da ficha do cliente? ela sai da frente antes da ação acontecer
       if (t.closest("#clienteModal")) $("#clienteModal").hidden = true;
@@ -5725,7 +5747,14 @@
             await promoverDaPrevia(t.dataset.ffpromover);
           }
         }
-        else if (t.dataset.finish) { if (confirm("Finalizar o atendimento deste cliente?")) await finalizarAtendimento(t.dataset.finish); }
+        // finalizar não pergunta: a atendente já abriu a ficha daquele cliente
+        // de propósito, e o erro tem conserto (é só voltar à fila)
+        else if (t.dataset.ffrebaixar) {
+          if (confirm("Enviar para a fila da fila? A pessoa PERDE a posição na fila de espera e, ao voltar, entra como quem chega na hora.")) {
+            await rebaixarParaPrevia(t.dataset.ffrebaixar);
+          }
+        }
+        else if (t.dataset.finish) await finalizarAtendimento(t.dataset.finish);
         else if (t.dataset.back) await backToQueue(t.dataset.back);
         else if (t.dataset.discard) { if (confirm("Remover esta chamada?")) await dropPerson(t.dataset.discard); }
         else if (t.dataset.toend) {

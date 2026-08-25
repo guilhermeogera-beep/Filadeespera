@@ -1392,3 +1392,15 @@ input, select, textarea, button { max-width:100%; min-width:0 }
   font-size:1.15rem;font-weight:700;
 }
 .me-mesa b{font-size:1.5rem;font-weight:800}
+
+/* ---------------- SEM INTERNET ---------------- */
+/* Fica na tela ENQUANTO durar o problema, ao contrário dos outros avisos que
+   somem em segundos. Trabalhar sem rede sem saber disso é o pior dos mundos. */
+.sem-rede-banner{
+  margin:0 0 12px;padding:12px 16px;border-radius:12px;
+  background:#FFE9C7;border:1.5px solid #E8A33D;color:#7a4a00;
+  font-weight:600;font-size:.95rem;line-height:1.4;
+}
+.sem-rede-banner[hidden]{display:none !important}
+/* cliente que ainda não subiu: a atendente precisa ver qual é */
+.q-chip.chip-pendente{background:#FFE9C7;color:#7a4a00;border-color:#E8A33D}

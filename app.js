@@ -860,9 +860,98 @@
       sentou_em: null,
       termos_em: aceitouTermos ? agora : null,
     };
-    const salvo = await backend.add(entry);
+    let salvo = null;
+    try {
+      salvo = await backend.add(entry);
+      marcarSemRede(false);
+    } catch (e) {
+      // Internet fora não pode custar um cliente. Guarda no aparelho e segue:
+      // a pessoa entra na fila normalmente e o envio acontece quando voltar.
+      console.warn("Entrada guardada para reenvio:", e && e.message);
+      guardarNoOutbox(entry);
+      marcarSemRede(true);
+      rows = rows.concat([Object.assign({ _pendente: true }, entry)]);
+      render();
+      return entry;
+    }
     await refresh();                   // o refresh é que grava a cópia em arquivo
     return salvo || entry;
+  }
+
+  // ==========================================================
+  //  FILA DE REENVIO (quando a internet cai)
+  // ----------------------------------------------------------
+  //  Só para ENTRADAS na fila, de propósito. Cada entrada tem código próprio
+  //  e hora de chegada, então quando enfim chega ao banco ela se ordena
+  //  sozinha, mesmo tendo saído de outro aparelho — não atropela ninguém.
+  //
+  //  Chamar e sentar ficam de fora: reenviar um "sentou" de dez minutos atrás
+  //  poderia desfazer o que outra pessoa fez nesse meio-tempo. Perder uma
+  //  chamada é chato; ressuscitar um estado velho é pior.
+  // ==========================================================
+  const LS_OUTBOX = "fila_outbox";
+  let semRede = false;
+
+  function lerOutbox() {
+    try { return JSON.parse(localStorage.getItem(LS_OUTBOX)) || []; }
+    catch (e) { return []; }
+  }
+  function escreverOutbox(arr) {
+    try { localStorage.setItem(LS_OUTBOX, JSON.stringify(arr)); } catch (e) { /* ignora */ }
+  }
+  function guardarNoOutbox(entry) {
+    const fila = lerOutbox();
+    if (!fila.some((x) => x.id === entry.id)) fila.push(entry);
+    escreverOutbox(fila);
+    pintarSemRede();
+  }
+
+  // A faixa fica ENQUANTO durar o problema — não some sozinha em 6 segundos
+  // como os outros avisos. A atendente precisa saber que está trabalhando
+  // sem rede o tempo todo, não só no instante da falha.
+  function marcarSemRede(v) {
+    if (semRede === !!v) return;
+    semRede = !!v;
+    pintarSemRede();
+  }
+  function pintarSemRede() {
+    const b = $("#semRedeBanner");
+    if (!b) return;
+    const presos = lerOutbox().length;
+    b.hidden = !semRede && !presos;
+    if (b.hidden) return;
+    b.textContent = presos
+      ? `⚠ Sem ligação com o servidor — ${presos} ${presos === 1 ? "cadastro guardado" : "cadastros guardados"} neste aparelho. Enviamos sozinho quando a internet voltar.`
+      : "⚠ Sem ligação com o servidor — a tela pode estar desatualizada.";
+  }
+
+  // Tenta esvaziar a fila de reenvio. Roda a cada `refresh` e quando o
+  // navegador avisa que a rede voltou.
+  let reenviando = false;
+  async function reenviarOutbox() {
+    if (reenviando) return;
+    const fila = lerOutbox();
+    if (!fila.length) return;
+    reenviando = true;
+    try {
+      const sobraram = [];
+      for (const entry of fila) {
+        try {
+          await backend.add(entry);
+        } catch (e) {
+          sobraram.push(entry);       // ainda sem rede: continua guardado
+        }
+      }
+      escreverOutbox(sobraram);
+      if (!sobraram.length) {
+        marcarSemRede(false);
+        avisoStaff("✅ Os cadastros guardados foram enviados.", true);
+        await refresh();
+      }
+      pintarSemRede();
+    } finally {
+      reenviando = false;
+    }
   }
 
   // ==========================================================
@@ -1817,14 +1906,19 @@
       // as três consultas vão JUNTAS: em sequência eram três idas ao servidor,
       // uma esperando a outra, e a tela só respondia no fim
       const [lista] = await Promise.all([backend.list(), carregarMesas(), carregarMapa()]);
-      rows = lista;
+      // quem ainda não conseguiu ser gravado continua aparecendo na fila:
+      // para a atendente, aquela pessoa ESTÁ na fila — o problema é nosso
+      const presos = lerOutbox().filter((p) => !lista.some((r) => r.id === p.id));
+      rows = lista.concat(presos.map((p) => Object.assign({ _pendente: true }, p)));
+      marcarSemRede(false);
       render();
       checkAutoClose();
       // grava no arquivo quem entrou na fila por QUALQUER aparelho
       varrerParaOArquivo();
+      reenviarOutbox();        // a rede voltou? esvazia o que ficou preso
     } catch (e) {
       console.error("Erro ao carregar a fila:", e);
-      avisoStaff("⚠ Sem ligação com o servidor — o que está na tela pode estar desatualizado.");
+      marcarSemRede(true);
     }
   }
 
@@ -3404,6 +3498,8 @@
   // Selos de pet / comanda / pager
   function chipsHTML(r, staff) {
     let h = "";
+    // guardado neste aparelho, ainda não chegou ao servidor
+    if (staff && r._pendente) h += `<span class="q-chip chip-pendente">⏳ não enviado</span>`;
     if (r.pet) h += `<span class="q-chip chip-pet">🐾 pet</span>`;
     if (r.sem_area_pet) h += `<span class="q-chip chip-sempet">🚫 sem área pet</span>`;
     if (staff && r.mesa_numero) h += `<span class="q-chip chip-mesa">🪑 mesa ${esc(r.mesa_numero)}</span>`;
@@ -6345,7 +6441,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn", "pgProprioBtn",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn", "pgProprioBtn", "semRedeBanner",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",
@@ -6411,13 +6507,24 @@
     carregarPinLocal();   // PIN da atendente: guardado só neste aparelho
 
     const hasSupabase = CFG.supabaseUrl && CFG.supabaseAnonKey && window.supabase;
+    // ATENÇÃO ao que este trecho NÃO faz mais.
+    //
+    // Antes, qualquer falha aqui trocava para o modo local. Parecia prudente,
+    // mas criava a pior falha possível: aberto o app sem internet, a atendente
+    // via uma fila VAZIA (a do localStorage, que é outra), cadastrava a noite
+    // inteira nela, e nada disso chegava ao Supabase. Sem erro, sem aviso —
+    // duas filas paralelas, e a de verdade perdida.
+    //
+    // Agora, se o config.js aponta para a nuvem, é na nuvem que ficamos. Sem
+    // conexão o app avisa e a fila de reenvio segura os cadastros até voltar.
+    // Modo local só para quem NUNCA configurou o Supabase.
+    backend = hasSupabase ? SupabaseBackend(CFG.supabaseUrl, CFG.supabaseAnonKey) : LocalBackend();
     try {
-      backend = hasSupabase ? SupabaseBackend(CFG.supabaseUrl, CFG.supabaseAnonKey) : LocalBackend();
       await backend.init();
     } catch (e) {
-      console.error("Falha no backend, usando modo local:", e);
-      backend = LocalBackend();
-      await backend.init();
+      console.error("Backend não respondeu no arranque:", e);
+      if (!hasSupabase) throw e;      // sem nuvem configurada, é erro de verdade
+      marcarSemRede(true);            // com nuvem, é só a internet: seguimos
     }
 
     backend.onChange(refresh);
@@ -6462,6 +6569,10 @@
     setInterval(atualizarEsperas, 60000);  // espera típica: recalcula a cada 1 min
     setInterval(refresh, 15000);           // rede de segurança da FILA
     setInterval(recarregarConfig, 15000);  // rede de segurança das CONFIGURAÇÕES
+    // o navegador avisa quando a rede volta: nao esperamos os 15s do refresh
+    window.addEventListener("online", () => { marcarSemRede(false); refresh(); });
+    window.addEventListener("offline", () => marcarSemRede(true));
+
     // ao voltar para a tela (totem que estava em segundo plano), atualiza tudo
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") { recarregarConfig(); refresh(); }

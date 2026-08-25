@@ -3680,8 +3680,12 @@
       linha("Mesa", r.mesa_numero ? esc(r.mesa_numero) : "") +
       linha("Chamado", r.chamado_em ? fmtClock(r.chamado_em) : "");
 
-    const wa = (CFG.whatsAtivo !== false && r.telefone && waLink(r))
-      ? `<a class="btn btn-sm ci-wa" href="${waLink(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : "";
+    // Aqui o WhatsApp abre EM BRANCO, de propósito. Este botão é o "preciso
+    // falar com essa pessoa" — a atendente vai escrever o que o caso pedir.
+    // As mensagens prontas ficam onde têm assunto: no cartão da chamada
+    // ("sua mesa está pronta") e no botão de pedido pronto.
+    const wa = (CFG.whatsAtivo !== false && r.telefone && waNumber(r.telefone))
+      ? `<a class="btn btn-sm ci-wa" href="https://wa.me/${waNumber(r.telefone)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : "";
     // O perfil Pedidos tem uma ação só: avisar que o prato saiu. Editar ou
     // devolver à fila não é trabalho dele — e o banco também não deixaria.
     if (soPedidos()) {

@@ -37,7 +37,8 @@
   // comanda ou pager — a proteção está no banco, não só nesta tela.
   // sentou_em e pedido_em entram para a página avisar quando o pedido fica
   // pronto; se a vitrine do banco ainda não os tiver, o app segue sem eles
-  const COLS_FILA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,sentou_em,pedido_em,pet";
+  const COLS_FILA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,sentou_em,pedido_em,mesa_numero,pet";
+  const COLS_SEM_MESA = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,sentou_em,pedido_em,pet";
   const COLS_ANTIGAS = "id,nome,pessoas,preferencial,status,criado_em,chamado_em,pet";
 
   // Só estas configurações interessam a quem acompanha a fila. Copiar `dados`
@@ -131,15 +132,18 @@
 
   // ---------- dados ----------
 
-  // Se a vitrine do banco ainda for a antiga (sem sentou_em/pedido_em), o
-  // PostgREST devolve erro 42703; nesse caso repetimos sem as colunas novas
-  // e a página funciona como antes, só sem o aviso de pedido pronto.
-  let colunasDaFila = COLS_FILA;
+  // A vitrine do banco pode estar em qualquer uma de três gerações, porque
+  // cada recurso novo acrescentou uma coluna a ela. Quando pedimos uma que
+  // ainda não existe, o PostgREST devolve 42703 — aí caímos para o conjunto
+  // anterior. Assim a página funciona ANTES de o dono rodar o SQL novo: só
+  // deixa de mostrar o que aquele SQL traria, sem quebrar nada.
+  const GERACOES = [COLS_FILA, COLS_SEM_MESA, COLS_ANTIGAS];
+  let geracao = 0;
   async function buscar(monta) {
-    let r = await monta(client.from(T).select(colunasDaFila));
-    if (r.error && r.error.code === "42703" && colunasDaFila !== COLS_ANTIGAS) {
-      colunasDaFila = COLS_ANTIGAS;
-      r = await monta(client.from(T).select(colunasDaFila));
+    let r = await monta(client.from(T).select(GERACOES[geracao]));
+    while (r.error && r.error.code === "42703" && geracao < GERACOES.length - 1) {
+      geracao++;
+      r = await monta(client.from(T).select(GERACOES[geracao]));
     }
     return r;
   }
@@ -477,7 +481,15 @@
         const avisa = CFG.avisoPedido !== false && !me.pedido_em
           ? " Avisamos aqui quando o pedido ficar pronto."
           : "";
+        // O número da mesa é o que mais falta aqui: em salão grande a pessoa
+        // levanta, vai ao banheiro e volta sem saber para onde ir. Só aparece
+        // se a atendente apontou a mesa — e se a vitrine do banco já tem a
+        // coluna (ver supabase-mesa-no-link.sql).
+        const mesa = String(me.mesa_numero || "").trim();
+        const cartaoMesa = mesa
+          ? `<div class="me-mesa">🪑 Mesa <b>${esc(mesa)}</b></div>` : "";
         corpo = `<div class="me-big">✅ Atendimento concluído</div>
+          ${cartaoMesa}
           <div class="me-sub">Você sentou${naMesa}. Bom apetite! 🍽️${avisa}</div>`;
       } else {
         corpo = `<div class="me-big">Atendimento encerrado</div>

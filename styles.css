@@ -1383,3 +1383,12 @@ input, select, textarea, button { max-width:100%; min-width:0 }
   background:#E7EDF0;color:#3F5C63;border-radius:999px;padding:4px 9px;
 }
 .pg-tipo.is-proprio{background:var(--brand-soft);color:var(--brand-dark)}
+
+/* número da mesa na página do cliente: é o que ele procura ao voltar do
+   banheiro, então tem tamanho de destaque, não de rodapé */
+.me-mesa{
+  display:inline-block;margin:10px 0 4px;padding:8px 18px;border-radius:999px;
+  background:var(--brand-soft);color:var(--brand-dark);
+  font-size:1.15rem;font-weight:700;
+}
+.me-mesa b{font-size:1.5rem;font-weight:800}

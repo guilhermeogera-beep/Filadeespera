@@ -1,1 +1,50 @@
+# =====================================================================
+#  Mantém o projeto do Supabase acordado
+# ---------------------------------------------------------------------
+#  No plano gratuito, o Supabase PAUSA o projeto depois de alguns dias
+#  sem nenhuma requisição. Com o restaurante aberto isso nunca acontece
+#  — o app conversa com o banco o tempo todo. O risco é a parada longa:
+#  férias, reforma, um feriadão emendado. Aí a fila não abre na volta.
+#
+#  Este agendamento faz uma leitura mínima no banco todo dia de
+#  madrugada. Não grava nada e não apaga nada: o que conta como
+#  atividade é a REQUISIÇÃO, não a mudança de dado.
+#
+#  Ele roda no GitHub, de FORA do Supabase — de propósito. Um cron
+#  dentro do próprio projeto pausaria junto com ele.
+#
+#  Antes de usar, cadastre os dois segredos em:
+#  Settings > Secrets and variables > Actions > New repository secret
+#    SUPABASE_URL       →  https://SEUPROJETO.supabase.co
+#    SUPABASE_ANON_KEY  →  a mesma chave que está no config.js
+# =====================================================================
+name: Manter o Supabase acordado
 
+on:
+  schedule:
+    # 06:10 UTC = 03:10 em Brasília, com a casa fechada
+    - cron: "10 6 * * *"
+  workflow_dispatch:        # permite rodar na mão pelo botão do GitHub
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ler uma linha da configuração
+        run: |
+          # Só o cabeçalho `apikey`, de propósito. Ele funciona tanto com a
+          # chave antiga quanto com a nova (sb_publishable_...); mandar um
+          # `Authorization: Bearer` com a chave nova é o que costuma dar 401.
+          codigo=$(curl -s -o /tmp/resposta.txt -w "%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/fila_config?select=id&limit=1")
+
+          echo "HTTP $codigo"
+          cat /tmp/resposta.txt
+
+          # 200 = acordado e respondendo. Qualquer outra coisa falha de
+          # propósito, para o GitHub te mandar e-mail avisando.
+          if [ "$codigo" != "200" ]; then
+            echo "::error::O Supabase respondeu $codigo — confira se o projeto está pausado ou se a chave mudou."
+            exit 1
+          fi

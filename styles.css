@@ -1377,3 +1377,9 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 .pg-teste input{border:1.5px solid var(--line);border-radius:12px;padding:12px;
   font-size:1rem;background:#FAFAF8;width:100%}
 .pg-teste input:focus{outline:none;border-color:var(--brand);background:#fff}
+/* selo do tipo de rádio na lista de pagers */
+.pg-tipo{
+  font-size:.75rem;font-weight:700;white-space:nowrap;flex:0 0 auto;
+  background:#E7EDF0;color:#3F5C63;border-radius:999px;padding:4px 9px;
+}
+.pg-tipo.is-proprio{background:var(--brand-soft);color:var(--brand-dark)}

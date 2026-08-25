@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=166" />
+<link rel="stylesheet" href="./styles.css?v=169" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -1185,7 +1185,7 @@
             <button type="button" class="btn btn-ghost btn-danger" id="cfgBackupDesligar" hidden>Desligar</button>
           </div>
           <small class="hint" id="cfgBackupEstado"></small>
-          <small class="hint">Grava uma linha a cada cliente que entra na fila, para abrir no Excel. Vale só neste computador e só para o administrador — em tablet e celular o navegador não deixa gravar em arquivo.</small>
+          <small class="hint">Grava uma linha a cada cliente que entra na fila, <b>venha de qualquer aparelho</b> (totem, celular da atendente ou este computador). Para abrir no Excel. O arquivo fica só neste computador e só o administrador liga — em tablet e celular o navegador não deixa gravar em arquivo.</small>
         </div>
 
         <div class="cfg-sec">Equipe e acesso</div>
@@ -1361,6 +1361,20 @@
         </div>
       </div>
 
+      <!-- ---- PAGER PRÓPRIO ---- -->
+      <div class="pg-secao">
+        <h4 class="pg-tit">3. Pager próprio (com tela)</h4>
+        <p class="hint">O nosso não precisa aprender código nenhum: ele é chamado pelo
+          número, por ESP-NOW. Cadastre aqui o número que está escrito no aparelho.</p>
+        <div class="pg-teste">
+          <label class="field">
+            <span>Número do pager com tela</span>
+            <input id="pgProprioNum" type="text" maxlength="8" inputmode="numeric" placeholder="nº do aparelho" />
+          </label>
+          <button type="button" class="btn btn-primary" id="pgProprioBtn">➕ Cadastrar</button>
+        </div>
+      </div>
+
       <p class="form-msg" id="pgMsg" role="status"></p>
     </div>
   </div>
@@ -1388,4 +1402,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=166"></script>
+<script src="./app.js?v=169"></script>

@@ -861,8 +861,7 @@
       termos_em: aceitouTermos ? agora : null,
     };
     const salvo = await backend.add(entry);
-    anotarNoArquivo(salvo || entry);   // cópia no computador, se estiver ligada
-    await refresh();
+    await refresh();                   // o refresh é que grava a cópia em arquivo
     return salvo || entry;
   }
 
@@ -956,7 +955,12 @@
       // O BOM faz o Excel abrir os acentos certos.
       const f = await h.getFile();
       if (!f.size) await escreverNoArquivo("﻿" + CAB_BACKUP.join(";") + "\n");
+      // a cópia vale a partir de AGORA: sem isto, escolher o arquivo
+      // despejaria as últimas 24 horas de fila de uma vez só
+      localStorage.setItem(LS_BACKUP_DESDE, String(Date.now()));
+      localStorage.removeItem(LS_BACKUP_IDS);
       atualizarSeloBackup();
+      varrerParaOArquivo();
     } catch (e) {
       // a pessoa fechou o seletor: não é erro
     }
@@ -977,13 +981,57 @@
     ].map(csvCampo).join(";") + "\n";
   }
 
-  // Chamado a cada entrada na fila. Nunca atrapalha o cadastro: se o arquivo
-  // sumiu ou a permissão caiu, só acende o aviso no cabeçalho e segue a vida.
-  async function anotarNoArquivo(r) {
-    if (!arquivoBackup || !ehAdm()) return;
+  // ----------------------------------------------------------
+  //  A VARREDURA
+  // ----------------------------------------------------------
+  //  Antes eu gravava a linha no momento do cadastro — e isso só funcionava
+  //  para quem entrava PELO PRÓPRIO computador. Cliente cadastrado no celular
+  //  da atendente ou no totem nunca chegava ao arquivo, que é justamente o
+  //  contrário do que um backup serve.
+  //
+  //  Agora o computador grava o que ele VÊ CHEGAR: a cada leitura da fila,
+  //  quem ainda não foi gravado entra no arquivo, tenha vindo de onde vier.
+  //  Como o app já recarrega em tempo real, a linha sai em um ou dois
+  //  segundos — e se o PC estava desligado na hora, ele grava quando abrir.
+  const LS_BACKUP_IDS = "fila_backup_ids";       // quem já foi para o arquivo
+  const LS_BACKUP_DESDE = "fila_backup_desde";   // quando a cópia foi ligada
+  let varrendoBackup = false;
+
+  function idsGravados() {
+    try { return new Set(JSON.parse(localStorage.getItem(LS_BACKUP_IDS)) || []); }
+    catch (e) { return new Set(); }
+  }
+  function guardarIdsGravados(s) {
+    // não deixa a lista crescer para sempre: só os últimos importam, porque
+    // a fila de ontem já não volta a aparecer
+    const arr = Array.from(s).slice(-800);
+    try { localStorage.setItem(LS_BACKUP_IDS, JSON.stringify(arr)); } catch (e) { /* ignora */ }
+  }
+
+  async function varrerParaOArquivo() {
+    if (varrendoBackup || !arquivoBackup || !ehAdm()) return;
     if (!(await permissaoDoArquivo(false))) { atualizarSeloBackup(); return; }
-    const ok = await escreverNoArquivo(linhaDoBackup(r));
-    if (!ok) atualizarSeloBackup();
+    varrendoBackup = true;
+    try {
+      // só o que entrou DEPOIS de a cópia ser ligada: senão, ao escolher o
+      // arquivo, ele despejaria as últimas 24 horas de uma vez
+      const desde = Number(localStorage.getItem(LS_BACKUP_DESDE) || 0);
+      const feitos = idsGravados();
+      const novos = rows
+        .filter((r) => !feitos.has(r.id) && new Date(entradaEm(r)).getTime() >= desde)
+        .sort((a, b) => new Date(entradaEm(a)) - new Date(entradaEm(b)));
+      if (!novos.length) return;
+      if (await escreverNoArquivo(novos.map(linhaDoBackup).join(""))) {
+        novos.forEach((r) => feitos.add(r.id));
+        guardarIdsGravados(feitos);
+      } else {
+        atualizarSeloBackup();
+      }
+    } catch (e) {
+      console.warn("Cópia em arquivo:", e);
+    } finally {
+      varrendoBackup = false;
+    }
   }
 
   // O selo do cabeçalho conta o que está acontecendo: verde = gravando,
@@ -1053,8 +1101,8 @@
   async function recarregarPager() {
     try {
       const [p, c] = await Promise.all([
-        cli().from("fila_pagers").select("numero,codigo").order("numero"),
-        cli().from("fila_pager_capturas").select("id,codigo,criado_em")
+        cli().from("fila_pagers").select("numero,tipo,codigo").order("numero"),
+        cli().from("fila_pager_capturas").select("id,tipo,codigo,criado_em")
           .order("criado_em", { ascending: false }).limit(20),
       ]);
       if (p.error) throw p.error;
@@ -1092,11 +1140,44 @@
   }
 
   // Toda ordem para a base é uma linha nesta tabela. Ela consome na ordem.
-  async function mandarComando(acao, numero) {
+  async function mandarComando(acao, numero, motivo, dados) {
     if (pagerSemTabela || !cli()) return;
     const { error } = await cli().from("fila_pager_comandos")
-      .insert({ acao, numero: numero || null });
+      .insert({ acao, numero: numero || null, motivo: motivo || null, dados: dados || null });
     if (error) throw error;
+  }
+
+  // ----------------------------------------------------------
+  //  O DISPARO AUTOMÁTICO
+  // ----------------------------------------------------------
+  //  É isto que liga a fila ao rádio. Chamou a mesa, o pager toca; avisou o
+  //  pedido, o pager toca de novo — com a mensagem certa para cada caso.
+  //
+  //  Nunca atrapalha o serviço: se o cliente não tem pager, se as tabelas
+  //  não existem ou se o Supabase engasgou, isto some em silêncio. A
+  //  chamada da mesa já foi gravada antes de chegar aqui.
+  //
+  //  Acentos saem fora: a tela do pager desenha com a fonte do Adafruit_GFX,
+  //  que não tem acentuado — "José" viraria lixo no display. Tirar aqui é
+  //  melhor do que no aparelho, que é o lado difícil de reprogramar depois.
+  function semAcentoParaTela(s) {
+    return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  }
+
+  function dispararPager(r, motivo) {
+    try {
+      const numero = String((r && r.pager) || "").trim();
+      if (!numero || !cli() || pagerSemTabela) return;
+      const dados = {
+        nome: semAcentoParaTela(firstName(r.nome)).slice(0, 19),
+        mesa: String(r.mesa_numero || "").slice(0, 7),
+        pessoas: Number(r.pessoas) || 0,
+      };
+      mandarComando("tocar", numero, motivo, dados)
+        .catch((e) => console.warn("Pager não acionado:", e && e.message));
+    } catch (e) {
+      console.warn("Pager não acionado:", e);
+    }
   }
 
   function recadoPager(txt, erro) {
@@ -1129,7 +1210,9 @@
     $("#pgLista").innerHTML = pagers.map((p) => `
       <div class="pg-item">
         <span class="pg-num">${esc(p.numero)}</span>
-        <span class="pg-cod">${esc(p.codigo)}</span>
+        <span class="pg-tipo ${p.tipo === "proprio" ? "is-proprio" : ""}">${
+          p.tipo === "proprio" ? "📟 com tela" : "📡 433MHz"}</span>
+        <span class="pg-cod">${p.tipo === "proprio" ? "chamado pelo número" : esc(p.codigo || "—")}</span>
         <button type="button" class="btn btn-sm btn-accent" data-pgtocar="${esc(p.numero)}">🔔 Tocar</button>
         <button type="button" class="btn btn-sm btn-ghost btn-danger" data-pgapagar="${esc(p.numero)}">🗑</button>
       </div>`).join("");
@@ -1154,6 +1237,27 @@
     } catch (e) {
       console.warn(e);
       recadoPager("Não deu para guardar. Tente de novo.", true);
+    }
+  }
+
+  // O pager com tela não aprende código: ele é chamado pelo número, via
+  // ESP-NOW. Por isso ele se cadastra direto, sem passar pela escuta.
+  async function cadastrarPagerProprio() {
+    const campo = $("#pgProprioNum");
+    const numero = (campo.value || "").trim();
+    if (!numero) { recadoPager("Digite o número do aparelho.", true); campo.focus(); return; }
+    if (pagers.some((p) => p.numero === numero) &&
+        !confirm(`Já existe um pager ${numero}. Trocar para "com tela"?`)) return;
+    try {
+      const { error } = await cli().from("fila_pagers")
+        .upsert({ numero, tipo: "proprio", codigo: null }, { onConflict: "numero" });
+      if (error) throw error;
+      campo.value = "";
+      await recarregarPager();
+      recadoPager(`✅ Pager ${numero} (com tela) cadastrado.`);
+    } catch (e) {
+      console.warn(e);
+      recadoPager("Não deu para cadastrar. Tente de novo.", true);
     }
   }
 
@@ -1271,6 +1375,9 @@
     // grava primeiro, avisa depois: a notificação nunca sai de uma chamada
     // que não foi registrada
     avisarNoCelular(id, "chamada");
+    // e o pager de rádio, se este cliente estiver com um
+    const quem = rows.find((x) => x.id === id);
+    if (quem) dispararPager(Object.assign({}, quem, extras || {}), "chamada");
   }
   // Pinta a mudança na tela ANTES de o servidor responder. A gravação segue
   // acontecendo; se ela falhar, o `refresh` seguinte devolve a verdade do
@@ -1652,6 +1759,8 @@
     try {
       await backend.update(id, patch);
       avisarNoCelular(id, "pedido");
+      const quem = rows.find((x) => x.id === id);
+      if (quem) dispararPager(quem, "pedido");
     } catch (e) {
       console.warn("Não deu para registrar o aviso do pedido:", e);
     }
@@ -1711,6 +1820,8 @@
       rows = lista;
       render();
       checkAutoClose();
+      // grava no arquivo quem entrou na fila por QUALQUER aparelho
+      varrerParaOArquivo();
     } catch (e) {
       console.error("Erro ao carregar a fila:", e);
       avisoStaff("⚠ Sem ligação com o servidor — o que está na tela pode estar desatualizado.");
@@ -5438,6 +5549,7 @@
       await mandarComando("parar");
       lerEstadoDaBase();
     }));
+    $("#pgProprioBtn").addEventListener("click", acaoSegura("cadastrar o pager", cadastrarPagerProprio));
     $("#pgTestarBtn").addEventListener("click", acaoSegura("tocar o pager",
       () => tocarPager($("#pgTesteNum").value)));
     // botões das listas (elas são redesenhadas o tempo todo: delegação)
@@ -6229,7 +6341,7 @@
   // uma vez — o usuário não precisa saber que existe "cache".
   const ELEMENTOS_ESPERADOS = [
     "tabGarcom", "tabMapa", "mesasCard", "mesaTitulo", "mNumero",
-    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn",
+    "sentouModal", "cfgPerguntarMesa", "editModal", "publicQuem", "tamanhoModal", "tmTamanhos", "mTamanhos", "cfgPedidoWhats", "petRows", "backupBtn", "cfgBackupEscolher", "cfgQrFixo", "cfgQrBaixar", "pagerModal", "cfgPagerBtn", "pgProprioBtn",
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",

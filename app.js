@@ -5092,6 +5092,7 @@
     $("#tabMapa").addEventListener("click", () => setView("mapa"));
     $("#tabSentados").addEventListener("click", () => setView("sentados"));
     $("#tabPedidos").addEventListener("click", () => setView("pedidos"));
+    $("#tabFilaFila").addEventListener("click", () => setView("filafila"));
 
     // ---- mesas livres ----
     // stepper de lugares (pop-up do garçom)

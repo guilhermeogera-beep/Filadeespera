@@ -1154,12 +1154,15 @@
         <div class="cfg-sec">WhatsApp e avisos</div>
 
         <label class="field">
-          <span>Avisar por WhatsApp</span>
+          <span>Ao chamar a mesa, avisar como?</span>
           <select id="cfgWhatsMode">
-            <option value="auto">Sim — abre automático ao chamar</option>
-            <option value="toque">Sim — só pelo botão 📲</option>
-            <option value="off">Não usar WhatsApp</option>
+            <option value="auto">📲 Abrir o WhatsApp automaticamente</option>
+            <option value="toque">📲 Abrir o WhatsApp só pelo botão</option>
+            <option value="off">🔔 Só no link do cliente — sem WhatsApp</option>
           </select>
+          <small class="hint">Em qualquer opção o link que o cliente acompanha muda na hora,
+            o celular dele toca e vibra se ele ligou o alarme, e o nome aparece no painel do totem.
+            A escolha aqui é só sobre <b>abrir ou não a conversa do WhatsApp</b>.</small>
         </label>
         <label class="field">
           <span>Mensagem padrão do WhatsApp (mesa pronta)</span>
@@ -1198,6 +1201,15 @@
           <small class="hint">Use {nome}, {restaurante}, {comanda} e {pager}.</small>
         </label>
         <div class="cfg-sec">Fila da fila</div>
+        <label class="field">
+          <span>Ao avisar que abriu vaga, avisar como?</span>
+          <select id="cfgPreviaWhats">
+            <option value="sim">📲 Abrir o WhatsApp com a mensagem</option>
+            <option value="nao">🔔 Só no link do cliente — sem WhatsApp</option>
+          </select>
+          <small class="hint">Vale só para a tela da fila da fila. Em qualquer opção o aviso fica
+            registrado, o link do cliente muda e o celular dele toca se ele ligou o alarme.</small>
+        </label>
         <label class="field">
           <span>Mensagem de "abriu vaga na fila"</span>
           <textarea id="cfgMsgPrevia" rows="3"></textarea>

@@ -5706,7 +5706,10 @@
         const p = rows.find((r) => r.id === idAviso);
         const quem = p ? firstName(p.nome) : "este cliente";
         if (!confirm(`Avisar ${quem} de que já abriu vaga na fila de espera?`)) return;
-        const link = (p && CFG.whatsAtivo !== false) ? waLinkPrevia(p) : "";
+        // a fila da fila tem a escolha DELA: dá para avisar por lá sem WhatsApp
+        // mesmo com o WhatsApp ligado na chamada da mesa, e vice-versa
+        const abreWhats = CFG.whatsAtivo !== false && CFG.previaWhats !== false;
+        const link = (p && abreWhats) ? waLinkPrevia(p) : "";
         if (link && !window.open(link, "_blank")) {
           avisoStaff("Aviso registrado. O navegador bloqueou o WhatsApp — abra a conversa na mão.");
         }
@@ -6303,7 +6306,7 @@
   // ATENÇÃO: esta lista é gravada na tabela `fila_config`, que QUALQUER cliente lê
   // pela página pública (fila.html). Nunca coloque senha nem PIN aqui.
   const SETTINGS_KEYS = [
-    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "msgPrevia", "avisoPedido", "pedidoWhats",
+    "prazoComparecer", "msgWhats", "msgLink", "msgPedido", "msgPrevia", "avisoPedido", "pedidoWhats", "previaWhats",
     "ffTel", "ffEmail", "ffAniv", "ffTipo", "ffPet", "ffExtras", "alternancia", "regraTamanho", "whatsAtivo", "whatsAuto",
     "autoFimDaFila", "somAtivo", "filaFechada", "mostrarBtnFila", "mostrarBtnChamar", "maxPessoas", "tamanhosMesa", "tamanhosGrupo", "filasColunas", "mapaGarcom", "mapaAdm", "boasVindas",
     "restaurante", "paisDDI", "mostrarMedia", "telObrigatorio", "exigirTermos",
@@ -6466,7 +6469,7 @@
     { id: "avisos", titulo: "📱 WhatsApp e avisos", campos: [
       "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoWhats", "cfgPedidoPainel", "cfgMsgPedido"] },
     { id: "filafila", titulo: "🎟 Fila da fila", campos: [
-      "cfgMsgPrevia", "cfgFfTel", "cfgFfEmail", "cfgFfAniv", "cfgFfTipo", "cfgFfPet", "cfgFfExtras"] },
+      "cfgPreviaWhats", "cfgMsgPrevia", "cfgFfTel", "cfgFfEmail", "cfgFfAniv", "cfgFfTipo", "cfgFfPet", "cfgFfExtras"] },
     { id: "fechar", titulo: "🔒 Fechamento automático da fila", campos: [
       "cfgAutoFecha", "cfgAutoFechaQtd"] },
     { id: "pager", titulo: "🔔 Pager por rádio", campos: [
@@ -6623,6 +6626,7 @@
     $("#cfgMsgLink").value = CFG.msgLink || "";
     $("#cfgAvisoPedido").value = CFG.avisoPedido === false ? "nao" : "sim";
     $("#cfgPedidoWhats").value = CFG.pedidoWhats === false ? "nao" : "sim";
+    $("#cfgPreviaWhats").value = CFG.previaWhats === false ? "nao" : "sim";
     mostrarEstadoDoBackup();
     desenharQrFixo();
     $("#cfgMsgPedido").value = CFG.msgPedido || MSG_PEDIDO_PADRAO;
@@ -6716,6 +6720,7 @@
       msgLink: $("#cfgMsgLink").value.trim(),
       avisoPedido: $("#cfgAvisoPedido").value === "sim",
       pedidoWhats: $("#cfgPedidoWhats").value === "sim",
+      previaWhats: $("#cfgPreviaWhats").value === "sim",
       msgPedido: $("#cfgMsgPedido").value.trim(),
       msgPrevia: $("#cfgMsgPrevia").value.trim(),
       ffTel: $("#cfgFfTel").value,

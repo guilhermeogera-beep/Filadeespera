@@ -152,6 +152,7 @@ window.FILA_CONFIG = {
   pinGarcom: "",          // veja a observação sobre PINs no topo do arquivo
 
   // --- Aviso de "pedido pronto" (botão na aba da atendente) ---
+  previaWhats: true,      // abrir o WhatsApp ao avisar que abriu vaga (fila da fila)
   avisoPedido: true,      // mostra o botão "🍽 Pedido pronto" junto de Chamar/Sentou/Saiu
   msgPedido: "Olá {nome}! Seu pedido na {restaurante} está pronto 🍽️ Pode retirar no balcão quando quiser. Bom apetite!",
 

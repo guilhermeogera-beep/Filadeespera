@@ -2587,18 +2587,25 @@
     const lugares = junta ? lugaresDoBloco(m) : m.lugares;
     const rotulo = junta ? "Mesa " + esc(numerosDoBloco(m).join("+")) : "Mesa " + esc(m.numero);
     const petBloco = junta ? petDoBloco(m) : m.pet;
+    // AGUARDANDO ainda não tem tamanho: quantos lugares a mesa vai ter é o
+    // garçom que informa na hora de liberar, e isso muda a cada serviço. Por
+    // isso ela aparece como um quadrado limpo, sem cadeiras e sem contagem —
+    // desenhar cadeira ali seria inventar informação.
+    const semTamanho = !editando && est === "livre";
     const texto = `
       <b class="mm-num">${rotulo}</b>
-      <span class="mm-lug">${lugares} lug.${petBloco ? " 🐾" : ""}</span>
+      ${semTamanho ? (petBloco ? `<span class="mm-lug">🐾</span>` : "")
+                   : `<span class="mm-lug">${lugares} lug.${petBloco ? " 🐾" : ""}</span>`}
       ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}`;
-    // as cadeiras acompanham o tamanho do conjunto
-    const miolo = cadeirasHTML(lugares) + texto;
-    const classes = `mm-mesa is-${est}${petBloco ? " is-pet" : ""}${junta ? " is-junta" : ""}`;
+    // as cadeiras acompanham o tamanho do conjunto — e só existem depois que
+    // o tamanho é conhecido
+    const miolo = (semTamanho ? "" : cadeirasHTML(lugares)) + texto;
+    const classes = `mm-mesa is-${est}${petBloco ? " is-pet" : ""}${junta ? " is-junta" : ""}${semTamanho ? " sem-tamanho" : ""}`;
     // `--lados` é quantas cadeiras cabem no lado comprido: é o que dá a largura
     // da mesa no desenho, para uma de 8 lugares ser visivelmente maior que uma de 4
     const cad = cadeirasDaMesa(lugares);
-    const lados = Math.max(cad.topo, cad.base);
-    const altas = cad.esq + cad.dir > 0 ? " tem-pontas" : "";
+    const lados = semTamanho ? 2 : Math.max(cad.topo, cad.base);
+    const altas = (!semTamanho && cad.esq + cad.dir > 0) ? " tem-pontas" : "";
     const onde = junta ? centroDoBloco(bloco) : { x: Number(m.x) || 50, y: Number(m.y) || 50 };
     const posicao = `style="left:${onde.x}%;top:${onde.y}%;--lados:${lados}"`;
 
@@ -2702,6 +2709,89 @@
   // ---------- pop-up de ação (garçom toca numa mesa) ----------
   let mapaMesaAtiva = null;
 
+  // ==========================================================
+  //  POP-UP DA MESA — dois passos
+  // ----------------------------------------------------------
+  //  Passo 1: o que fazer (aguardando, limpar, ocupada, reservada,
+  //           liberada, juntar).
+  //  Passo 2: só para o que precisa de mais informação —
+  //           "Liberada" pede quantos lugares;
+  //           "Juntar" pede quais mesas E quantos lugares.
+  //
+  //  Os lugares são informados na hora de liberar, e não no cadastro,
+  //  porque é o garçom quem sabe: mesa de quatro vira de seis com duas
+  //  cadeiras a mais, e isso muda a cada serviço.
+  // ==========================================================
+  let mapaLugaresEscolhidos = 0;
+  let mapaLugaresManual = false;
+  let mapaJuntarSelecao = new Set();
+  let mapaAcaoPasso2 = "";        // "liberar" | "juntar"
+
+  function mesasParaJuntar(m) {
+    // candidatas: todas as que estão aguardando e não são do bloco desta
+    const meuBloco = new Set(blocoDaMesa(m).map((x) => x.id));
+    return mapa
+      .filter((x) => !meuBloco.has(x.id) && estadoDaMesa(x) === "livre")
+      .sort((a, b) => String(a.numero).localeCompare(String(b.numero), "pt-BR", { numeric: true }));
+  }
+
+  function desenharLugaresDoMapa() {
+    const lista = tamanhosDaCasa();
+    $("#mapaLugaresChips").innerHTML =
+      lista.map((n) => `<button type="button" class="tm-btn${!mapaLugaresManual && mapaLugaresEscolhidos === n ? " is-sel" : ""}" data-maplug="${n}">
+        <b>${n}</b><span>${n === 1 ? "lugar" : "lugares"}</span>
+      </button>`).join("") +
+      `<button type="button" class="tm-btn tm-outro${mapaLugaresManual ? " is-sel" : ""}" data-maplug="manual"><b>✏️</b><span>outro</span></button>`;
+    $("#mapaLugaresManualBox").hidden = !mapaLugaresManual;
+    if (mapaLugaresManual) $("#mapaLugaresManual").value = mapaLugaresEscolhidos || 4;
+  }
+
+  function desenharJuntarLista(m) {
+    const cands = mesasParaJuntar(m);
+    const box = $("#mapaJuntarLista");
+    if (!cands.length) {
+      box.innerHTML = `<p class="hint">Nenhuma outra mesa está aguardando agora.</p>`;
+      return;
+    }
+    box.innerHTML = cands.map((x) => `
+      <button type="button" class="mj-mesa${mapaJuntarSelecao.has(x.id) ? " is-sel" : ""}" data-mapjuntar="${x.id}">
+        <b>Mesa ${esc(x.numero)}</b>${x.pet ? `<span class="mj-pet">🐾</span>` : ""}
+      </button>`).join("");
+  }
+
+  // soma sugerida: o que a casa já tem cadastrado para as mesas escolhidas
+  function lugaresSugeridos(m) {
+    let soma = blocoDaMesa(m).reduce((s, x) => s + (Number(x.lugares) || 0), 0);
+    mapaJuntarSelecao.forEach((id) => {
+      const x = mapa.find((v) => v.id === id);
+      if (x) soma += Number(x.lugares) || 0;
+    });
+    return soma || 4;
+  }
+
+  function mostrarPasso2(acao, m) {
+    mapaAcaoPasso2 = acao;
+    const juntando = acao === "juntar";
+    mapaJuntarSelecao = new Set();
+    mapaLugaresManual = false;
+    mapaLugaresEscolhidos = valorDaLista(tamanhosDaCasa(), lugaresSugeridos(m));
+    $("#mapaJuntarBox").hidden = !juntando;
+    $("#mapaAcoes").hidden = true;
+    $("#mapaAcaoRodape").hidden = true;
+    $("#mapaPasso2").hidden = false;
+    $("#mapaPasso2Ok").textContent = juntando ? "🟢 Juntar e liberar" : "🟢 Liberar";
+    if (juntando) desenharJuntarLista(m);
+    desenharLugaresDoMapa();
+  }
+
+  function voltarAoPasso1() {
+    $("#mapaPasso2").hidden = true;
+    $("#mapaAcoes").hidden = false;
+    $("#mapaAcaoRodape").hidden = false;
+    $("#mapaAcaoMsg").textContent = "";
+    mapaAcaoPasso2 = "";
+  }
+
   function abrirAcaoMesa(id) {
     // na versão da atendente o mapa é só visualização: nenhum comando
     if (mapaSoDeOlhar()) return;
@@ -2719,31 +2809,100 @@
     const situacao = { ocupada: "🔴 ocupada", limpar: "🟡 precisa limpar",
                        avisada: "🟢 liberada", aguardando: "🔵 aguardando",
                        reservada: "⬛ reservada", livre: "🔵 aguardando" }[est];
+    // Aguardando ainda não tem tamanho: os lugares são informados na hora de
+    // liberar. Então só mostramos a contagem quando ela quer dizer alguma coisa.
+    const mostraLugares = est !== "livre" || juntas;
     $("#mapaAcaoInfo").innerHTML =
-      `${lugares} ${lugares === 1 ? "lugar" : "lugares"}${juntas ? ` (${bloco.map((x) => x.lugares).join(" + ")})` : ""}` +
-      `${petDoBloco(m) ? " • 🐾 área pet" : ""} — ${situacao}` +
+      (mostraLugares
+        ? `${lugares} ${lugares === 1 ? "lugar" : "lugares"}${juntas ? ` (${bloco.map((x) => x.lugares).join(" + ")})` : ""} — `
+        : "") +
+      `${situacao}${petDoBloco(m) ? " • 🐾 área pet" : ""}` +
       (oc ? `<br><b>${esc(firstName(oc.nome))}</b> sentou às ${fmtClock(oc.sentou_em)} (há <b data-since="${oc.sentou_em}">agora</b>)` : "");
-    // As quatro ações estão sempre à mão: o garçom não precisa adivinhar qual
-    // aparece em qual situação. A atual fica marcada.
+
     const btn = (acao, classe, texto) =>
       `<button type="button" class="btn ${classe}${(est === acao || (acao === "liberar" && est === "avisada")) ? " is-atual" : ""}" data-macao="${acao}">${texto}</button>`;
     const btns = [
-      btn("liberar", "btn-verde", "🟢 Liberada"),
       btn("livre", "btn-azul", "🔵 Aguardando"),
       btn("limpar", "btn-amarelo", "🟡 Precisa limpar"),
       btn("ocupada", "btn-vermelho", "🔴 Ocupada"),
       btn("reservada", "btn-preto", "⬛ Reservada"),
+      btn("liberar", "btn-verde", "🟢 Liberada"),
+      `<button type="button" class="btn btn-roxo" data-macao="juntar">🔗 Juntar mesas</button>`,
     ];
     if (juntas) btns.push(`<button type="button" class="btn btn-neutral" data-macao="separar">✂️ Separar as mesas</button>`);
     $("#mapaAcoes").innerHTML = btns.join("");
-    $("#mapaAcaoMsg").textContent = "";
+    voltarAoPasso1();
     $("#mapaAcaoModal").hidden = false;
+  }
+
+  // Confirmação do passo 2: junta o que foi escolhido (quando for o caso),
+  // grava os lugares informados e libera para a recepção.
+  async function confirmarPasso2() {
+    const m = mapa.find((x) => x.id === mapaMesaAtiva);
+    if (!m) return;
+    const msg = $("#mapaAcaoMsg");
+    const lugares = mapaLugaresManual
+      ? Math.max(1, Math.min(60, parseInt($("#mapaLugaresManual").value, 10) || 0))
+      : mapaLugaresEscolhidos;
+    if (!lugares) {
+      msg.textContent = "Escolha quantos lugares.";
+      msg.className = "form-msg err";
+      return;
+    }
+    const juntando = mapaAcaoPasso2 === "juntar";
+    if (juntando && !mapaJuntarSelecao.size) {
+      msg.textContent = "Escolha ao menos uma mesa para juntar.";
+      msg.className = "form-msg err";
+      return;
+    }
+    const btn = $("#mapaPasso2Ok");
+    btn.disabled = true;
+    $("#mapaAcaoModal").hidden = true;
+    try {
+      if (juntando) {
+        // uma só junção: todas as escolhidas entram no mesmo grupo
+        const grupo = m.grupo || uuid();
+        const entram = [...mapaJuntarSelecao].map((id) => mapa.find((x) => x.id === id)).filter(Boolean);
+        const gravacoes = [];
+        for (const x of blocoDaMesa(m).concat(entram)) {
+          if (x.grupo === grupo) continue;
+          if (x.x_ant == null) { x.x_ant = x.x; x.y_ant = x.y; }
+          x.grupo = grupo;
+          gravacoes.push(backend.updateMapa(x.id, { grupo, x_ant: x.x_ant, y_ant: x.y_ant }));
+        }
+        renderMapa();
+        await Promise.allSettled(gravacoes);
+      }
+      // Os lugares informados valem para o BLOCO. Guardamos o total na mesa
+      // âncora e zeramos as outras, para a soma do bloco bater exatamente com
+      // o que o garçom digitou.
+      const bloco = blocoDaMesa(m);
+      const gravaLugares = bloco.map((x, i) => {
+        const valor = i === 0 ? lugares : 0;
+        x.lugares = valor;
+        return backend.updateMapa(x.id, { lugares: valor });
+      });
+      await Promise.allSettled(gravaLugares);
+      await liberarMesaDoMapa(m);
+      await refresh();
+    } catch (e) {
+      console.error("Erro ao liberar a mesa:", e);
+      avisoStaff("⚠ Não deu para liberar a mesa — verifique a internet.");
+      await refresh();
+    } finally {
+      btn.disabled = false;
+      mapaMesaAtiva = null;
+      voltarAoPasso1();
+    }
   }
 
   async function acaoNaMesa(acao) {
     const m = mapa.find((x) => x.id === mapaMesaAtiva);
     if (!m) return;
-    // fecha já: a confirmação é a mesa mudando de cor atrás
+    // "Liberada" e "Juntar" não terminam aqui: eles abrem o passo 2, onde o
+    // garçom informa quantos lugares (e, no juntar, quais mesas).
+    if (acao === "liberar" || acao === "juntar") { mostrarPasso2(acao, m); return; }
+    // as demais fecham já: a confirmação é a mesa mudando de cor atrás
     $("#mapaAcaoModal").hidden = true;
     mapaMesaAtiva = null;
     const msg = $("#mapaAcaoMsg");
@@ -2754,7 +2913,6 @@
       else if (acao === "ocupada") await marcarOcupada(m.id);
       else if (acao === "livre") await voltarParaLivre(m);
       else if (acao === "separar") await separarMesas(m.id);
-      else await liberarMesaDoMapa(m);
     } catch (e) {
       console.error("Erro na mesa do mapa:", e);
       avisoStaff("⚠ Não deu para salvar a mesa " + m.numero + " — verifique a internet e tente de novo.");
@@ -3726,8 +3884,25 @@
 
   // HTML de um item da fila. `junto` = lista única (totem): como não há cabeçalho
   // de grupo, o tipo de cada pessoa vira selo no próprio item.
+  // Veio da fila da fila e ainda não foi conferido pela recepção. Enquanto
+  // estiver assim, o cartão fica ROXO em vez de entrar no semáforo de espera:
+  // é um aviso de "esta pessoa acabou de entrar na fila, confira o cadastro".
+  // O destaque sai sozinho quando a atendente preenche comanda ou pager.
+  function recemPromovido(r) {
+    if (!r.previa_em || r.status !== STATUS.AGUARDANDO) return false;
+    const querComanda = CFG.campoComanda !== false;
+    const querPager = CFG.campoPager !== false;
+    if (!querComanda && !querPager) return false;   // nada a preencher: não destaca
+    const temComanda = !!String(r.comanda || "").trim();
+    const temPager = !!String(r.pager || "").trim();
+    if (querComanda && temComanda) return false;
+    if (querPager && temPager) return false;
+    return true;
+  }
+
   function queueItemHTML(r, i, staff, junto) {
     const meso = isMesona(r);
+    const novo = staff && recemPromovido(r);
     const selosTipo = junto
       ? (r.preferencial ? `<span class="q-tag pref">★ preferencial</span>` : "") +
         (meso ? `<span class="q-tag meso">🍽 mesa grande</span>` : "")
@@ -3740,13 +3915,15 @@
     const petChips = (r.pet ? `<span class="q-chip chip-pet">🐾 pet</span>` : "") +
       (r.sem_area_pet ? `<span class="q-chip chip-sempet">🚫 sem área pet</span>` : "");
     if (staff) {
+      // Quem acabou de vir da fila da fila NÃO entra no semáforo de espera:
+      // sem o `data-espera-since`, o relógio não pinta por cima do roxo.
       return `
-      <li class="q-item is-toque ${r.preferencial ? "is-pref" : ""} ${meso ? "is-meso" : ""} ${r.chamadas_perdidas ? "is-perdeu" : ""}"
+      <li class="q-item is-toque ${r.preferencial ? "is-pref" : ""} ${meso ? "is-meso" : ""} ${r.chamadas_perdidas ? "is-perdeu" : ""} ${novo ? "is-daprevia" : ""}"
           data-cliente="${r.id}" role="button" tabindex="0"
-          ${prazoDaFila(r) ? `data-espera-since="${r.criado_em}" data-espera-prazo="${prazoDaFila(r)}"` : ""}>
+          ${prazoDaFila(r) && !novo ? `data-espera-since="${r.criado_em}" data-espera-prazo="${prazoDaFila(r)}"` : ""}>
         <div class="q-pos">${i + 1}</div>
         <div class="q-main">
-          <div class="q-name">${esc(r.nome)}${selosTipo}${perdeu}</div>
+          <div class="q-name">${esc(r.nome)}${selosTipo}${perdeu}${novo ? `<span class="q-tag novo">🎟 confira o cadastro</span>` : ""}</div>
           <div class="q-sub">
             <span>👥 ${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"}</span>
             <span>⏱️ <b class="q-time" data-since="${r.criado_em}">agora</b></span>
@@ -5521,6 +5698,40 @@
       if (Date.now() - abertoEm < 450) return;
       acaoNaMesa(b.dataset.macao);
     });
+    // ---- passo 2 do pop-up da mesa ----
+    $("#mapaLugaresChips").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-maplug]");
+      if (!b) return;
+      if (b.dataset.maplug === "manual") {
+        mapaLugaresManual = true;
+      } else {
+        mapaLugaresManual = false;
+        mapaLugaresEscolhidos = Number(b.dataset.maplug);
+      }
+      desenharLugaresDoMapa();
+    });
+    $("#mapaLugaresManual").addEventListener("input", (e) => {
+      mapaLugaresEscolhidos = Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 0));
+    });
+    $("#mapaJuntarLista").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mapjuntar]");
+      if (!b) return;
+      const id = b.dataset.mapjuntar;
+      if (mapaJuntarSelecao.has(id)) mapaJuntarSelecao.delete(id);
+      else mapaJuntarSelecao.add(id);
+      const m = mapa.find((x) => x.id === mapaMesaAtiva);
+      if (m) {
+        // a sugestão de lugares acompanha o que foi escolhido
+        if (!mapaLugaresManual) {
+          mapaLugaresEscolhidos = valorDaLista(tamanhosDaCasa(), lugaresSugeridos(m));
+        }
+        desenharJuntarLista(m);
+        desenharLugaresDoMapa();
+      }
+    });
+    $("#mapaPasso2Voltar").addEventListener("click", voltarAoPasso1);
+    $("#mapaPasso2Ok").addEventListener("click", acaoSegura("liberar a mesa", confirmarPasso2));
+
     // cadastro do mapa (pela engrenagem)
     $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {
       const quantas = mapa.filter((m) => ["avisada", "reservada"].indexOf(estadoDaMesa(m)) < 0).length;

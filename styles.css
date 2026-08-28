@@ -1459,3 +1459,37 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 /* enviar para a fila da fila: roxo, a cor da antessala */
 .btn-roxo{background:#EDEAF7;border:2px solid #6B5BA8;color:#4B3E7D;font-weight:700}
 .btn-roxo:hover{background:#E2DDF3}
+
+/* ---- Recém-chegado da fila da fila ----
+   Cartão roxo enquanto a recepção não confere o cadastro (comanda/pager).
+   Ele fica FORA do semáforo de espera de propósito: são dois avisos
+   diferentes, e um pintando por cima do outro não diria nada. Assim que a
+   atendente preenche, o cartão entra na régua normal de verde a vermelho. */
+.q-item.is-daprevia{
+  background:#F3EAFE !important;border-color:#7C3AED !important;
+  box-shadow:0 0 0 2px rgba(124,58,237,.18);
+}
+.q-item.is-daprevia .q-pos{background:#7C3AED !important}
+.q-tag.novo{background:#7C3AED;color:#fff}
+
+/* ---- Mesa aguardando: quadrado limpo ----
+   Sem cadeiras e sem contagem de lugares, porque nesse estado o tamanho
+   ainda não foi informado — quem informa é o garçom, ao liberar. */
+.mm-mesa.sem-tamanho{width:64px;min-width:64px;min-height:48px}
+
+/* ---- Passo 2 do pop-up da mesa ---- */
+.mapa-passo-tit{font-weight:800;margin:12px 0 4px}
+.mapa-juntar-lista{
+  display:grid;grid-template-columns:repeat(auto-fill, minmax(96px, 1fr));gap:8px;
+  max-height:34vh;overflow-y:auto;margin-bottom:6px;
+}
+.mj-mesa{
+  font:inherit;font-weight:700;cursor:pointer;padding:10px 6px;border-radius:12px;
+  border:1.5px solid var(--line);background:#fff;color:var(--ink);
+  display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;
+}
+.mj-mesa:hover{border-color:var(--brand)}
+.mj-mesa.is-sel{background:var(--brand);border-color:var(--brand);color:#fff}
+.mj-pet{font-size:.8rem}
+.btn-roxo{background:#7C3AED;border:2px solid #7C3AED;color:#fff;font-weight:700}
+.btn-roxo:hover{background:#6D28D9}

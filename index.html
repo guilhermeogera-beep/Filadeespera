@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=180" />
+<link rel="stylesheet" href="./styles.css?v=182" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -609,9 +609,37 @@
       <button class="modal-x" data-close aria-label="Fechar">×</button>
       <h3 id="mapaAcaoTitulo">Mesa</h3>
       <p id="mapaAcaoInfo" class="mapa-acao-info"></p>
+
+      <!-- PASSO 1: o que fazer com esta mesa -->
       <div class="mapa-acoes" id="mapaAcoes"></div>
+
+      <!-- PASSO 2: aparece só quando a ação precisa de mais alguma coisa.
+           "Juntar" mostra as mesas disponíveis; "Liberada" mostra só os
+           lugares. Os dois terminam no mesmo botão de confirmar. -->
+      <div id="mapaPasso2" hidden>
+        <div id="mapaJuntarBox" hidden>
+          <p class="mapa-passo-tit">Quais mesas vão junto?</p>
+          <p class="hint">Só aparecem as que estão aguardando.</p>
+          <div class="mapa-juntar-lista" id="mapaJuntarLista"></div>
+        </div>
+
+        <div id="mapaLugaresBox">
+          <p class="mapa-passo-tit">Quantos lugares no total?</p>
+          <div class="tm-lista" id="mapaLugaresChips"></div>
+          <label class="field" id="mapaLugaresManualBox" hidden>
+            <span>Quantos lugares</span>
+            <input id="mapaLugaresManual" type="number" min="1" max="60" step="1" />
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost btn-neutral" id="mapaPasso2Voltar">Voltar</button>
+          <button type="button" class="btn btn-verde" id="mapaPasso2Ok">🟢 Liberar</button>
+        </div>
+      </div>
+
       <p class="form-msg" id="mapaAcaoMsg" role="status"></p>
-      <div class="modal-actions">
+      <div class="modal-actions" id="mapaAcaoRodape">
         <button class="btn btn-ghost btn-neutral" data-close>Fechar</button>
       </div>
     </div>
@@ -1527,4 +1555,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=180"></script>
+<script src="./app.js?v=182"></script>

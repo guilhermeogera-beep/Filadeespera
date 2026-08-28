@@ -1479,17 +1479,8 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 
 /* ---- Passo 2 do pop-up da mesa ---- */
 .mapa-passo-tit{font-weight:800;margin:12px 0 4px}
-.mapa-juntar-lista{
-  display:grid;grid-template-columns:repeat(auto-fill, minmax(96px, 1fr));gap:8px;
-  max-height:34vh;overflow-y:auto;margin-bottom:6px;
-}
-.mj-mesa{
-  font:inherit;font-weight:700;cursor:pointer;padding:10px 6px;border-radius:12px;
-  border:1.5px solid var(--line);background:#fff;color:var(--ink);
-  display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;
-}
-.mj-mesa:hover{border-color:var(--brand)}
-.mj-mesa.is-sel{background:var(--brand);border-color:var(--brand);color:#fff}
+/* o "quais mesas vão junto" usa o teclado de números do garçom (.num-teclado) */
+.num-eco{margin:6px 0 0;font-weight:700;color:var(--brand)}
 .mj-pet{font-size:.8rem}
 .btn-roxo{background:#7C3AED;border:2px solid #7C3AED;color:#fff;font-weight:700}
 .btn-roxo:hover{background:#6D28D9}

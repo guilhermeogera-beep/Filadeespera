@@ -2648,6 +2648,7 @@
   // (o mapa se redesenha sozinho a cada 15s e a cada mudança no banco)
   let _dedoNoMapa = false;
   let _mapaPendente = false;
+  let _relogioDedo = null;
 
   function renderMapa() {
     const card = $("#mapaCard");
@@ -2700,10 +2701,25 @@
     _mapaPendente = false;
   }
 
-  // chamado quando o dedo sai do mapa: desenha o que ficou pendente
+  // Chamado quando o dedo sai do mapa: desenha o que ficou pendente.
+  //
+  // O CÃO DE GUARDA: quando o pop-up abre por cima do dedo, o navegador às
+  // vezes engole o "pointerup" — e o mapa ficava travado PARA SEMPRE, sem
+  // mostrar mesa lançada, mesa devolvida, nada, até a página ser recarregada.
+  // Por isso o levantar da trava não depende só do dedo: ele tem hora marcada.
   function liberarDesenhoDoMapa() {
+    clearTimeout(_relogioDedo);
+    _relogioDedo = null;
     _dedoNoMapa = false;
     if (_mapaPendente) renderMapa();
+  }
+
+  // Segura o redesenho enquanto o dedo está em cima — no máximo 4 segundos.
+  // Nenhum gesto de verdade dura mais que isso.
+  function segurarDesenhoDoMapa() {
+    _dedoNoMapa = true;
+    clearTimeout(_relogioDedo);
+    _relogioDedo = setTimeout(liberarDesenhoDoMapa, 4000);
   }
 
   // ---------- pop-up de ação (garçom toca numa mesa) ----------
@@ -2746,6 +2762,10 @@
     if (mapaLugaresManual) $("#mapaLugaresManual").value = mapaLugaresEscolhidos || 4;
   }
 
+  // A lista de "quais mesas vão junto" usa o MESMO teclado de números do
+  // pop-up de lançar mesa do garçom: mesma grade, mesma tecla, mesmo tamanho.
+  // É o gesto que ele já faz dez vezes por noite — não custa nada aprender
+  // duas telas quando as duas são a mesma tela.
   function desenharJuntarLista(m) {
     const cands = mesasParaJuntar(m);
     const box = $("#mapaJuntarLista");
@@ -2754,9 +2774,15 @@
       return;
     }
     box.innerHTML = cands.map((x) => `
-      <button type="button" class="mj-mesa${mapaJuntarSelecao.has(x.id) ? " is-sel" : ""}" data-mapjuntar="${x.id}">
-        <b>Mesa ${esc(x.numero)}</b>${x.pet ? `<span class="mj-pet">🐾</span>` : ""}
-      </button>`).join("");
+      <button type="button" class="num-tecla${mapaJuntarSelecao.has(x.id) ? " is-sel" : ""}" data-mapjuntar="${x.id}"${x.pet ? ' title="Área pet"' : ""}>${esc(x.numero)}${x.pet ? " 🐾" : ""}</button>`).join("");
+    // eco do que foi escolhido, no formato que a recepção vai receber
+    const eco = $("#mapaJuntarEco");
+    if (eco) {
+      const nums = numerosDoBloco(m).concat(
+        cands.filter((x) => mapaJuntarSelecao.has(x.id)).map((x) => String(x.numero)));
+      eco.textContent = mapaJuntarSelecao.size ? "Vai virar: Mesa " + nums.join(" + ") : "";
+      eco.hidden = !mapaJuntarSelecao.size;
+    }
   }
 
   // soma sugerida: o que a casa já tem cadastrado para as mesas escolhidas
@@ -2779,7 +2805,13 @@
     $("#mapaAcoes").hidden = true;
     $("#mapaAcaoRodape").hidden = true;
     $("#mapaPasso2").hidden = false;
-    $("#mapaPasso2Ok").textContent = juntando ? "🟢 Juntar e liberar" : "🟢 Liberar";
+    // O rodapé é o mesmo dos dois passos, só troca o rótulo: aqui embaixo o
+    // garçom lê "Juntar" quando está juntando, e não um "liberar" que ele não
+    // pediu (juntar já libera — mas o nome do botão é a ação que ele escolheu).
+    const ok = $("#mapaPasso2Ok");
+    ok.textContent = juntando ? "🔗 Juntar" : "🟢 Liberar";
+    ok.classList.toggle("btn-roxo", juntando);
+    ok.classList.toggle("btn-verde", !juntando);
     if (juntando) desenharJuntarLista(m);
     desenharLugaresDoMapa();
   }
@@ -3373,7 +3405,7 @@
       const el = e.target.closest("[data-mapamesa]");
       if (!el) return;
       alvo = el; podeArrastar = false; moveu = false;
-      _dedoNoMapa = true;   // segura o redesenho em qualquer modo
+      segurarDesenhoDoMapa();   // segura o redesenho em qualquer modo
       tocouEm = e.timeStamp || 0;
       xInicial = e.clientX; yInicial = e.clientY;
       posOriginal = { left: el.style.left, top: el.style.top };
@@ -5043,6 +5075,9 @@
       : (v === "staff" ? "Adicionar cliente" : "Entrar na fila");
     $("#formTitle").textContent = rotulo;
     $("#joinBtn").textContent = rotulo;
+    // trocar de aba encerra qualquer gesto no mapa: nunca chegue na aba com o
+    // desenho travado por um toque que ficou pendurado
+    liberarDesenhoDoMapa();
     render();
   }
 

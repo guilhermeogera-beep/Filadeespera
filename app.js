@@ -3014,6 +3014,7 @@
     mapaAcaoPasso2 = acao;
     const juntando = acao === "juntar";
     const ocupando = acao === "ocupada";
+    const aguardando = acao === "livre";
     const comLista = juntando && !(opcoes && opcoes.semLista);
     mapaJuntarSelecao = new Set();
     mapaLugaresManual = false;
@@ -3022,15 +3023,20 @@
     $("#mapaAcoes").hidden = true;
     $("#mapaAcaoRodape").hidden = true;
     $("#mapaPasso2").hidden = false;
-    // O rodapé é o mesmo dos três caminhos, só troca o rótulo: quem escolheu
-    // "Juntar" lê "Juntar", quem escolheu "Ocupada" lê "Ocupada" — não um
-    // "liberar" que ele não pediu. A pergunta do meio (lugares e pet) é a
-    // mesma nos três: é a hora em que o salão informa como a mesa está.
+    // O rodapé é o mesmo de todos os caminhos, só troca o rótulo: quem escolheu
+    // "Juntar" lê "Juntar", quem escolheu "Ocupada" lê "Ocupada", quem escolheu
+    // "Aguardando" lê "Aguardando" — nunca um "liberar" que ele não pediu. A
+    // pergunta do meio (lugares e pet) é a mesma em todos: é a hora em que o
+    // salão informa como a mesa está de verdade.
     const ok = $("#mapaPasso2Ok");
-    ok.textContent = juntando ? "🔗 Juntar" : (ocupando ? "🔴 Ocupada" : "🟢 Liberar");
+    ok.textContent = juntando ? "🔗 Juntar"
+      : ocupando ? "🔴 Ocupada"
+      : aguardando ? "🔵 Aguardando"
+      : "🟢 Liberar";
     ok.classList.toggle("btn-roxo", juntando);
     ok.classList.toggle("btn-vermelho", ocupando);
-    ok.classList.toggle("btn-verde", !juntando && !ocupando);
+    ok.classList.toggle("btn-azul", aguardando);
+    ok.classList.toggle("btn-verde", !juntando && !ocupando && !aguardando);
     if (comLista) desenharJuntarLista(m);
     desenharLugaresDoMapa();
     // pet: começa como a mesa está hoje no cadastro; o garçom corrige se mudou
@@ -3156,10 +3162,13 @@
         return backend.updateMapa(x.id, patch);
       });
       await Promise.allSettled(gravaLugares);
-      // O destino depende do que ele escolheu no passo 1: "Ocupada" pinta a
-      // mesa de vermelho e para por aí (ninguém é avisado na recepção); os
-      // outros dois liberam a mesa para o balcão, como sempre.
+      // O destino depende do que ele escolheu no passo 1: "Ocupada" pinta de
+      // vermelho e para por aí; "Aguardando" devolve a mesa ao salão e retira
+      // o aviso da recepção; "Liberada" e "Juntar" entregam a mesa ao balcão.
+      // Em todos, o tamanho e o pet que ele acabou de informar já foram
+      // gravados acima — é a razão de o passo 2 existir.
       if (mapaAcaoPasso2 === "ocupada") await marcarOcupada(m.id);
+      else if (mapaAcaoPasso2 === "livre") await voltarParaLivre(m);
       else await liberarMesaDoMapa(m);
       await refresh();
       // Agora sim: com o desenho no ESTADO FINAL (já liberado, já com as
@@ -3182,11 +3191,11 @@
   async function acaoNaMesa(acao) {
     const m = mapa.find((x) => x.id === mapaMesaAtiva);
     if (!m) return;
-    // "Liberada", "Ocupada" e "Juntar" não terminam aqui: eles abrem o passo 2,
-    // onde o salão informa quantos lugares e se é área pet (e, no juntar, quais
-    // mesas). Marcar ocupada é a mesma hora de conferir o tamanho: é quando
-    // alguém acabou de sentar ali e o garçom está olhando para a mesa.
-    if (acao === "liberar" || acao === "juntar" || acao === "ocupada") {
+    // Só "Precisa limpar", "Reservada" e "Separar" terminam aqui. Os outros
+    // abrem o passo 2, onde o salão informa quantos lugares e se é área pet (e,
+    // no juntar, quais mesas) — inclusive o "Aguardando", que é justamente
+    // quando a mesa volta a ficar disponível e o tamanho dela importa de novo.
+    if (acao === "liberar" || acao === "juntar" || acao === "ocupada" || acao === "livre") {
       mostrarPasso2(acao, m);
       return;
     }
@@ -4405,15 +4414,20 @@
     // A busca não mexe aqui: o cabeçalho mostra a fila inteira, sempre.
     const topo = $("#filaTopo");
     if (topo) {
-      // nunca no totem: aquela tela é do cliente, não do controle do salão.
-      // A fila da fila também vê: é por este número que ela sabe se já pode
-      // passar alguém da antessala para a fila de espera.
-      topo.hidden = (!podeVer("staff") && !podeVer("filafila")) ||
-        appEl.getAttribute("data-view") === "totem";
+      // Nunca no totem: aquela tela é do cliente, não do controle do salão.
+      // Nas demais aparece para TODOS os perfis — o garçom e o balcão de
+      // pedidos também precisam saber como está a casa.
+      topo.hidden = appEl.getAttribute("data-view") === "totem";
       if (!topo.hidden) {
         const pessoasNaFila = wTodos.reduce((a, r) => a + Number(r.pessoas || 0), 0);
+        const sal = lugaresDoSalao();
         topo.innerHTML = `👥 <b>${pessoasNaFila}</b> ${pessoasNaFila === 1 ? "pessoa" : "pessoas"}` +
-          `<span class="ft-grupos">• ${wTodos.length} ${wTodos.length === 1 ? "grupo" : "grupos"}</span>`;
+          `<span class="ft-grupos">• ${wTodos.length} ${wTodos.length === 1 ? "grupo" : "grupos"}</span>` +
+          // lugares ocupados: o outro lado da conta. De um lado quem espera,
+          // do outro o quanto da casa já está em uso.
+          (sal.total > 0
+            ? `<span class="ft-lugares" title="Lugares ocupados no salão (de ${sal.total})">🪑 <b>${sal.ocupados}</b>/${sal.total} lugares</span>`
+            : "");
       }
     }
     $("#statPref").textContent = pref.length;
@@ -7562,13 +7576,4 @@
     setInterval(recarregarConfig, 15000);  // rede de segurança das CONFIGURAÇÕES
     // o navegador avisa quando a rede volta: nao esperamos os 15s do refresh
     window.addEventListener("online", () => { marcarSemRede(false); refresh(); });
-    window.addEventListener("offline", () => marcarSemRede(true));
-
-    // ao voltar para a tela (totem que estava em segundo plano), atualiza tudo
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") { recarregarConfig(); refresh(); }
-    });
-  }
-
-  document.addEventListener("DOMContentLoaded", start);
-})();
+    window.addEventListener("offline", () => marcarSemRede

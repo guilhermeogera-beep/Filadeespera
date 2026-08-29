@@ -516,7 +516,7 @@
 
       <label class="field">
         <span>Lugares em cada mesa</span>
-        <div class="tm-lista" id="mlTamanhos"></div>
+        <div class="tm-tamanhos" id="mlTamanhos"></div>
       </label>
       <label class="field" id="mlLugaresField" hidden>
         <span>Quantos lugares</span>
@@ -620,17 +620,36 @@
         <div id="mapaJuntarBox" hidden>
           <p class="mapa-passo-tit">Quais mesas vão junto?</p>
           <p class="hint">Toque no número. Só aparecem as que estão aguardando.</p>
-          <div class="num-teclado" id="mapaJuntarLista"></div>
+          <div class="mj-teclado" id="mapaJuntarLista"></div>
           <p class="num-eco" id="mapaJuntarEco" hidden></p>
         </div>
-
         <div id="mapaLugaresBox">
           <p class="mapa-passo-tit">Quantos lugares no total?</p>
-          <div class="tm-lista" id="mapaLugaresChips"></div>
-          <label class="field" id="mapaLugaresManualBox" hidden>
-            <span>Quantos lugares</span>
-            <input id="mapaLugaresManual" type="number" min="1" max="60" step="1" />
-          </label>
+          <div class="tm-tamanhos" id="mapaLugaresChips"></div>
+          <div class="field" id="mapaLugaresManualBox" hidden>
+            <span>Quantos lugares?</span>
+            <div class="stepper">
+              <button type="button" class="step-btn" data-mapstep="-1" aria-label="Menos">−</button>
+              <output id="mapaLugaresManual" class="step-val">4</output>
+              <button type="button" class="step-btn" data-mapstep="1" aria-label="Mais">+</button>
+            </div>
+          </div>
+        </div>
+        <!-- Pet: quem sabe é o garçom, no salão. A mesa da varanda vira área
+             pet num dia e deixa de ser no outro — perguntar aqui, na hora de
+             liberar, é o único jeito de o mapa acompanhar a realidade. -->
+        <div class="field" id="mapaPetField">
+          <span>É mesa da área pet?</span>
+          <div class="segmented">
+            <label class="seg">
+              <input type="radio" name="mapapet" value="nao" checked />
+              <span>Não</span>
+            </label>
+            <label class="seg seg-pet">
+              <input type="radio" name="mapapet" value="sim" />
+              <span>🐾 Sim</span>
+            </label>
+          </div>
         </div>
 
         <div class="modal-actions">

@@ -2759,13 +2759,14 @@
       </button>`).join("") +
       `<button type="button" class="tm-btn tm-outro${mapaLugaresManual ? " is-sel" : ""}" data-maplug="manual"><b>✏️</b><span>outro</span></button>`;
     $("#mapaLugaresManualBox").hidden = !mapaLugaresManual;
-    if (mapaLugaresManual) $("#mapaLugaresManual").value = mapaLugaresEscolhidos || 4;
+    if (mapaLugaresManual) $("#mapaLugaresManual").textContent = mapaLugaresEscolhidos || 4;
   }
 
-  // A lista de "quais mesas vão junto" usa o MESMO teclado de números do
-  // pop-up de lançar mesa do garçom: mesma grade, mesma tecla, mesmo tamanho.
-  // É o gesto que ele já faz dez vezes por noite — não custa nada aprender
-  // duas telas quando as duas são a mesma tela.
+  // A lista de "quais mesas vão junto" segue o teclado de números do pop-up de
+  // lançar mesa do garçom — mesma grade, mesmo toque. A diferença é que aqui
+  // cada tecla carrega três informações (número, pet, lugares), e elas ficam
+  // LADO A LADO na mesma linha: empilhadas, a tecla virava um bloco alto e a
+  // lista não cabia mais na tela do celular.
   function desenharJuntarLista(m) {
     const cands = mesasParaJuntar(m);
     const box = $("#mapaJuntarLista");
@@ -2773,8 +2774,12 @@
       box.innerHTML = `<p class="hint">Nenhuma outra mesa está aguardando agora.</p>`;
       return;
     }
-    box.innerHTML = cands.map((x) => `
-      <button type="button" class="num-tecla${mapaJuntarSelecao.has(x.id) ? " is-sel" : ""}" data-mapjuntar="${x.id}"${x.pet ? ' title="Área pet"' : ""}>${esc(x.numero)}${x.pet ? " 🐾" : ""}</button>`).join("");
+    box.innerHTML = cands.map((x) => {
+      const lug = Number(x.lugares) || 0;
+      return `<button type="button" class="mj-tecla${mapaJuntarSelecao.has(x.id) ? " is-sel" : ""}" data-mapjuntar="${x.id}">
+        <b>Mesa ${esc(x.numero)}</b>${x.pet ? `<span class="mj-pet" title="Área pet">🐾</span>` : ""}${lug ? `<span class="mj-lug">${lug} lug.</span>` : ""}
+      </button>`;
+    }).join("");
     // eco do que foi escolhido, no formato que a recepção vai receber
     const eco = $("#mapaJuntarEco");
     if (eco) {
@@ -2814,6 +2819,12 @@
     ok.classList.toggle("btn-verde", !juntando);
     if (juntando) desenharJuntarLista(m);
     desenharLugaresDoMapa();
+    // pet: começa como a mesa está hoje no cadastro; o garçom corrige se mudou
+    const petAtivo = CFG.petAtivo !== false;
+    $("#mapaPetField").hidden = !petAtivo;
+    const querPet = petAtivo && petDoBloco(m);
+    const rad = $(`input[name="mapapet"][value="${querPet ? "sim" : "nao"}"]`);
+    if (rad) rad.checked = true;
   }
 
   function voltarAoPasso1() {
@@ -2874,7 +2885,7 @@
     if (!m) return;
     const msg = $("#mapaAcaoMsg");
     const lugares = mapaLugaresManual
-      ? Math.max(1, Math.min(60, parseInt($("#mapaLugaresManual").value, 10) || 0))
+      ? Math.max(1, Math.min(60, parseInt($("#mapaLugaresManual").textContent, 10) || 0))
       : mapaLugaresEscolhidos;
     if (!lugares) {
       msg.textContent = "Escolha quantos lugares.";
@@ -2887,6 +2898,9 @@
       msg.className = "form-msg err";
       return;
     }
+    // o que o garçom marcar aqui é a verdade do salão: o cadastro se ajusta
+    const pet = CFG.petAtivo !== false &&
+      ($('input[name="mapapet"]:checked') || {}).value === "sim";
     const btn = $("#mapaPasso2Ok");
     btn.disabled = true;
     $("#mapaAcaoModal").hidden = true;
@@ -2907,12 +2921,15 @@
       }
       // Os lugares informados valem para o BLOCO. Guardamos o total na mesa
       // âncora e zeramos as outras, para a soma do bloco bater exatamente com
-      // o que o garçom digitou.
+      // o que o garçom digitou. O pet, ao contrário, vale para TODAS: área pet
+      // é do canto do salão, não de uma mesa só.
       const bloco = blocoDaMesa(m);
       const gravaLugares = bloco.map((x, i) => {
         const valor = i === 0 ? lugares : 0;
-        x.lugares = valor;
-        return backend.updateMapa(x.id, { lugares: valor });
+        const patch = { lugares: valor };
+        if (CFG.petAtivo !== false && !!x.pet !== pet) patch.pet = pet;
+        Object.assign(x, patch);
+        return backend.updateMapa(x.id, patch);
       });
       await Promise.allSettled(gravaLugares);
       await liberarMesaDoMapa(m);
@@ -5745,9 +5762,15 @@
       }
       desenharLugaresDoMapa();
     });
-    $("#mapaLugaresManual").addEventListener("input", (e) => {
-      mapaLugaresEscolhidos = Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 0));
-    });
+    // "outro": o mesmo ± grande do pop-up do garçom. Digitar número no meio do
+    // salão, de pé, é onde nasce o erro — aqui o dedo só toca.
+    $$(".step-btn[data-mapstep]").forEach((b) =>
+      b.addEventListener("click", () => {
+        mapaLugaresEscolhidos = Math.max(1, Math.min(60,
+          (Number(mapaLugaresEscolhidos) || 4) + Number(b.dataset.mapstep)));
+        $("#mapaLugaresManual").textContent = mapaLugaresEscolhidos;
+      })
+    );
     $("#mapaJuntarLista").addEventListener("click", (e) => {
       const b = e.target.closest("[data-mapjuntar]");
       if (!b) return;

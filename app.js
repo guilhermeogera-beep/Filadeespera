@@ -2371,15 +2371,23 @@
 
   // Marca a mesa como ocupada na mão (cliente que sentou sem passar pela fila)
   async function marcarOcupada(id) {
-    const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
-    bloco.forEach((x) => { x.status = MAPA.OCUPADA; });
+    const alvo = mapa.find((x) => x.id === id);
+    const bloco = blocoDaMesa(alvo);
+    // Carimba a hora SÓ quando não há cliente da fila naquela mesa: é dele que
+    // sai o relógio quando existe. Sem cliente, esta marcação é o único ponto
+    // de partida que o mapa tem para contar há quanto tempo a mesa está em uso.
+    const agora = ocupanteDaMesa(alvo) ? null : new Date().toISOString();
+    bloco.forEach((x) => { x.status = MAPA.OCUPADA; if (agora) x.liberada_em = agora; });
     renderMapa();
     // tem gente sentada: a recepção não pode continuar oferecendo esta mesa
     await tirarDaRecepcao(bloco);
-    for (const x of bloco) await backend.updateMapa(x.id, { status: MAPA.OCUPADA });
+    for (const x of bloco) {
+      const patch = { status: MAPA.OCUPADA };
+      if (agora) patch.liberada_em = agora;
+      await backend.updateMapa(x.id, patch);
+    }
     await refresh();
   }
-
   // Volta a mesa para o verde. Se ela já tinha sido avisada à recepção,
   // desfaz o aviso também — senão ela voltaria a ficar verde tracejada e a
   // recepção continuaria contando com uma mesa que o garçom retomou.
@@ -2807,13 +2815,20 @@
   function mesaMapaHTML(m, editando) {
     const est = editando ? "livre" : estadoDaMesa(m);
     const oc = editando ? null : ocupanteDaMesa(m);
-    const desde = oc && (oc.sentou_em || oc.chamado_em);
     const junta = !editando && m.grupo;
     // Mesas juntadas viram UM desenho só, no meio do conjunto: "Mesa 1+4",
     // os lugares somados e o tempo de quem sentou. As outras do bloco não são
     // desenhadas — ficam sobrepostas por baixo desta. Contorno em volta não
     // precisa mais existir: o desenho único já diz que viraram uma mesa.
     const bloco = junta ? blocoDaMesa(m) : [m];
+    // O RELÓGIO DA MESA OCUPADA. Quando quem sentou veio da fila, conta desde
+    // que sentou. Quando o salão marcou "ocupada" na mão — cliente que chegou
+    // direto, sem passar pela recepção —, conta desde a marcação. Sem isso o
+    // garçom via a mesa vermelha sem saber se era de agora ou de duas horas.
+    const marcadaEm = bloco.reduce((t, x) =>
+      Math.max(t, x.liberada_em ? new Date(x.liberada_em).getTime() : 0), 0);
+    const desde = (oc && (oc.sentou_em || oc.chamado_em)) ||
+      (!editando && est === "ocupada" && marcadaEm ? new Date(marcadaEm).toISOString() : null);
     const lugares = junta ? lugaresDoBloco(m) : m.lugares;
     const rotulo = junta ? "Mesa " + esc(numerosDoBloco(m).join("+")) : "Mesa " + esc(m.numero);
     const petBloco = junta ? petDoBloco(m) : m.pet;

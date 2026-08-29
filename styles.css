@@ -759,6 +759,14 @@ button{font-family:inherit}
   font-size:.68rem;font-weight:700;margin-top:1px;
   padding:1px 5px;border-radius:999px;background:rgba(0,0,0,.10);white-space:nowrap;
 }
+/* ---- Nome de um bloco de mesas juntadas ----
+   "Mesa 1+2+3+4" é mais comprido que o desenho e escapava pela borda, porque
+   o número nunca quebrava linha. No bloco ele pode quebrar (e encolher, quando
+   são três ou mais mesas) — o desenho cresce um pouco em altura e o texto fica
+   dentro dele. */
+.mm-mesa.is-junta .mm-num{white-space:normal;word-break:break-word;text-align:center}
+.mm-mesa.is-junta.num-longo .mm-num{font-size:.74rem;line-height:1.15}
+.mm-mesa.is-junta.sem-tamanho{max-width:150px}
 /* a mesa que vai receber a arrastada */
 .mm-mesa.is-alvo{outline:3px dashed var(--ink);outline-offset:3px}
 

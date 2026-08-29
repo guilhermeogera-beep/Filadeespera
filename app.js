@@ -2835,7 +2835,11 @@
       ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}`;
     // as cadeiras acompanham o tamanho do conjunto
     const miolo = (semCadeiras ? "" : cadeirasHTML(lugares)) + texto;
-    const classes = `mm-mesa is-${est}${petBloco ? " is-pet" : ""}${junta ? " is-junta" : ""}${semCadeiras ? " sem-tamanho" : ""}`;
+    // três mesas ou mais no mesmo nome ("Mesa 1+2+3") pedem letra menor:
+    // é o que faz o texto caber dentro do desenho em vez de escapar dele
+    const numeroLongo = junta && bloco.length >= 3;
+    const classes = `mm-mesa is-${est}${petBloco ? " is-pet" : ""}${junta ? " is-junta" : ""}` +
+      `${semCadeiras ? " sem-tamanho" : ""}${numeroLongo ? " num-longo" : ""}`;
     // `--lados` é quantas cadeiras cabem no lado comprido: é o que dá a largura
     // da mesa no desenho, para uma de 8 lugares ser visivelmente maior que uma de 4
     const cad = cadeirasDaMesa(lugares);
@@ -3184,13 +3188,26 @@
         return backend.updateMapa(x.id, patch);
       });
       await Promise.allSettled(gravaLugares);
-      // O destino depende do que ele escolheu no passo 1: "Ocupada" pinta de
-      // vermelho e para por aí; "Aguardando" devolve a mesa ao salão e retira
-      // o aviso da recepção; "Liberada" e "Juntar" entregam a mesa ao balcão.
+      // O destino depende do que ele escolheu no passo 1:
+      //   "Ocupada"    → pinta de vermelho e para por aí;
+      //   "Aguardando" → devolve a mesa ao salão e retira o aviso da recepção;
+      //   "Liberada"   → entrega a mesa ao balcão;
+      //   "Juntar"     → NÃO muda o estado. Juntar é montar a mesa, não liberá-la:
+      //                  o conjunto continua como as mesas estavam (aguardando,
+      //                  suja, o que for) e o garçom libera quando quiser.
       // Em todos, o tamanho e o pet que ele acabou de informar já foram
       // gravados acima — é a razão de o passo 2 existir.
       if (mapaAcaoPasso2 === "ocupada") await marcarOcupada(m.id);
       else if (mapaAcaoPasso2 === "livre") await voltarParaLivre(m);
+      else if (mapaAcaoPasso2 === "juntar") {
+        // Exceção: se o conjunto JÁ estava avisado à recepção, o aviso precisa
+        // ser refeito — ele falava de "Mesa 1", e agora a mesa é "Mesa 1+2",
+        // com outro tamanho. Senão o balcão chamaria gente para a mesa errada.
+        if (blocoDaMesa(m).some(mesaAvisada)) {
+          await tirarDaRecepcao(blocoDaMesa(m));
+          await lancarMesa({ lugares, pet, identificacao: "", numeros: numerosDoBloco(m) });
+        }
+      }
       else await liberarMesaDoMapa(m);
       await refresh();
       // Agora sim: com o desenho no ESTADO FINAL (já liberado, já com as

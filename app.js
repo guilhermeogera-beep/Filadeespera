@@ -2607,10 +2607,34 @@
            Math.abs(y - b.c.y) < (a.t.h + b.t.h) / 2 + FOLGA_MAPA;
   }
 
+  // O menor número do desenho — é por ele que a planta se ordena.
+  function numeroDoDesenho(d) {
+    return d.bloco.map((x) => String(x.numero))
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }))[0] || "";
+  }
+
+  // A CASA da mesa: o lugar que ela ocuparia na grade em ordem numérica —
+  // 1, 2, 3… da esquerda para a direita, de cima para baixo. É a formação de
+  // fábrica do mapa, a que o garçom encontra quando toca em "Organizar".
+  function casaNaGrade(d, ds) {
+    const ordem = ds.slice().sort((a, b) =>
+      numeroDoDesenho(a).localeCompare(numeroDoDesenho(b), "pt-BR", { numeric: true }));
+    const i = ordem.indexOf(d);
+    if (i < 0) return null;
+    return posicoesEmGrade(ordem.length)[i] || null;
+  }
+
   // Vão livre mais perto para este desenho, ou null se ele já está num.
-  function vaoLivrePara(d, outros) {
+  //
+  // A CASA VEM PRIMEIRO: se o lugar dele na ordem numérica estiver livre, é
+  // para lá que ele vai — assim o salão volta sozinho para a formação em
+  // sequência, que é a que se lê de relance. Só quando a casa está ocupada é
+  // que vale o vão mais próximo.
+  function vaoLivrePara(d, outros, ds) {
     const encosta = (px, py) => outros.some((o) => desenhosSeTocam(d, o, px, py));
     if (!encosta(d.c.x, d.c.y)) return null;
+    const casa = ds ? casaNaGrade(d, ds) : null;
+    if (casa && !encosta(casa.x, casa.y)) return casa;
     let melhor = null, menor = Infinity;
     for (let py = 8; py <= 92; py += 2) {
       for (let px = 6; px <= 94; px += 2) {
@@ -2653,7 +2677,7 @@
       const area = (d) => d.t.w * d.t.h;
       let quem = par.find((d) => idPrioritario && d.ids.has(idPrioritario));
       if (!quem) quem = area(par[0]) >= area(par[1]) ? par[0] : par[1];
-      const vaga = vaoLivrePara(quem, ds.filter((o) => o !== quem));
+      const vaga = vaoLivrePara(quem, ds.filter((o) => o !== quem), ds);
       if (!vaga) break;                          // salão sem espaço: melhor não mexer
       moverDesenho(quem, vaga);
       quem.bloco.forEach((x) => mexidos.set(x.id, { x: x.x, y: x.y }));

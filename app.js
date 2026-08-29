@@ -2445,21 +2445,30 @@
   async function separarMesas(id) {
     const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
     const agora = new Date().toISOString();
+    const ids = bloco.map((x) => x.id);
     for (const x of bloco) {
       const avisadas = mesasLivres.filter((z) => numeroBate(x.numero, z.numeros || z.identificacao));
       for (const z of avisadas) {
         try { await backend.removeMesa(z.id); } catch (e) { console.warn("Não deu para tirar da recepção:", e); }
       }
     }
-    for (const x of bloco) {
+    const gravacoes = bloco.map((x) => {
       const patch = { grupo: null, status: MAPA.LIVRE, liberada_em: agora };
       // volta para o lugar de origem no mapa
       if (x.x_ant != null) { patch.x = x.x_ant; patch.y = x.y_ant; patch.x_ant = null; patch.y_ant = null; }
       Object.assign(x, patch);
-      await backend.updateMapa(x.id, patch);
-    }
+      return backend.updateMapa(x.id, patch);
+    });
     renderMapa();
+    await Promise.allSettled(gravacoes);
     await refresh();
+    // O lugar de origem pode ter sido ocupado por outra mesa enquanto elas
+    // estavam juntas — e há junção antiga sem origem guardada, que largaria as
+    // duas empilhadas no mesmo ponto. Então, separou, o mapa se arruma: cada
+    // uma volta para a casa dela na sequência, e ninguém fica por cima de
+    // ninguém.
+    try { for (const x of ids) await arrumarSobreposicoes(x); }
+    catch (e) { console.warn("Não deu para arrumar o mapa depois de separar:", e); }
   }
 
   // Escolhe quem chamar para o tamanho/pet que estão preparados e abre a
@@ -4244,6 +4253,7 @@
         `<button class="btn btn-sm btn-verde" data-ffpromover="${r.id}">➡ Colocar na fila de espera</button>
          <button class="btn btn-sm ${avisado ? "" : "btn-accent"}" data-ffavisar="${r.id}">${
            avisado ? "🔁 Avisar de novo" : "🔔 Avisar que abriu vaga"}</button>
+         ${CFG.linkAtivo === false ? "" : `<button class="btn btn-sm btn-qr" data-qrcliente="${r.id}">📱 QR do cliente</button>`}
          <button class="btn btn-sm" data-edit="${r.id}">✏️ Editar</button>
          <button class="btn btn-sm btn-ghost btn-danger" data-drop="${r.id}">🗑 Remover</button>`;
       $("#clienteModal").hidden = false;
@@ -4732,7 +4742,12 @@
     // A linha é só informação; as ações moram na ficha, que abre ao tocar.
     // Com quatro botões por linha, a lista virava um paredão e o toque errado
     // ficava fácil demais — ainda mais numa ação que promove alguém de fila.
-    $("#ffLista").innerHTML = lista.map((r, i) => {
+    //
+    // QUEM JÁ FOI AVISADO SOBE PARA O TOPO, numa faixa própria: essa pessoa
+    // está a caminho da recepção agora, e é a ação pendente da atendente.
+    // Misturada no meio da espera, ela se perdia — e a numeração da fila
+    // contava gente que já não está mais esperando aviso.
+    const linhaHTML = (r, pos) => {
       const avisado = !!r.previa_avisado_em;
       const dados = [
         `👥 ${r.pessoas} ${Number(r.pessoas) === 1 ? "pessoa" : "pessoas"}`,
@@ -4743,7 +4758,7 @@
       ].filter(Boolean).join(" • ");
       return `
       <button type="button" class="previa-item ${avisado ? "is-avisado" : ""}" data-cliente="${r.id}">
-        <span class="previa-pos">${i + 1}º</span>
+        <span class="previa-pos">${pos}</span>
         <span class="previa-txt">
           <span class="previa-nome">${esc(r.nome)}</span>
           <span class="previa-meta">${dados} • entrou ${fmtClock(entradaEm(r))}
@@ -4751,7 +4766,21 @@
         </span>
         <span class="previa-seta" aria-hidden="true">›</span>
       </button>`;
-    }).join("");
+    };
+
+    const avisados = lista.filter((r) => r.previa_avisado_em);
+    const esperando = lista.filter((r) => !r.previa_avisado_em);
+    const box = $("#ffAvisados");
+    if (box) {
+      box.hidden = !avisados.length;
+      $("#ffAvisadosCount").textContent = avisados.length;
+      // o aviso mais recente em cima: é o que a atendente acabou de mandar
+      $("#ffAvisadosLista").innerHTML = avisados
+        .slice()
+        .sort((a, b) => new Date(b.previa_avisado_em) - new Date(a.previa_avisado_em))
+        .map((r) => linhaHTML(r, "🔔")).join("");
+    }
+    $("#ffLista").innerHTML = esperando.map((r, i) => linhaHTML(r, i + 1 + "º")).join("");
   }
 
   // ---------- aba "Na mesa": quem já sentou ----------
@@ -5555,10 +5584,19 @@
     focoSePuder("#fNome");
   }
 
-  // Pop-up mostrado depois de entrar na fila: posição + QR + link
+  // Pop-up mostrado depois de entrar na fila: posição + QR + link.
+  //
+  // Vale para as DUAS filas. Na antessala o QR é ainda mais útil: essa pessoa
+  // não tem pager nem posição para conferir no painel, e o link é o único
+  // lugar onde ela acompanha a vez dela e recebe o alarme quando abrir vaga.
   function mostrarEntrou(pessoa) {
-    const pos = waiting().findIndex((r) => r.id === pessoa.id) + 1;
-    $("#joinedTitle").textContent = isStaff() ? `✅ ${firstName(pessoa.nome)} entrou na fila!` : "✅ Você está na fila!";
+    const previa = pessoa.status === STATUS.PREVIA;
+    const lista = previa ? naPrevia() : waiting();
+    const pos = lista.findIndex((r) => r.id === pessoa.id) + 1;
+    $("#joinedTitle").textContent = previa
+      ? (isStaff() ? `✅ ${firstName(pessoa.nome)} entrou na fila da fila!` : "✅ Você está na fila da fila!")
+      : (isStaff() ? `✅ ${firstName(pessoa.nome)} entrou na fila!` : "✅ Você está na fila!");
+    $("#joinedPosLabel").textContent = previa ? "Na fila da fila" : "Sua posição";
     $("#joinedPos").textContent = pos > 0 ? pos + "º" : "—";
     // este pop-up é lido pelo cliente: vai a FAIXA, não um número cravado
     const espera = esperaStats() ? esperaTexto(true) : null;
@@ -5566,7 +5604,7 @@
     // manda na espera: as mesas são chamadas pelo número de lugares, então
     // "12 grupos na fila" assusta sem querer dizer nada para quem é 2.
     const n = Number(pessoa.pessoas);
-    const naFrente = waiting().filter((r, i) => i < pos - 1 && Number(r.pessoas) === n).length;
+    const naFrente = lista.filter((r, i) => i < pos - 1 && Number(r.pessoas) === n).length;
     const gente = `${n} ${n === 1 ? "pessoa" : "pessoas"}`;
     // texto neutro: o mesmo pop-up aparece para o cliente no totem e para a
     // atendente no balcão
@@ -5574,8 +5612,11 @@
       : (naFrente === 0
           ? `nenhum grupo de ${gente} na frente`
           : `${naFrente} ${naFrente === 1 ? "grupo" : "grupos"} de ${gente} na frente`);
-    $("#joinedSub").textContent = frente +
-      (espera && CFG.mostrarMedia !== false ? ` • espera ${espera}` : "");
+    // Na antessala não existe previsão nenhuma: ninguém sabe quando uma vaga
+    // abre. Prometer tempo ali seria inventar.
+    $("#joinedSub").textContent = previa
+      ? "Avisamos aqui assim que abrir vaga na fila de espera"
+      : frente + (espera && CFG.mostrarMedia !== false ? ` • espera ${espera}` : "");
 
     const link = publicUrl(pessoa.id);
     drawQR($("#joinedQr"), link);
@@ -5897,9 +5938,9 @@
         });
         msg.textContent = "";
         $("#formModal").hidden = true;
-        // O pop-up de "você está na fila" fala de posição e QR de
-        // acompanhamento — nada disso vale para quem está na antessala, que
-        // ainda nem tem lugar na fila. Ali basta a confirmação.
+        // Também na antessala vale o pop-up com o QR: sem pager e sem posição
+        // no painel, o link é o único jeito de essa pessoa acompanhar a vez
+        // dela — e é por ele que chega o alarme quando abrir vaga.
         if (naAbaPrevia()) {
           const ff = $("#ffMsg");
           if (ff) {
@@ -5907,9 +5948,9 @@
             ff.className = "form-msg ok";
             setTimeout(() => { ff.textContent = ""; }, 5000);
           }
-        } else {
-          mostrarEntrou(pessoa);
         }
+        // com o link desligado nas configurações não há QR para mostrar
+        if (!naAbaPrevia() || CFG.linkAtivo !== false) mostrarEntrou(pessoa);
       } catch (err) {
         console.error(err);
         erro("Erro ao entrar na fila. Tente de novo.");

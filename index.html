@@ -237,6 +237,14 @@
         </span>
       </div>
 
+      <!-- JÁ AVISADOS: quem já recebeu o aviso de que abriu vaga e ainda não
+           foi colocado na fila de espera. Fica no topo porque é o que está
+           pendente — essa pessoa está vindo até a recepção agora. -->
+      <div class="ff-avisados" id="ffAvisados" hidden>
+        <p class="ff-avisados-tit">🔔 Já avisados <span class="mesas-count" id="ffAvisadosCount">0</span></p>
+        <div class="previa-lista" id="ffAvisadosLista"></div>
+      </div>
+
       <div class="previa-lista" id="ffLista"></div>
       <div class="mesas-empty" id="ffVazio" hidden>Ninguém na fila da fila.</div>
       <p class="form-msg" id="ffMsg" role="status"></p>
@@ -457,7 +465,7 @@
       <h3 id="joinedTitle">✅ Você está na fila!</h3>
       <div class="joined-box">
         <div class="joined-pos">
-          <span class="jp-label">Sua posição</span>
+          <span class="jp-label" id="joinedPosLabel">Sua posição</span>
           <b class="jp-num" id="joinedPos">—</b>
           <span class="jp-sub" id="joinedSub"></span>
         </div>

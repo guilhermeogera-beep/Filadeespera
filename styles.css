@@ -1432,6 +1432,16 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 .previa-seta{margin-left:auto;color:var(--muted);font-size:1.6rem;line-height:1;flex:0 0 auto}
 /* já avisado que abriu vaga: some do "a fazer" da atendente sem sumir da lista */
 .previa-item.is-avisado{background:#F4FBF7;border-color:#BEDFCD}
+
+/* ---- Fila da fila: faixa dos já avisados ----
+   Quem já recebeu o aviso está a caminho da recepção: é ação pendente, e
+   ação pendente fica no alto da tela, separada de quem ainda espera. */
+.ff-avisados{
+  margin:0 0 14px;padding:10px 10px 6px;border-radius:14px;
+  background:#F4FBF7;border:1.5px solid #BEDFCD;
+}
+.ff-avisados-tit{margin:0 0 8px;font-weight:800;color:#1F6B45;display:flex;align-items:center;gap:8px}
+.ff-avisados .previa-lista{gap:8px}
 .previa-pos{
   min-width:46px;text-align:center;font-weight:800;font-size:1.05rem;
   background:#EDEAF7;color:#4B3E7D;border-radius:10px;padding:8px 6px;flex:0 0 auto;

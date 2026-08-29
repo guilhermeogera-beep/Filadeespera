@@ -2181,6 +2181,22 @@
     return e === "livre" || e === "limpar";  // reservada não entra: já tem dono
   }
 
+  // Tira da lista da recepção o aviso de uma mesa (ou do bloco inteiro).
+  //
+  // Uma mesa avisada é uma promessa: a atendente conta com ela para o próximo
+  // cliente. Assim que o salão diz que ela NÃO está mais disponível — reservada,
+  // ocupada ou suja —, a promessa tem que ser desfeita, senão a recepção manda
+  // gente para uma mesa que não existe mais. Foi o que aconteceu com uma mesa
+  // grande juntada: virou reservada no mapa e continuou na lista do balcão.
+  async function tirarDaRecepcao(bloco) {
+    for (const x of bloco) {
+      const avisadas = mesasLivres.filter((z) => numeroBate(x.numero, z.numeros || z.identificacao));
+      for (const z of avisadas) {
+        try { await backend.removeMesa(z.id); } catch (e) { console.warn("Não deu para tirar da recepção:", e); }
+      }
+    }
+  }
+
   // Encerrar a mesa: some o cronômetro e ela sai do vermelho.
   // "limpar" deixa amarela; "livre" deixa verde.
   async function encerrarMesaMapa(id, status) {
@@ -2190,6 +2206,8 @@
     // esperando a internet com o prato na mão
     bloco.forEach((x) => { x.status = status; x.liberada_em = agora; });
     renderMapa();
+    // reservada e "precisa limpar" tiram a mesa da mão da recepção
+    if (status === MAPA.RESERVADA || status === MAPA.LIMPAR) await tirarDaRecepcao(bloco);
     for (const x of bloco) await backend.updateMapa(x.id, { status, liberada_em: agora });
     await refresh();
   }
@@ -2334,6 +2352,8 @@
     const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
     bloco.forEach((x) => { x.status = MAPA.OCUPADA; });
     renderMapa();
+    // tem gente sentada: a recepção não pode continuar oferecendo esta mesa
+    await tirarDaRecepcao(bloco);
     for (const x of bloco) await backend.updateMapa(x.id, { status: MAPA.OCUPADA });
     await refresh();
   }
@@ -2342,13 +2362,7 @@
   // desfaz o aviso também — senão ela voltaria a ficar verde tracejada e a
   // recepção continuaria contando com uma mesa que o garçom retomou.
   async function voltarParaLivre(m) {
-    const bloco = blocoDaMesa(m);
-    for (const x of bloco) {
-      const avisadas = mesasLivres.filter((z) => numeroBate(x.numero, z.numeros || z.identificacao));
-      for (const z of avisadas) {
-        try { await backend.removeMesa(z.id); } catch (e) { console.warn("Não deu para tirar da recepção:", e); }
-      }
-    }
+    await tirarDaRecepcao(blocoDaMesa(m));
     await encerrarMesaMapa(m.id, MAPA.LIVRE);
   }
 
@@ -2430,7 +2444,7 @@
     // gravar o que for dela.
     renderMapa();
     const juntas = mapa.find((x) => x.id === b.id);
-    if (juntas && !mapaSoDeOlhar()) {
+    if (juntas) {
       abrirAcaoMesa(juntas.id);
       mostrarPasso2("juntar", juntas, { semLista: true });
     }
@@ -2445,12 +2459,7 @@
   async function separarMesas(id) {
     const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
     const agora = new Date().toISOString();
-    for (const x of bloco) {
-      const avisadas = mesasLivres.filter((z) => numeroBate(x.numero, z.numeros || z.identificacao));
-      for (const z of avisadas) {
-        try { await backend.removeMesa(z.id); } catch (e) { console.warn("Não deu para tirar da recepção:", e); }
-      }
-    }
+    await tirarDaRecepcao(bloco);
     // Sem origem guardada não dá para "voltar": junção antiga, feita antes de
     // o mapa passar a guardar o lugar de cada uma. Nesse caso a mesa vai para
     // a CASA dela — o lugar que ela ocupa na grade em ordem numérica —, que é
@@ -2822,18 +2831,15 @@
   // O mapa pode ser desligado por perfil: tem casa que quer o mapa só na
   // mão do garçom, e tem quem queira o contrário. Quando o login está
   // desligado, ninguém tem perfil — vale a regra do garçom.
-  // A atendente vê a MESMA planta do garçom, mas travada: sem botões, sem
-  // arrastar, sem abrir opções. Na recepção o mapa é informação, não comando —
-  // quem mexe no estado das mesas é o salão.
-  function mapaSoDeOlhar() {
-    return loginLigado() && !!usuario && usuario.papel === PAPEL.ATENDENTE;
-  }
-
+  //
+  // A atendente COMANDA o mapa como o garçom (2026-08-29): ela está no balcão,
+  // vê a mesa vagar antes dele e precisa marcar ocupada, liberar e juntar sem
+  // esperar. O que continua sendo só do adm é o CADASTRO das mesas (o editor).
   function mapaVisivelPara() {
-    // a versão travada tem chave própria: a atendente pode ou não ver o salão
-    if (mapaSoDeOlhar()) return CFG.mapaAtendente !== false;
-    const admLogado = loginLigado() && usuario && usuario.papel === PAPEL.ADM;
-    return admLogado ? CFG.mapaAdm !== false : CFG.mapaGarcom !== false;
+    const papel = (loginLigado() && usuario) ? usuario.papel : null;
+    if (papel === PAPEL.ATENDENTE) return CFG.mapaAtendente !== false;
+    if (papel === PAPEL.ADM) return CFG.mapaAdm !== false;
+    return CFG.mapaGarcom !== false;
   }
 
   // Enquanto um dedo está em cima do mapa, ele NÃO é redesenhado. Redesenhar
@@ -2848,22 +2854,20 @@
     const card = $("#mapaCard");
     if (!card) return;
     if (_dedoNoMapa) { _mapaPendente = true; return; }
-    // O mapa vive na aba "Mapa". Para o garçom é ferramenta de trabalho; para
-    // a atendente é só consulta — mesma planta, mas travada.
+    // O mapa vive na aba "Mapa" e é ferramenta de trabalho tanto do garçom
+    // quanto da atendente. Só o cadastro das mesas é exclusivo do adm.
     const vista = appEl.getAttribute("data-view");
-    const soOlhar = mapaSoDeOlhar();
-    card.classList.toggle("so-olhar", soOlhar);
     card.hidden = CFG.garcomAtivo === false || vista !== "mapa" ||
       semTabelaMapa || !mapaVisivelPara();
     if (card.hidden) { modoEdicaoMapa = false; return; }
 
     // quem pode mexer no cadastro é quem pode mexer na engrenagem
-    const podeEditar = ehAdm() && !soOlhar;
+    const podeEditar = ehAdm();
     if (!podeEditar) modoEdicaoMapa = false;
     const editando = modoEdicaoMapa;
 
     // na versão da atendente não entra nenhum botão: ela só consulta
-    const podeLote = mapa.length && !editando && !soOlhar && (ehAdm() || dentroDaJanelaLiberar());
+    const podeLote = mapa.length && !editando && (ehAdm() || dentroDaJanelaLiberar());
     const mostrar = (id, cond) => { const b = $(id); if (b) b.hidden = !cond; };
     mostrar("#liberarTodasBtn", podeLote);
     mostrar("#aguardarTodasBtn", podeLote);
@@ -2999,6 +3003,7 @@
   function mostrarPasso2(acao, m, opcoes) {
     mapaAcaoPasso2 = acao;
     const juntando = acao === "juntar";
+    const ocupando = acao === "ocupada";
     const comLista = juntando && !(opcoes && opcoes.semLista);
     mapaJuntarSelecao = new Set();
     mapaLugaresManual = false;
@@ -3007,13 +3012,15 @@
     $("#mapaAcoes").hidden = true;
     $("#mapaAcaoRodape").hidden = true;
     $("#mapaPasso2").hidden = false;
-    // O rodapé é o mesmo dos dois passos, só troca o rótulo: aqui embaixo o
-    // garçom lê "Juntar" quando está juntando, e não um "liberar" que ele não
-    // pediu (juntar já libera — mas o nome do botão é a ação que ele escolheu).
+    // O rodapé é o mesmo dos três caminhos, só troca o rótulo: quem escolheu
+    // "Juntar" lê "Juntar", quem escolheu "Ocupada" lê "Ocupada" — não um
+    // "liberar" que ele não pediu. A pergunta do meio (lugares e pet) é a
+    // mesma nos três: é a hora em que o salão informa como a mesa está.
     const ok = $("#mapaPasso2Ok");
-    ok.textContent = juntando ? "🔗 Juntar" : "🟢 Liberar";
+    ok.textContent = juntando ? "🔗 Juntar" : (ocupando ? "🔴 Ocupada" : "🟢 Liberar");
     ok.classList.toggle("btn-roxo", juntando);
-    ok.classList.toggle("btn-verde", !juntando);
+    ok.classList.toggle("btn-vermelho", ocupando);
+    ok.classList.toggle("btn-verde", !juntando && !ocupando);
     if (comLista) desenharJuntarLista(m);
     desenharLugaresDoMapa();
     // pet: começa como a mesa está hoje no cadastro; o garçom corrige se mudou
@@ -3033,8 +3040,6 @@
   }
 
   function abrirAcaoMesa(id) {
-    // na versão da atendente o mapa é só visualização: nenhum comando
-    if (mapaSoDeOlhar()) return;
     const m = mapa.find((x) => x.id === id);
     if (!m) return;
     mapaMesaAtiva = id;
@@ -3141,7 +3146,11 @@
         return backend.updateMapa(x.id, patch);
       });
       await Promise.allSettled(gravaLugares);
-      await liberarMesaDoMapa(m);
+      // O destino depende do que ele escolheu no passo 1: "Ocupada" pinta a
+      // mesa de vermelho e para por aí (ninguém é avisado na recepção); os
+      // outros dois liberam a mesa para o balcão, como sempre.
+      if (mapaAcaoPasso2 === "ocupada") await marcarOcupada(m.id);
+      else await liberarMesaDoMapa(m);
       await refresh();
       // Agora sim: com o desenho no ESTADO FINAL (já liberado, já com as
       // cadeiras do tamanho novo), o mapa se desempilha. Conferir antes seria
@@ -3163,9 +3172,14 @@
   async function acaoNaMesa(acao) {
     const m = mapa.find((x) => x.id === mapaMesaAtiva);
     if (!m) return;
-    // "Liberada" e "Juntar" não terminam aqui: eles abrem o passo 2, onde o
-    // garçom informa quantos lugares (e, no juntar, quais mesas).
-    if (acao === "liberar" || acao === "juntar") { mostrarPasso2(acao, m); return; }
+    // "Liberada", "Ocupada" e "Juntar" não terminam aqui: eles abrem o passo 2,
+    // onde o salão informa quantos lugares e se é área pet (e, no juntar, quais
+    // mesas). Marcar ocupada é a mesma hora de conferir o tamanho: é quando
+    // alguém acabou de sentar ali e o garçom está olhando para a mesa.
+    if (acao === "liberar" || acao === "juntar" || acao === "ocupada") {
+      mostrarPasso2(acao, m);
+      return;
+    }
     // as demais fecham já: a confirmação é a mesa mudando de cor atrás
     $("#mapaAcaoModal").hidden = true;
     mapaMesaAtiva = null;
@@ -5007,10 +5021,28 @@
       const r = rows.find((x) => x.id === m.reservada_para);
       return r ? firstName(r.nome) : "cliente chamado";
     };
-    $("#mesasCount").textContent = mesasLivres.filter((m) => !reservada(m)).length;
+    // O MAPA MANDA quando ele diz que a mesa TEM DONO: reservada (compromisso
+    // com um cliente que vai chegar) ou ocupada (tem gente sentada). Nesses
+    // dois casos a mesa não está disponível, e a recepção não pode continuar
+    // oferecendo — vale inclusive para aviso antigo, gravado antes de o app
+    // passar a retirar o cartão sozinho.
+    //
+    // "Precisa limpar" NÃO entra aqui de propósito: o garçom pode lançar a
+    // mesa pelo formulário justamente porque acabou de limpá-la, sem passar
+    // pelo mapa, e o cartão dele não pode sumir por causa de uma marca velha.
+    const indisponivelNoMapa = (m) => {
+      const numeros = String(m.numeros || m.identificacao || "")
+        .split("+").map((s) => s.trim()).filter(Boolean);
+      if (!numeros.length || !mapa.length) return false;
+      const doMapa = mapa.filter((x) => numeros.some((n) => numeroBate(x.numero, n)));
+      if (!doMapa.length) return false;
+      return doMapa.some((x) => ["reservada", "ocupada"].indexOf(estadoDaMesa(x)) >= 0);
+    };
+    const livres = mesasLivres.filter((m) => !indisponivelNoMapa(m));
+    $("#mesasCount").textContent = livres.filter((m) => !reservada(m)).length;
     // Na tela da atendente o cartão é só número e lugares: um toque chama.
     // As ações (usei / cancelar / corrigir) ficam no pop-up que abre ao segurar.
-    $("#mesasList").innerHTML = mesasLivres.map((m) => {
+    $("#mesasList").innerHTML = livres.map((m) => {
       const nome = m.numeros ? "Mesa " + esc(m.numeros) : `<span class="mesa-sem-num">sem número</span>`;
       const classes = `mesa-item ${m.pet ? "is-pet" : ""} ${mesaSelecionada === m.id ? "is-sel" : ""} ${reservada(m) ? "is-reservada" : ""}`;
       if (staff) {

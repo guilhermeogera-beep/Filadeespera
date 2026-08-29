@@ -1127,9 +1127,6 @@ button{font-family:inherit}
 /* ---- Mapa da atendente: só de olhar ----
    Mesma planta do garçom, sem nenhum comando: nada de tocar, arrastar ou
    juntar. Na recepção o mapa é informação — quem muda o estado é o salão. */
-.mapa-card.so-olhar .mapa-botoes{display:none}
-.mapa-card.so-olhar .mm-mesa{pointer-events:none;cursor:default}
-.mapa-card.so-olhar .mapa-piso{touch-action:pan-y;cursor:default}
 
 /* ---- Escolher a mesa dentro do pop-up de chamada ----
    Caminho inverso do "tocar na mesa primeiro": escolhe-se a pessoa e depois

@@ -2469,8 +2469,18 @@
     const casas = posicoesEmGrade(ordem.length);
     const casaDe = (m) => casas[ordem.findIndex((z) => z.id === m.id)] || null;
 
-    const gravacoes = bloco.map((x) => {
+    // Os lugares do conjunto estavam TODOS na mesa âncora (as outras ficaram
+    // com zero, para a soma do bloco bater com o que o garçom informou).
+    // Separando, esse total é repartido de volta entre elas — senão as mesas
+    // voltariam ao salão sem tamanho nenhum, e agora a contagem aparece no
+    // desenho em todos os estados. O resto da divisão fica com a primeira.
+    const total = lugaresDoBloco(mapa.find((x) => x.id === id));
+    const cada = bloco.length ? Math.floor(total / bloco.length) : 0;
+    const sobra = bloco.length ? total - cada * bloco.length : 0;
+
+    const gravacoes = bloco.map((x, i) => {
       const patch = { grupo: null, status: MAPA.LIVRE, liberada_em: agora };
+      if (total > 0) patch.lugares = cada + (i === 0 ? sobra : 0);
       // volta para o lugar de origem no mapa
       if (x.x_ant != null) { patch.x = x.x_ant; patch.y = x.y_ant; patch.x_ant = null; patch.y_ant = null; }
       else {
@@ -2785,23 +2795,23 @@
     const lugares = junta ? lugaresDoBloco(m) : m.lugares;
     const rotulo = junta ? "Mesa " + esc(numerosDoBloco(m).join("+")) : "Mesa " + esc(m.numero);
     const petBloco = junta ? petDoBloco(m) : m.pet;
-    // AGUARDANDO ainda não tem tamanho: quantos lugares a mesa vai ter é o
-    // garçom que informa na hora de liberar, e isso muda a cada serviço. Por
-    // isso ela aparece como um quadrado limpo, sem cadeiras e sem contagem —
-    // desenhar cadeira ali seria inventar informação.
-    const semTamanho = !editando && est === "livre";
+    // A CONTAGEM DE LUGARES APARECE EM TODOS OS ESTADOS, aguardando incluído:
+    // é a informação que decide quem senta ali, e o garçom precisa dela para
+    // escolher qual mesa liberar. O valor é o do cadastro (ou a soma do bloco);
+    // se ele mudou no salão, o próprio garçom corrige ao liberar.
+    const mostraLugares = Number(lugares) > 0;
     // Cadeira desenhada é para a mesa que a recepção pode OFERECER: ali o
-    // tamanho é a informação que decide quem sentar. Mesa suja ou com gente
-    // dentro não vai ser oferecida a ninguém agora, então vira o mesmo
-    // quadradinho — o mapa fica limpo e sobra espaço no salão.
-    const semCadeiras = semTamanho || (!editando && (est === "limpar" || est === "ocupada"));
+    // tamanho é a informação que decide quem sentar. Mesa aguardando, suja ou
+    // com gente dentro não vai ser oferecida agora, então vira um quadradinho
+    // limpo — o mapa fica leve e sobra espaço no salão.
+    const semCadeiras = !editando && (est === "livre" || est === "limpar" || est === "ocupada");
     const texto = `
       <b class="mm-num">${rotulo}</b>
-      ${semTamanho ? (petBloco ? `<span class="mm-lug">🐾</span>` : "")
-                   : `<span class="mm-lug">${lugares} lug.${petBloco ? " 🐾" : ""}</span>`}
+      ${mostraLugares
+          ? `<span class="mm-lug">${lugares} lug.${petBloco ? " 🐾" : ""}</span>`
+          : (petBloco ? `<span class="mm-lug">🐾</span>` : "")}
       ${desde ? `<span class="mm-timer" data-since="${desde}">agora</span>` : ""}`;
-    // as cadeiras acompanham o tamanho do conjunto — e só existem depois que
-    // o tamanho é conhecido
+    // as cadeiras acompanham o tamanho do conjunto
     const miolo = (semCadeiras ? "" : cadeirasHTML(lugares)) + texto;
     const classes = `mm-mesa is-${est}${petBloco ? " is-pet" : ""}${junta ? " is-junta" : ""}${semCadeiras ? " sem-tamanho" : ""}`;
     // `--lados` é quantas cadeiras cabem no lado comprido: é o que dá a largura
@@ -3054,9 +3064,9 @@
     const situacao = { ocupada: "🔴 ocupada", limpar: "🟡 precisa limpar",
                        avisada: "🟢 liberada", aguardando: "🔵 aguardando",
                        reservada: "⬛ reservada", livre: "🔵 aguardando" }[est];
-    // Aguardando ainda não tem tamanho: os lugares são informados na hora de
-    // liberar. Então só mostramos a contagem quando ela quer dizer alguma coisa.
-    const mostraLugares = est !== "livre" || juntas;
+    // A contagem aparece em qualquer estado (o mapa também mostra), desde que
+    // exista tamanho cadastrado — "0 lugares" não diria nada a ninguém.
+    const mostraLugares = Number(lugares) > 0;
     $("#mapaAcaoInfo").innerHTML =
       (mostraLugares
         ? `${lugares} ${lugares === 1 ? "lugar" : "lugares"}${juntas ? ` (${bloco.map((x) => x.lugares).join(" + ")})` : ""} — `

@@ -2402,6 +2402,7 @@
     const grupo = b.grupo || a.grupo || uuid();
 
     // quem vem junto com a arrastada mantém a formação que já tinha
+    const gravacoes = [];
     const vindos = blocoDaMesa(a);
     for (const m of vindos) {
       const patch = { grupo };
@@ -2412,7 +2413,7 @@
         patch.x = enc.x; patch.y = enc.y;
       }
       Object.assign(m, patch);                            // desenho já fica certo
-      await backend.updateMapa(m.id, patch);
+      gravacoes.push(backend.updateMapa(m.id, patch));
     }
     // o bloco de destino só adota o grupo (ninguém sai do lugar)
     for (const m of blocoDaMesa(b)) {
@@ -2420,19 +2421,21 @@
       if (precisaLimpar) p2.status = MAPA.LIMPAR;
       if (m.grupo === grupo && !precisaLimpar) continue;
       Object.assign(m, p2);
-      await backend.updateMapa(m.id, p2);
+      gravacoes.push(backend.updateMapa(m.id, p2));
     }
-    await refresh();
-    // Arrastar uma mesa em cima da outra é a MESMA junção do botão "Juntar
-    // mesas" — então termina no mesmo lugar: o pop-up do passo 2, para o
-    // garçom informar quantos lugares ficou o conjunto e se é área pet.
-    // Sem isso, a junção por arrasto deixava o tamanho velho no mapa e a
-    // recepção recebia duas mesas de 4 como se ainda fossem duas de 4.
+    // O POP-UP ABRE NA HORA. A junção já está pintada na tela, e o garçom
+    // ainda vai levar alguns segundos escolhendo os lugares — não faz sentido
+    // ele olhar para uma tela parada esperando o banco responder. As gravações
+    // seguem por baixo; a confirmação do passo 2 espera por elas antes de
+    // gravar o que for dela.
+    renderMapa();
     const juntas = mapa.find((x) => x.id === b.id);
     if (juntas && !mapaSoDeOlhar()) {
       abrirAcaoMesa(juntas.id);
       mostrarPasso2("juntar", juntas, { semLista: true });
     }
+    gravacoesDoMapa = Promise.allSettled(gravacoes).then(() => refresh());
+    await gravacoesDoMapa;
   }
 
   // Separar desfaz a junção E devolve as mesas para AGUARDANDO. Separar é o
@@ -2544,27 +2547,40 @@
 
   // Converte o tamanho da mesa para % do piso (o piso muda de tamanho com o
   // zoom e com a tela, então a conta precisa ser feita na hora).
+  //
+  // Quando o desenho JÁ ESTÁ na tela, vale o que ele mede de verdade: o
+  // quadradinho de aguardando cresce com o texto que tem dentro, e chutar o
+  // tamanho máximo dele fazia o mapa achar que duas mesas soltas estavam
+  // encostadas. Só quando não há desenho (mesa de dentro de um bloco, mapa
+  // ainda não pintado) é que a medida sai da conta.
   function tamanhoDaMesaPct(m, lugaresDoDesenho) {
     const piso = $("#mapaPiso");
     const r = piso && piso.getBoundingClientRect();
     if (!r || !r.width || !r.height) return null;
+    const el = piso.querySelector(`[data-mapamesa="${m.id}"]`);
+    if (el) {
+      const rd = el.getBoundingClientRect();
+      if (rd.width && rd.height) return { w: (rd.width / r.width) * 100, h: (rd.height / r.height) * 100 };
+    }
     const t = tamanhoDaMesaPx(m, lugaresDoDesenho);
     return { w: (t.w / r.width) * 100, h: (t.h / r.height) * 100 };
   }
   // ==========================================================
-  //  ONDE O BLOCO JUNTADO VAI FICAR
+  //  NINGUÉM DESENHADO EM CIMA DE NINGUÉM
   // ----------------------------------------------------------
-  //  Juntar duas mesas distantes cria um desenho MAIOR — oito lugares ocupam
-  //  quase o dobro da largura de quatro — e ele é desenhado no CENTRO entre as
-  //  duas. Juntando a 1 com a 4, esse centro cai bem em cima da mesa 3: o
-  //  desenho do conjunto cobre a vizinha, e some com ela e com o jeito de
-  //  tocar nela.
+  //  Juntar duas mesas cria um desenho MAIOR — oito lugares ocupam quase o
+  //  dobro da largura de quatro — e ele aparece no CENTRO entre as duas.
+  //  Juntando a 1 com a 3, esse centro cai bem em cima da mesa 2: o conjunto
+  //  cobre a vizinha, e some com ela e com o jeito de tocar nela.
   //
-  //  Então, depois de juntar, o conjunto procura um vão livre. Ele começa
-  //  olhando o lugar onde nasceu (se couber ali, ninguém sai do lugar — mexer
-  //  sem necessidade confunde quem conhece o salão) e, se estiver por cima de
-  //  alguém, anda inteiro para o espaço vazio mais próximo, mantendo a
-  //  formação: todas as mesas do bloco andam o mesmo tanto.
+  //  Depois de juntar, então, o mapa se arruma: quem está por cima de alguém
+  //  anda para o vão livre mais próximo. Quem já está num vão não sai do
+  //  lugar — mexer sem necessidade confunde quem conhece o salão. E o bloco
+  //  anda INTEIRO, todas as mesas o mesmo tanto, mantendo a formação.
+  //
+  //  A conferência é feita com o desenho JÁ no estado final (depois de
+  //  liberar), senão a conta sairia com o quadradinho de aguardando e o
+  //  conjunto voltaria a cobrir a vizinha assim que ganhasse as cadeiras.
   // ==========================================================
 
   // Onde e de que tamanho cada desenho aparece hoje no mapa. É a mesma conta
@@ -2579,54 +2595,72 @@
       const junta = b.length > 1;
       const t = tamanhoDaMesaPct(x, junta ? lugaresDoBloco(x) : x.lugares);
       const c = junta ? centroDoBloco(b) : { x: Number(x.x) || 50, y: Number(x.y) || 50 };
-      return t ? { ids: new Set(b.map((z) => z.id)), t, c } : null;
+      return t ? { bloco: b, ids: new Set(b.map((z) => z.id)), t, c } : null;
     }).filter(Boolean);
   }
 
-  // Devolve o novo CENTRO do bloco, ou null se ele já está num vão livre.
-  function acharEspacoLivre(m) {
-    const bloco = blocoDaMesa(m);
-    const meu = tamanhoDaMesaPct(m, lugaresDoBloco(m));
-    if (!meu) return null;                       // piso ainda sem medida
-    const meus = new Set(bloco.map((x) => x.id));
-    const vizinhos = desenhosDoMapa().filter((d) => ![...d.ids].some((id) => meus.has(id)));
+  const FOLGA_MAPA = 1.5;                        // % de respiro entre os desenhos
 
-    const FOLGA = 1.5;                           // % de respiro entre os desenhos
-    const encosta = (px, py) => vizinhos.some((v) =>
-      Math.abs(px - v.c.x) < (meu.w + v.t.w) / 2 + FOLGA &&
-      Math.abs(py - v.c.y) < (meu.h + v.t.h) / 2 + FOLGA);
+  function desenhosSeTocam(a, b, ax, ay) {
+    const x = ax == null ? a.c.x : ax, y = ay == null ? a.c.y : ay;
+    return Math.abs(x - b.c.x) < (a.t.w + b.t.w) / 2 + FOLGA_MAPA &&
+           Math.abs(y - b.c.y) < (a.t.h + b.t.h) / 2 + FOLGA_MAPA;
+  }
 
-    const centro = centroDoBloco(bloco);
-    if (!encosta(centro.x, centro.y)) return null;   // já está num vão: fica onde está
-
+  // Vão livre mais perto para este desenho, ou null se ele já está num.
+  function vaoLivrePara(d, outros) {
+    const encosta = (px, py) => outros.some((o) => desenhosSeTocam(d, o, px, py));
+    if (!encosta(d.c.x, d.c.y)) return null;
     let melhor = null, menor = Infinity;
     for (let py = 8; py <= 92; py += 2) {
       for (let px = 6; px <= 94; px += 2) {
         if (encosta(px, py)) continue;
-        const d = Math.hypot(px - centro.x, py - centro.y);   // o vão mais perto
-        if (d < menor) { menor = d; melhor = { x: px, y: py }; }
+        const dist = Math.hypot(px - d.c.x, py - d.c.y);
+        if (dist < menor) { menor = dist; melhor = { x: px, y: py }; }
       }
     }
     return melhor;
   }
 
-  // Anda com o bloco inteiro para o vão livre, mantendo a formação (todas as
-  // mesas andam o mesmo tanto). Devolve true se mexeu.
-  async function acomodarBloco(m) {
-    const bloco = blocoDaMesa(m);
-    if (bloco.length < 2) return false;
-    const vaga = acharEspacoLivre(m);
-    if (!vaga) return false;
-    const centro = centroDoBloco(bloco);
-    const dx = vaga.x - centro.x, dy = vaga.y - centro.y;
-    const gravacoes = bloco.map((x) => {
-      const nx = Math.max(4, Math.min(96, (Number(x.x) || 50) + dx));
-      const ny = Math.max(6, Math.min(94, (Number(x.y) || 50) + dy));
-      x.x = nx; x.y = ny;
-      return backend.updateMapa(x.id, { x: nx, y: ny });
+  // Anda com o bloco inteiro, mantendo a formação. Só mexe na memória: quem
+  // chamou grava e redesenha.
+  function moverDesenho(d, vaga) {
+    const dx = vaga.x - d.c.x, dy = vaga.y - d.c.y;
+    d.bloco.forEach((x) => {
+      x.x = Math.max(4, Math.min(96, (Number(x.x) || 50) + dx));
+      x.y = Math.max(6, Math.min(94, (Number(x.y) || 50) + dy));
     });
+    d.c = { x: d.c.x + dx, y: d.c.y + dy };
+  }
+
+  // Desempilha o mapa: enquanto houver dois desenhos em cima um do outro, o
+  // de cima anda para o vão livre mais próximo. `idPrioritario` é a mesa que
+  // acabou de mudar — ela é a primeira a ceder, porque foi ela que chegou por
+  // último; o resto do salão continua onde o garçom deixou.
+  async function arrumarSobreposicoes(idPrioritario) {
+    const mexidos = new Map();
+    for (let voltas = 0; voltas < 12; voltas++) {
+      const ds = desenhosDoMapa();
+      if (ds.length < 2) break;
+      let par = null;
+      for (let i = 0; i < ds.length && !par; i++) {
+        for (let j = i + 1; j < ds.length; j++) {
+          if (desenhosSeTocam(ds[i], ds[j])) { par = [ds[i], ds[j]]; break; }
+        }
+      }
+      if (!par) break;                           // nada empilhado: acabou
+      // quem cede: a mesa que acabou de mudar; senão, a maior das duas
+      const area = (d) => d.t.w * d.t.h;
+      let quem = par.find((d) => idPrioritario && d.ids.has(idPrioritario));
+      if (!quem) quem = area(par[0]) >= area(par[1]) ? par[0] : par[1];
+      const vaga = vaoLivrePara(quem, ds.filter((o) => o !== quem));
+      if (!vaga) break;                          // salão sem espaço: melhor não mexer
+      moverDesenho(quem, vaga);
+      quem.bloco.forEach((x) => mexidos.set(x.id, { x: x.x, y: x.y }));
+    }
+    if (!mexidos.size) return false;
     renderMapa();
-    await Promise.allSettled(gravacoes);
+    await Promise.allSettled([...mexidos].map(([id, p]) => backend.updateMapa(id, p)));
     return true;
   }
 
@@ -2839,6 +2873,9 @@
 
   // ---------- pop-up de ação (garçom toca numa mesa) ----------
   let mapaMesaAtiva = null;
+  // gravações da junção que ainda estão a caminho do banco: o passo 2 espera
+  // por elas antes de gravar as dele, para os dois não se atropelarem
+  let gravacoesDoMapa = null;
 
   // ==========================================================
   //  POP-UP DA MESA — dois passos
@@ -2880,8 +2917,8 @@
   // A lista de "quais mesas vão junto" é o MESMO teclado do pop-up de lançar
   // mesa do garçom: a mesma grade de quadradinhos com o número, do mesmo
   // tamanho. Ele já toca nesse teclado dez vezes por noite — não faz sentido
-  // ele aprender outro aqui. A patinha aparece do lado do número quando a
-  // mesa é da área pet.
+  // ele aprender outro aqui. Na tecla vai só o número, como lá: é o que o
+  // garçom procura com o olho (a área pet aparece no toque demorado).
   function desenharJuntarLista(m) {
     const cands = mesasParaJuntar(m);
     const box = $("#mapaJuntarLista");
@@ -2890,7 +2927,7 @@
       return;
     }
     box.innerHTML = cands.map((x) => `
-      <button type="button" class="num-tecla${mapaJuntarSelecao.has(x.id) ? " is-sel" : ""}" data-mapjuntar="${x.id}"${x.pet ? ' title="Área pet"' : ""}>${esc(x.numero)}${x.pet ? "🐾" : ""}</button>`).join("");
+      <button type="button" class="num-tecla${mapaJuntarSelecao.has(x.id) ? " is-sel" : ""}" data-mapjuntar="${x.id}"${x.pet ? ' title="Área pet"' : ""}>${esc(x.numero)}</button>`).join("");
     // eco do que foi escolhido, no formato que a recepção vai receber
     const eco = $("#mapaJuntarEco");
     if (eco) {
@@ -2996,7 +3033,8 @@
   // Confirmação do passo 2: junta o que foi escolhido (quando for o caso),
   // grava os lugares informados e libera para a recepção.
   async function confirmarPasso2() {
-    const m = mapa.find((x) => x.id === mapaMesaAtiva);
+    const idAtiva = mapaMesaAtiva;
+    let m = mapa.find((x) => x.id === idAtiva);
     if (!m) return;
     const msg = $("#mapaAcaoMsg");
     const lugares = mapaLugaresManual
@@ -3023,6 +3061,14 @@
     btn.disabled = true;
     $("#mapaAcaoModal").hidden = true;
     try {
+      // se a junção por arrasto ainda está gravando, espera: senão as duas
+      // gravações chegam fora de ordem e o banco fica com metade de cada
+      if (gravacoesDoMapa) {
+        await gravacoesDoMapa;
+        gravacoesDoMapa = null;
+        // o refresh trocou os objetos do mapa: pega a versão nova desta mesa
+        m = mapa.find((x) => x.id === idAtiva) || m;
+      }
       if (juntando) {
         // uma só junção: todas as escolhidas entram no mesmo grupo
         const grupo = m.grupo || uuid();
@@ -3050,13 +3096,14 @@
         return backend.updateMapa(x.id, patch);
       });
       await Promise.allSettled(gravaLugares);
-      // com o tamanho novo, o desenho do conjunto cresceu: se ele passou a
-      // cobrir uma vizinha, o bloco inteiro anda para o vão livre mais perto
-      renderMapa();                              // o desenho precisa estar no tamanho novo
-      try { await acomodarBloco(m); }
-      catch (e) { console.warn("Não deu para guardar a posição do bloco:", e); }
       await liberarMesaDoMapa(m);
       await refresh();
+      // Agora sim: com o desenho no ESTADO FINAL (já liberado, já com as
+      // cadeiras do tamanho novo), o mapa se desempilha. Conferir antes seria
+      // medir o quadradinho de aguardando — e o conjunto voltaria a cobrir a
+      // vizinha assim que ganhasse as cadeiras.
+      try { await arrumarSobreposicoes(m.id); }
+      catch (e) { console.warn("Não deu para arrumar o mapa:", e); }
     } catch (e) {
       console.error("Erro ao liberar a mesa:", e);
       avisoStaff("⚠ Não deu para liberar a mesa — verifique a internet.");

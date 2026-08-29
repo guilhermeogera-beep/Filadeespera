@@ -2181,6 +2181,28 @@
     return e === "livre" || e === "limpar";  // reservada não entra: já tem dono
   }
 
+  // ==========================================================
+  //  QUANTO DA CASA ESTÁ EM USO
+  // ----------------------------------------------------------
+  //  Conta pelos DESENHOS do mapa (um bloco juntado é um lugar só), somando
+  //  os lugares das mesas ocupadas. "Reservada" não entra: ninguém sentou
+  //  ainda, e contar como cheio faria a recepção parar de chamar sem motivo.
+  //  Sem mapa cadastrado devolve zero — e o cabeçalho simplesmente não mostra
+  //  o número, em vez de mostrar um "0/0" que não quer dizer nada.
+  // ==========================================================
+  function lugaresDoSalao() {
+    let total = 0, ocupados = 0;
+    if (!mapa.length) return { total, ocupados };
+    for (const m of mapa) {
+      const bloco = blocoDaMesa(m);
+      if (bloco[0] && bloco[0].id !== m.id) continue;      // do bloco, conta uma vez
+      const lug = bloco.length > 1 ? lugaresDoBloco(m) : (Number(m.lugares) || 0);
+      total += lug;
+      if (estadoDaMesa(m) === "ocupada") ocupados += lug;
+    }
+    return { total, ocupados };
+  }
+
   // Tira da lista da recepção o aviso de uma mesa (ou do bloco inteiro).
   //
   // Uma mesa avisada é uma promessa: a atendente conta com ela para o próximo
@@ -4426,7 +4448,7 @@
           // lugares ocupados: o outro lado da conta. De um lado quem espera,
           // do outro o quanto da casa já está em uso.
           (sal.total > 0
-            ? `<span class="ft-lugares" title="Lugares ocupados no salão (de ${sal.total})">🪑 <b>${sal.ocupados}</b>/${sal.total} lugares</span>`
+            ? `<span class="ft-lugares" title="Lugares ocupados no salão (de ${sal.total})">🪑&nbsp;<b>${sal.ocupados}</b>/${sal.total} lugares</span>`
             : "");
       }
     }
@@ -7576,4 +7598,13 @@
     setInterval(recarregarConfig, 15000);  // rede de segurança das CONFIGURAÇÕES
     // o navegador avisa quando a rede volta: nao esperamos os 15s do refresh
     window.addEventListener("online", () => { marcarSemRede(false); refresh(); });
-    window.addEventListener("offline", () => marcarSemRede
+    window.addEventListener("offline", () => marcarSemRede(true));
+
+    // ao voltar para a tela (totem que estava em segundo plano), atualiza tudo
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") { recarregarConfig(); refresh(); }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", start);
+})();

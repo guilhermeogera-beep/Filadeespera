@@ -49,21 +49,25 @@ button{font-family:inherit}
   margin:0 auto;
 }
 
-/* ---------------- TOPO ---------------- */
+/* ---------------- TOPO ----------------
+   O cabeçalho é moldura, não conteúdo: no tablet do salão ele chegava a
+   comer 13% da altura da tela, espaço que faz falta para o mapa e para a
+   fila. Aqui ele é enxuto — no TOTEM, mais abaixo, volta ao tamanho grande,
+   porque lá a tela é lida de longe pelo salão inteiro. */
 .topbar{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  padding:12px 16px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;
+  padding:6px 12px;
   background:var(--brand);
   color:#fff;
   position:sticky;top:0;z-index:20;
-  padding-top:calc(12px + env(safe-area-inset-top));
+  padding-top:calc(6px + env(safe-area-inset-top));
 }
-.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand{display:flex;align-items:center;gap:9px;min-width:0}
 /* o logo entra em branco (arte vazada) direto sobre o preto do cabeçalho */
-.brand-logo{width:52px;height:52px;object-fit:contain;display:block}
+.brand-logo{width:36px;height:36px;object-fit:contain;display:block}
 .brand-txt{display:flex;flex-direction:column;line-height:1.1;min-width:0}
-.brand-txt strong{font-size:1.15rem}
-.brand-sub{font-size:.78rem;opacity:.8}
+.brand-txt strong{font-size:1rem}
+.brand-sub{font-size:.72rem;opacity:.8}
 
 .topbar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 
@@ -73,18 +77,18 @@ button{font-family:inherit}
 .badge-off{background:#ffd9d4;color:#8a2418}
 
 .topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
-.pill-btn{border:0;border-radius:999px;padding:9px 15px;font-weight:700;font-size:.9rem;cursor:pointer;background:rgba(255,255,255,.16);color:#fff;white-space:nowrap}
+.pill-btn{border:0;border-radius:999px;padding:6px 12px;font-weight:700;font-size:.85rem;cursor:pointer;background:rgba(255,255,255,.16);color:#fff;white-space:nowrap}
 .pill-btn:hover{background:rgba(255,255,255,.28)}
 .pill-btn.is-closed{background:#ffd9d4;color:#8a2418}
-.icon-btn-h{width:42px;height:42px;border:0;background:rgba(255,255,255,.16);color:#fff;border-radius:12px;font-size:1.3rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
+.icon-btn-h{width:34px;height:34px;border:0;background:rgba(255,255,255,.16);color:#fff;border-radius:10px;font-size:1.1rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
 .icon-btn-h:hover{background:rgba(255,255,255,.28)}
 /* contador de fila no cabeçalho (perfil atendente) */
 .fila-topo{
   display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;
   background:rgba(255,255,255,.16);color:#fff;border-radius:999px;
-  padding:7px 14px;font-weight:700;font-size:.9rem;white-space:nowrap;
+  padding:5px 11px;font-weight:700;font-size:.85rem;white-space:nowrap;
 }
-.fila-topo b{font-size:1.05rem;line-height:1}
+.fila-topo b{font-size:.98rem;line-height:1}
 .fila-topo .ft-grupos{opacity:.8;font-weight:600}
 /* lugares ocupados: mesma tarja, separado por um risco fino — de um lado
    quem espera, do outro o quanto da casa já está em uso */
@@ -92,12 +96,21 @@ button{font-family:inherit}
   display:inline-flex;align-items:center;gap:0;font-weight:600;
   margin-left:8px;padding-left:10px;border-left:1px solid rgba(255,255,255,.35);
 }
-.viewswitch{display:flex;background:rgba(255,255,255,.16);border-radius:999px;padding:3px}
+.viewswitch{display:flex;background:rgba(255,255,255,.16);border-radius:999px;padding:2px}
 .vs-btn{
   border:0;background:transparent;color:#fff;opacity:.85;
-  padding:7px 16px;border-radius:999px;font-weight:600;font-size:.9rem;cursor:pointer;
+  padding:5px 12px;border-radius:999px;font-weight:600;font-size:.85rem;cursor:pointer;
 }
 .vs-btn.is-active{background:#fff;color:var(--brand);opacity:1}
+
+/* ---- No TOTEM o cabeçalho volta a ser grande ----
+   Aquela tela é lida de longe pelo salão: ali o nome da casa e o logo têm
+   função. Nas telas da equipe, que são de trabalho de perto, o cabeçalho
+   fica enxuto para sobrar altura ao mapa e à fila. */
+#app[data-view="totem"] .topbar{padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));gap:12px}
+#app[data-view="totem"] .brand-logo{width:52px;height:52px}
+#app[data-view="totem"] .brand-txt strong{font-size:1.15rem}
+#app[data-view="totem"] .brand-sub{font-size:.78rem}
 
 /* ---------------- BOTÕES ---------------- */
 .btn{
@@ -1256,12 +1269,16 @@ input, select, textarea, button { max-width:100%; min-width:0 }
   .two-cols{ gap:8px }
   .free-row .btn-big{ min-width:0 }
 }
-
-/* 6) A barra de abas cresceu (são seis). Em tela estreita ela rola de lado
-   em vez de empurrar o cabeçalho para fora — e continua inteira em tela
-   grande, sem barra de rolagem à vista. */
+/* 6) A barra de abas cresceu (são sete) e o cabeçalho estava virando três
+   faixas: marca, contador e abas, cada uma numa linha.
+   `display:contents` faz o lado direito deixar de ser uma caixa: o contador
+   e os botões passam a ser peças da MESMA linha da marca, e a barra de abas
+   (order:9, largura 100%) fica com uma linha só para ela, rolando de lado
+   quando não couber. Duas faixas em vez de três. */
+.topbar-right{display:contents}
+.topbar .fila-topo{margin-left:auto}
 .viewswitch{
-  flex:1 1 auto;max-width:100%;overflow-x:auto;overflow-y:hidden;
+  order:9;flex:1 1 100%;max-width:100%;overflow-x:auto;overflow-y:hidden;
   scrollbar-width:none;-webkit-overflow-scrolling:touch;
 }
 .viewswitch::-webkit-scrollbar{display:none}

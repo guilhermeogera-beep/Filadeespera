@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=187" />
+<link rel="stylesheet" href="./styles.css?v=190" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -64,7 +64,9 @@
         <button id="tabFilaFila" class="vs-btn" role="tab">Fila da fila</button>
       </div>
       <button id="toggleFilaBtn" class="pill-btn staff-only" title="Abrir/fechar a fila"></button>
-      <button id="relBtn" class="icon-btn-h staff-only" title="Relatório" aria-label="Relatório">📊</button>
+      <!-- O relatório mora SÓ dentro da engrenagem (⚙ → 📊 Relatório): no
+           cabeçalho ele disputava espaço com o que a atendente usa a noite
+           inteira, e é uma tela de dono, não de serviço. -->
       <!-- selo da cópia em arquivo: só aparece no computador do administrador
            quando ele escolheu um arquivo na engrenagem -->
       <button id="backupBtn" class="icon-btn-h staff-only" title="Cópia em arquivo" aria-label="Cópia em arquivo" hidden>💾</button>
@@ -1575,4 +1577,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=187"></script>
+<script src="./app.js?v=190"></script>

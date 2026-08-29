@@ -5317,6 +5317,40 @@
     if (p === PAPEL.FILADAFILA) return "filafila";
     return "totem";
   }
+
+  // ==========================================================
+  //  VOLTAR NA ABA EM QUE ESTAVA
+  // ----------------------------------------------------------
+  //  Tablet de salão recarrega a página sozinho de vez em quando: o navegador
+  //  descarta a aba quando fica em segundo plano ou quando a memória aperta.
+  //  Antes o app voltava sempre na aba inicial do perfil, e quem estava
+  //  olhando o mapa era jogado para a fila sem entender por quê.
+  //
+  //  Guardando a última aba, essa recarga fica praticamente invisível: volta
+  //  onde estava. Se o perfil não puder mais ver aquela aba (trocou de
+  //  usuário, mudou a configuração), cai na inicial de sempre.
+  // ==========================================================
+  const LS_ABA = "fila_ultima_aba";
+
+  function lembrarAba(v) {
+    try { localStorage.setItem(LS_ABA, v); } catch (e) { /* aparelho sem localStorage */ }
+  }
+  function abaParaAbrir() {
+    let salva = null;
+    try { salva = localStorage.getItem(LS_ABA); } catch (e) { /* ignora */ }
+    if (!salva || !podeVer(salva)) return abaInicial();
+    // Sem login, a aba pode estar atrás de um PIN. Restaurá-la abriria o
+    // pop-up da senha a cada recarga — o contrário de "voltar onde estava".
+    // Nesse caso só restauramos se o PIN já foi digitado nesta sessão.
+    if (!loginLigado()) {
+      const pedeStaff = (salva === "staff" || salva === "sentados") &&
+        String(CFG.pinAtendente || "") && sessionStorage.getItem(SESSION_PIN) !== "1";
+      const pedeGarcom = (salva === "garcom" || salva === "mapa") &&
+        String(CFG.pinGarcom || "") && sessionStorage.getItem(SESSION_PIN_G) !== "1";
+      if (pedeStaff || pedeGarcom) return abaInicial();
+    }
+    return salva;
+  }
   // Perfil Pedidos: a tela dele é só a aba "Na mesa" e o aviso do pedido.
   function soPedidos() {
     return loginLigado() && !!usuario && usuario.papel === PAPEL.PEDIDOS;
@@ -5442,11 +5476,9 @@
 
     const sb = $("#sairBtn");
     if (sb) sb.hidden = !ligado;
-    // configurações e relatório são do administrador
+    // a engrenagem é do administrador — e o relatório mora dentro dela
     const cb = $("#cfgBtn");
     if (cb) cb.hidden = !ehAdm();
-    const rb = $("#relBtn");
-    if (rb) rb.hidden = !ehAdm();
     // zerar a média mexe no número que todo mundo vê: só o administrador
     const ra = $("#resetAvgBtn");
     if (ra) ra.hidden = !ehAdm();
@@ -5484,8 +5516,9 @@
         $("#loginScreen").hidden = true;
 
         aplicarPermissoes();
-        setView(abaInicial());
+        setView(abaParaAbrir());
         await refresh();
+        ligarTelaAcesa();
         ligarRelogios();
       } catch (err) {
         console.warn("Login:", err);
@@ -5538,6 +5571,7 @@
         return;
       }
     }
+    lembrarAba(v);                 // recarregou? volta aqui, e não na aba inicial
     appEl.setAttribute("data-view", v);
     $("#tabTotem").classList.toggle("is-active", v === "totem");
     $("#tabStaff").classList.toggle("is-active", v === "staff");
@@ -6800,7 +6834,7 @@
     // atalhos dentro das configurações
     $("#openRelBtn").addEventListener("click", () => { $("#cfgModal").hidden = true; openRelatorio(); });
     // o relatório também tem botão próprio no cabeçalho (a atendente usa sem abrir as configurações)
-    $("#relBtn").addEventListener("click", openRelatorio);
+    // o relatório abre pela engrenagem (#openRelBtn); o cabeçalho não tem mais botão
     // QR de UM cliente: o link é pessoal e mostra só a situação dele
     $("#publicCopy").addEventListener("click", () =>
       copiarLink($("#publicCopy").dataset.link, null));
@@ -7554,7 +7588,7 @@
     "queueGroups", "avgPref", "cfgFilasColunas",
     "mapaCard", "mapaPiso", "cfgMapaBtn", "mmNumero", "mapaConcluir", "mapaEditarBtn", "mapaMaior", "limparTodasBtn", "mapaVarias", "mapaArrumar", "mlQtd",
     "fpTamanhos", "fpStepper", "cfgTamanhosGrupo", "cfgBtnChamar", "cfgMapaGarcom", "cfgMapaAdm", "mNumeroLabel", "cfgMesaNumObr", "cfgResumoAlerta", "cfgPedidoPainel", "mapaDobrarBtn", "cfgTotemEntrada", "cfgObsMesa", "cfgSentadosMax", "mIdentField", "cfgMapaAtendente",
-    "loginScreen", "relBtn", "sairBtn", "tabSentados", "sentLista", "sentFiltros", "buscaFiltros", "tabPedidos", "pedLista", "pedFiltros",
+    "loginScreen", "sairBtn", "tabSentados", "sentLista", "sentFiltros", "buscaFiltros", "tabPedidos", "pedLista", "pedFiltros",
   ];
   const LS_RECARGA = "fila_recarga_versao";
 
@@ -7648,18 +7682,56 @@
     wireLogin();
     if (!dentro) return;
     aplicarPermissoes();
-    // abre já na aba de trabalho do perfil (o ADM começa na da atendente)
-    if (loginLigado()) setView(abaInicial());
+    // Abre na aba de trabalho — a última usada neste aparelho, quando ela
+    // ainda vale para este perfil; senão, a inicial do perfil. Vale com login
+    // e sem: o tablet que recarrega sozinho volta onde a pessoa estava.
+    const abaDeAbrir = abaParaAbrir();
+    if (loginLigado() || abaDeAbrir !== "totem") setView(abaDeAbrir);
 
     await refresh();
 
     ligarRelogios();
+    ligarTelaAcesa();       // tablet do balcão: o vidro não apaga sozinho
   }
 
   // Os relógios do app: tempos ao vivo, prazos, e as recargas de segurança.
   // Ficam numa função à parte porque precisam ser ligados nos DOIS caminhos —
   // quem já entra com sessão e quem digita a senha na tela de login. Antes só
   // o primeiro ligava, e quem fazia login ficava com os tempos parados.
+
+  // ==========================================================
+  //  TELA SEMPRE ACESA (tablet do balcão)
+  // ----------------------------------------------------------
+  //  O tablet do salão fica horas na mesma tela e o Android apaga por tempo
+  //  limite — a atendente encosta, ele acende, e parece que o app "piscou".
+  //  Enquanto esta tela estiver aberta e visível, o app pede ao sistema para
+  //  manter o vidro aceso (é o mesmo pedido que a página do cliente faz
+  //  enquanto espera o alarme).
+  //
+  //  O bloqueio cai sozinho quando o app vai para segundo plano — aí é o
+  //  Android quem manda, como deve ser. Ao voltar, pedimos de novo. Em
+  //  aparelho ou navegador que não tem esse recurso, nada acontece: o app
+  //  segue igual e o tablet apaga como sempre apagou.
+  // ==========================================================
+  let telaAcesa = null;
+
+  async function manterTelaAcesa() {
+    if (!navigator.wakeLock || document.hidden || telaAcesa) return;
+    try {
+      telaAcesa = await navigator.wakeLock.request("screen");
+      telaAcesa.addEventListener("release", () => { telaAcesa = null; });
+    } catch (e) {
+      telaAcesa = null;           // recusado (bateria fraca, aba em segundo plano)
+    }
+  }
+
+  function ligarTelaAcesa() {
+    manterTelaAcesa();
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) { telaAcesa = null; return; }   // o sistema já soltou
+      manterTelaAcesa();
+    });
+  }
   let _relogiosLigados = false;
   function ligarRelogios() {
     if (_relogiosLigados) return;

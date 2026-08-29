@@ -1951,16 +1951,32 @@
   // ==========================================================
   const MESAS = { LIVRE: "livre", USADA: "usada" };
 
-  // As mesas ficam numa tabela própria; se ela ainda não existe no banco,
-  // o recurso simplesmente não aparece (o resto do app continua normal).
+  // Ordem das mesas livres na tela: pelo NÚMERO, 1, 2, 3… 50 — e não pela hora
+  // em que o garçom lançou. A atendente procura a mesa pelo número que o
+  // cliente vai ouvir; achar isso numa lista fora de ordem custa tempo no
+  // balcão. Mesa juntada entra pelo menor número dela ("12 + 13" vale 12).
+  // Quem foi lançada sem número vai para o fim, na ordem de chegada.
+  function chaveDeOrdem(m) {
+    const bruto = String(m.numeros || m.identificacao || "").split("+")[0].trim();
+    return bruto;
+  }
+  function porNumeroDeMesa(a, b) {
+    const na = chaveDeOrdem(a), nb = chaveDeOrdem(b);
+    if (!na && !nb) return new Date(a.criado_em) - new Date(b.criado_em);
+    if (!na) return 1;
+    if (!nb) return -1;
+    const cmp = na.localeCompare(nb, "pt-BR", { numeric: true });
+    return cmp !== 0 ? cmp : new Date(a.criado_em) - new Date(b.criado_em);
+  }
+  // As mesas ficam numa tabela própria; se ela ainda não existe no banco, o
+  // recurso simplesmente não aparece (o resto do app continua normal).
   async function carregarMesas() {
     // as mesas livres são assunto interno: o totem nem consulta
     if (CFG.garcomAtivo === false || (loginLigado() && !temSessaoEquipe())) { mesasLivres = []; return; }
     try {
       const todas = await backend.listMesas();
       semTabelaMesas = false;
-      mesasLivres = todas.filter((m) => m.status === MESAS.LIVRE)
-        .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+      mesasLivres = todas.filter((m) => m.status === MESAS.LIVRE).sort(porNumeroDeMesa);
     } catch (e) {
       semTabelaMesas = true;
       mesasLivres = [];

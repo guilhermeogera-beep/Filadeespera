@@ -2423,17 +2423,39 @@
       await backend.updateMapa(m.id, p2);
     }
     await refresh();
+    // Arrastar uma mesa em cima da outra é a MESMA junção do botão "Juntar
+    // mesas" — então termina no mesmo lugar: o pop-up do passo 2, para o
+    // garçom informar quantos lugares ficou o conjunto e se é área pet.
+    // Sem isso, a junção por arrasto deixava o tamanho velho no mapa e a
+    // recepção recebia duas mesas de 4 como se ainda fossem duas de 4.
+    const juntas = mapa.find((x) => x.id === b.id);
+    if (juntas && !mapaSoDeOlhar()) {
+      abrirAcaoMesa(juntas.id);
+      mostrarPasso2("juntar", juntas);
+    }
   }
 
+  // Separar desfaz a junção E devolve as mesas para AGUARDANDO. Separar é o
+  // garçom dizendo "esse conjunto não existe mais": deixar as duas metades
+  // liberadas faria a recepção continuar contando com uma mesa que acabou de
+  // ser desmontada. Por isso o aviso à recepção também é retirado.
   async function separarMesas(id) {
     const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
+    const agora = new Date().toISOString();
     for (const x of bloco) {
-      const patch = { grupo: null };
+      const avisadas = mesasLivres.filter((z) => numeroBate(x.numero, z.numeros || z.identificacao));
+      for (const z of avisadas) {
+        try { await backend.removeMesa(z.id); } catch (e) { console.warn("Não deu para tirar da recepção:", e); }
+      }
+    }
+    for (const x of bloco) {
+      const patch = { grupo: null, status: MAPA.LIVRE, liberada_em: agora };
       // volta para o lugar de origem no mapa
       if (x.x_ant != null) { patch.x = x.x_ant; patch.y = x.y_ant; patch.x_ant = null; patch.y_ant = null; }
       Object.assign(x, patch);
       await backend.updateMapa(x.id, patch);
     }
+    renderMapa();
     await refresh();
   }
 
@@ -2518,6 +2540,52 @@
     if (!r || !r.width || !r.height) return null;
     const t = tamanhoDaMesaPx(m);
     return { w: (t.w / r.width) * 100, h: (t.h / r.height) * 100 };
+  }
+
+  // ==========================================================
+  //  ONDE O BLOCO JUNTADO VAI FICAR
+  // ----------------------------------------------------------
+  //  Juntar duas mesas distantes cria um desenho MAIOR — oito lugares ocupam
+  //  quase o dobro da largura de quatro. Se o conjunto nascer onde a mesa
+  //  âncora estava, ele passa por cima das vizinhas: some a mesa de baixo, e
+  //  com ela o jeito de tocar nela.
+  //
+  //  Por isso, depois de juntar, o bloco procura um vão livre. Ele começa
+  //  olhando o próprio lugar (se couber ali, não sai do lugar — mexer sem
+  //  necessidade confunde quem conhece o salão) e vai abrindo o círculo até
+  //  achar espaço que não encoste em ninguém.
+  // ==========================================================
+  function acharEspacoLivre(m) {
+    const meu = tamanhoDaMesaPct(m);
+    if (!meu) return null;                       // piso ainda sem medida
+    const meuBloco = new Set(blocoDaMesa(m).map((x) => x.id));
+    // as vizinhas que aparecem no desenho: de cada grupo, só a âncora
+    const vizinhas = mapa.filter((x) => {
+      if (meuBloco.has(x.id)) return false;
+      if (!x.grupo) return true;
+      const b = blocoDaMesa(x);
+      return b[0] && b[0].id === x.id;
+    }).map((x) => ({ x, t: tamanhoDaMesaPct(x) })).filter((v) => v.t);
+
+    const FOLGA = 1.5;                           // % de respiro entre os desenhos
+    const encosta = (px, py) => vizinhas.some((v) => {
+      const ox = Number(v.x.x) || 0, oy = Number(v.x.y) || 0;
+      return Math.abs(px - ox) < (meu.w + v.t.w) / 2 + FOLGA &&
+             Math.abs(py - oy) < (meu.h + v.t.h) / 2 + FOLGA;
+    });
+
+    const x0 = Number(m.x) || 50, y0 = Number(m.y) || 50;
+    if (!encosta(x0, y0)) return null;           // já está num vão: fica onde está
+
+    let melhor = null, menor = Infinity;
+    for (let py = 8; py <= 92; py += 2) {
+      for (let px = 6; px <= 94; px += 2) {
+        if (encosta(px, py)) continue;
+        const d = Math.hypot(px - x0, py - y0);  // o vão mais perto de onde estava
+        if (d < menor) { menor = d; melhor = { x: px, y: py }; }
+      }
+    }
+    return melhor;
   }
 
   // Lados em que esta mesa está encostada em outra do MESMO bloco. Ali não
@@ -2893,7 +2961,10 @@
       return;
     }
     const juntando = mapaAcaoPasso2 === "juntar";
-    if (juntando && !mapaJuntarSelecao.size) {
+    // Só cobra a escolha de uma mesa quando ainda não há junção nenhuma. Quem
+    // chegou aqui arrastando já juntou — o que falta é o tamanho, e exigir
+    // outra mesa travaria o garçom num pedido sem sentido.
+    if (juntando && !mapaJuntarSelecao.size && blocoDaMesa(m).length < 2) {
       msg.textContent = "Escolha ao menos uma mesa para juntar.";
       msg.className = "form-msg err";
       return;
@@ -2932,6 +3003,18 @@
         return backend.updateMapa(x.id, patch);
       });
       await Promise.allSettled(gravaLugares);
+      // com o tamanho novo, o desenho do bloco cresceu: se ele passou a cobrir
+      // uma vizinha, o conjunto anda para o vão livre mais perto
+      if (juntando || blocoDaMesa(m).length > 1) {
+        renderMapa();                            // o desenho precisa estar no tamanho novo
+        const vaga = acharEspacoLivre(m);
+        if (vaga) {
+          m.x = vaga.x; m.y = vaga.y;
+          renderMapa();
+          try { await backend.updateMapa(m.id, { x: vaga.x, y: vaga.y }); }
+          catch (e) { console.warn("Não deu para guardar a posição do bloco:", e); }
+        }
+      }
       await liberarMesaDoMapa(m);
       await refresh();
     } catch (e) {
@@ -5740,20 +5823,24 @@
       $("#tamanhoModal").hidden = true;
       chamarParaMesa();
     }));
+    // O Android manda um clique atrasado depois do toque. Se o pop-up acabou
+    // de abrir debaixo do dedo, esse clique cai num BOTÃO dele e muda o estado
+    // da mesa sem ninguém pedir — era a "piscada" que trocava a cor. Vale para
+    // os dois passos: juntando por arrasto, o passo 2 abre exatamente onde o
+    // dedo largou a mesa.
+    const popupRecemAberto = () => {
+      const abertoEm = Number($("#mapaAcaoModal").dataset.abertoEm) || 0;
+      return Date.now() - abertoEm < 450;
+    };
     $("#mapaAcoes").addEventListener("click", (e) => {
       const b = e.target.closest("[data-macao]");
-      if (!b) return;
-      // O Android manda um clique atrasado depois do toque. Se o pop-up acabou
-      // de abrir debaixo do dedo, esse clique cai num BOTÃO daqui e muda o
-      // estado da mesa sem ninguém pedir — era a "piscada" que trocava a cor.
-      const abertoEm = Number($("#mapaAcaoModal").dataset.abertoEm) || 0;
-      if (Date.now() - abertoEm < 450) return;
+      if (!b || popupRecemAberto()) return;
       acaoNaMesa(b.dataset.macao);
     });
     // ---- passo 2 do pop-up da mesa ----
     $("#mapaLugaresChips").addEventListener("click", (e) => {
       const b = e.target.closest("[data-maplug]");
-      if (!b) return;
+      if (!b || popupRecemAberto()) return;
       if (b.dataset.maplug === "manual") {
         mapaLugaresManual = true;
       } else {
@@ -5764,16 +5851,23 @@
     });
     // "outro": o mesmo ± grande do pop-up do garçom. Digitar número no meio do
     // salão, de pé, é onde nasce o erro — aqui o dedo só toca.
-    $$(".step-btn[data-mapstep]").forEach((b) =>
-      b.addEventListener("click", () => {
-        mapaLugaresEscolhidos = Math.max(1, Math.min(60,
-          (Number(mapaLugaresEscolhidos) || 4) + Number(b.dataset.mapstep)));
-        $("#mapaLugaresManual").textContent = mapaLugaresEscolhidos;
-      })
-    );
+    //
+    // O ouvinte fica no PASSO 2 inteiro, e não em cada botão: assim ele
+    // funciona mesmo que o conteúdo do pop-up seja redesenhado, e um toque na
+    // borda do botão (onde cai o ícone, não o texto) continua contando. E aqui
+    // não entra a trava do clique atrasado: mexer no número é inofensivo — o
+    // garçom vê o valor na tela antes de confirmar.
+    $("#mapaPasso2").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mapstep]");
+      if (!b) return;
+      mapaLugaresManual = true;
+      mapaLugaresEscolhidos = Math.max(1, Math.min(60,
+        (Number(mapaLugaresEscolhidos) || 4) + Number(b.dataset.mapstep)));
+      $("#mapaLugaresManual").textContent = mapaLugaresEscolhidos;
+    });
     $("#mapaJuntarLista").addEventListener("click", (e) => {
       const b = e.target.closest("[data-mapjuntar]");
-      if (!b) return;
+      if (!b || popupRecemAberto()) return;
       const id = b.dataset.mapjuntar;
       if (mapaJuntarSelecao.has(id)) mapaJuntarSelecao.delete(id);
       else mapaJuntarSelecao.add(id);
@@ -5787,8 +5881,8 @@
         desenharLugaresDoMapa();
       }
     });
-    $("#mapaPasso2Voltar").addEventListener("click", voltarAoPasso1);
-    $("#mapaPasso2Ok").addEventListener("click", acaoSegura("liberar a mesa", confirmarPasso2));
+    $("#mapaPasso2Voltar").addEventListener("click", () => { if (!popupRecemAberto()) voltarAoPasso1(); });
+    $("#mapaPasso2Ok").addEventListener("click", acaoSegura("liberar a mesa", () => { if (!popupRecemAberto()) return confirmarPasso2(); }));
 
     // cadastro do mapa (pela engrenagem)
     $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {

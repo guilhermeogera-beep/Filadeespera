@@ -4386,6 +4386,15 @@
     const callList = $("#callList");
     const callEmpty = $("#callEmpty");
     const naFilaDaFila = appEl.getAttribute("data-view") === "filafila";
+    // O painel do alto era escondido nesta aba por uma regra do styles.css.
+    // Ligar/desligar por aqui, com prioridade máxima, garante que ele apareça
+    // mesmo em aparelho que ainda esteja com o CSS antigo em cache — e some
+    // limpo nas outras abas, onde a regra de sempre continua valendo.
+    const painelEl = $("#callPanel");
+    if (painelEl) {
+      if (naFilaDaFila) painelEl.style.setProperty("display", "flex", "important");
+      else painelEl.style.removeProperty("display");
+    }
     if (naFilaDaFila) {
       const avisados = naPrevia()
         .filter((r) => r.previa_avisado_em)

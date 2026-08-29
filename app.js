@@ -3146,6 +3146,11 @@
     if (juntas) btns.push(`<button type="button" class="btn btn-neutral" data-macao="separar">✂️ Separar as mesas</button>`);
     $("#mapaAcoes").innerHTML = btns.join("");
     voltarAoPasso1();
+    // carimba a hora da abertura aqui mesmo: o observador dos pop-ups só
+    // percebe quando o `hidden` MUDA, e abrir a ficha de outra mesa com o
+    // pop-up já aberto não muda nada — a hora ficava velha e a rede de
+    // segurança do clique fantasma deixava de valer
+    $("#mapaAcaoModal").dataset.abertoEm = String(Date.now());
     $("#mapaAcaoModal").hidden = false;
   }
 
@@ -6195,24 +6200,42 @@
       $("#tamanhoModal").hidden = true;
       chamarParaMesa();
     }));
-    // O Android manda um clique atrasado depois do toque. Se o pop-up acabou
-    // de abrir debaixo do dedo, esse clique cai num BOTÃO dele e muda o estado
-    // da mesa sem ninguém pedir — era a "piscada" que trocava a cor. Vale para
-    // os dois passos: juntando por arrasto, o passo 2 abre exatamente onde o
-    // dedo largou a mesa.
-    const popupRecemAberto = () => {
+    // ---------------------------------------------------------------
+    //  O CLIQUE FANTASMA DO ANDROID
+    // ---------------------------------------------------------------
+    //  Depois de um toque, o Android ainda manda um clique de mouse "de
+    //  brinde". Se o pop-up abriu debaixo do dedo, esse clique cai num BOTÃO
+    //  dele e muda o estado da mesa sem ninguém pedir — era a "piscada" que
+    //  trocava a cor sozinha.
+    //
+    //  Antes eu ignorava TODO clique nos primeiros 450ms. Só que o garçom que
+    //  toca rápido caía nessa trava: apertava "Aguardando", não acontecia
+    //  nada, e ele tinha que fechar e abrir o pop-up de novo.
+    //
+    //  Agora quem decide é a ORIGEM, não o relógio. Cada `pointerdown` DENTRO
+    //  do pop-up arma UM clique — e o clique aceito desarma. O toque de
+    //  verdade responde na hora; o fantasma, que não tem `pointerdown` próprio
+    //  (é resto do gesto que aconteceu lá no mapa, ou do toque que já foi
+    //  aproveitado), encontra o gatilho desarmado e é descartado.
+    //
+    //  A janela de 700ms é a rede de segurança para o clique que não vem de
+    //  toque nenhum — teclado, por exemplo: passado esse tempo, tudo passa.
+    let cliqueArmado = false;
+    $("#mapaAcaoModal").addEventListener("pointerdown", () => { cliqueArmado = true; });
+    const cliqueFantasma = () => {
+      if (cliqueArmado) { cliqueArmado = false; return false; }
       const abertoEm = Number($("#mapaAcaoModal").dataset.abertoEm) || 0;
-      return Date.now() - abertoEm < 450;
+      return Date.now() - abertoEm < 700;
     };
     $("#mapaAcoes").addEventListener("click", (e) => {
       const b = e.target.closest("[data-macao]");
-      if (!b || popupRecemAberto()) return;
+      if (!b || cliqueFantasma()) return;
       acaoNaMesa(b.dataset.macao);
     });
     // ---- passo 2 do pop-up da mesa ----
     $("#mapaLugaresChips").addEventListener("click", (e) => {
       const b = e.target.closest("[data-maplug]");
-      if (!b || popupRecemAberto()) return;
+      if (!b || cliqueFantasma()) return;
       if (b.dataset.maplug === "manual") {
         mapaLugaresManual = true;
       } else {
@@ -6239,7 +6262,7 @@
     });
     $("#mapaJuntarLista").addEventListener("click", (e) => {
       const b = e.target.closest("[data-mapjuntar]");
-      if (!b || popupRecemAberto()) return;
+      if (!b || cliqueFantasma()) return;
       const id = b.dataset.mapjuntar;
       if (mapaJuntarSelecao.has(id)) mapaJuntarSelecao.delete(id);
       else mapaJuntarSelecao.add(id);
@@ -6252,8 +6275,8 @@
         desenharLugaresDoMapa();
       }
     });
-    $("#mapaPasso2Voltar").addEventListener("click", () => { if (!popupRecemAberto()) voltarAoPasso1(); });
-    $("#mapaPasso2Ok").addEventListener("click", acaoSegura("liberar a mesa", () => { if (!popupRecemAberto()) return confirmarPasso2(); }));
+    $("#mapaPasso2Voltar").addEventListener("click", () => { if (!cliqueFantasma()) voltarAoPasso1(); });
+    $("#mapaPasso2Ok").addEventListener("click", acaoSegura("liberar a mesa", () => { if (!cliqueFantasma()) return confirmarPasso2(); }));
 
     // cadastro do mapa (pela engrenagem)
     $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {

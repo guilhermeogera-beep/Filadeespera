@@ -2445,7 +2445,6 @@
   async function separarMesas(id) {
     const bloco = blocoDaMesa(mapa.find((x) => x.id === id));
     const agora = new Date().toISOString();
-    const ids = bloco.map((x) => x.id);
     for (const x of bloco) {
       const avisadas = mesasLivres.filter((z) => numeroBate(x.numero, z.numeros || z.identificacao));
       for (const z of avisadas) {
@@ -2475,13 +2474,13 @@
     renderMapa();                                // já separa na tela, sem esperar o banco
     await Promise.allSettled(gravacoes);
     await refresh();
-    // O lugar de origem pode ter sido ocupado por outra mesa enquanto elas
-    // estavam juntas — e há junção antiga sem origem guardada, que largaria as
-    // duas empilhadas no mesmo ponto. Então, separou, o mapa se arruma: cada
-    // uma volta para a casa dela na sequência, e ninguém fica por cima de
-    // ninguém.
-    try { for (const x of ids) await arrumarSobreposicoes(x); }
-    catch (e) { console.warn("Não deu para arrumar o mapa depois de separar:", e); }
+    // Separou, o mapa se organiza inteiro — a MESMA arrumação do botão
+    // "Organizar no mapa" do editor. É a hora certa: duas mesas acabaram de
+    // voltar ao salão e podiam cair em cima de qualquer vizinha. Cada uma vai
+    // para o lugar dela na ordem numérica, e a planta volta a ser lida de
+    // relance.
+    try { await organizarEmGrade(true); }
+    catch (e) { console.warn("Não deu para organizar o mapa depois de separar:", e); }
   }
 
   // Escolhe quem chamar para o tamanho/pet que estão preparados e abre a
@@ -3372,27 +3371,62 @@
     return pontos;
   }
 
-  // "Organizar no mapa": põe todas as mesas em ordem numérica numa grade.
+  // ==========================================================
+  //  ORGANIZAR EM GRADE
+  // ----------------------------------------------------------
+  //  É o "Organizar no mapa" do editor — e é também o que roda sozinho depois
+  //  de separar mesas, porque separar é exatamente a hora em que a planta fica
+  //  bagunçada: duas mesas voltam ao salão e podem cair em cima de qualquer
+  //  vizinha.
+  //
+  //  No EDITOR cada mesa é uma peça (é ali que ele posiciona uma a uma). No
+  //  dia a dia a peça é o DESENHO: um bloco juntado anda inteiro e não é
+  //  desmontado por uma arrumação — quem desmonta é o botão "Separar".
+  // ==========================================================
+  async function organizarEmGrade(silencioso) {
+    if (!mapa.length) {
+      if (!silencioso) avisoStaff("Não há mesas para organizar.", true);
+      return;
+    }
+    const gravacoes = [];
+    let quantas = 0;
+    if (modoEdicaoMapa) {
+      const ordenadas = mapa.slice().sort((a, b) =>
+        String(a.numero).localeCompare(String(b.numero), "pt-BR", { numeric: true }));
+      const pontos = posicoesEmGrade(ordenadas.length);
+      ordenadas.forEach((m, i) => {
+        const p = pontos[i];
+        m.x = p.x; m.y = p.y;                       // pinta na hora
+        gravacoes.push(backend.updateMapa(m.id, { x: p.x, y: p.y }));
+      });
+      quantas = ordenadas.length;
+    } else {
+      const ds = desenhosDoMapa().sort((a, b) =>
+        numeroDoDesenho(a).localeCompare(numeroDoDesenho(b), "pt-BR", { numeric: true }));
+      const pontos = posicoesEmGrade(ds.length);
+      ds.forEach((d, i) => {
+        const p = pontos[i];
+        if (!p) return;
+        moverDesenho(d, p);                         // o bloco anda inteiro
+        d.bloco.forEach((m) => gravacoes.push(backend.updateMapa(m.id, { x: m.x, y: m.y })));
+      });
+      quantas = ds.length;
+    }
+    renderMapa();
+    const r = await Promise.allSettled(gravacoes);
+    await refresh();
+    if (silencioso) return;
+    desenharEditorMapa();
+    const falhas = r.filter((x) => x.status === "rejected").length;
+    avisoStaff(quantas + (quantas === 1 ? " mesa organizada" : " mesas organizadas") +
+      (falhas ? " • ⚠ " + falhas + " não gravou" : ""), !falhas);
+  }
+
   async function arrumarMapa() {
     if (!mapa.length) { avisoStaff("Não há mesas para organizar.", true); return; }
     if (!confirm("Reposicionar TODAS as " + mapa.length + " mesas numa grade?\n\n" +
       "O tamanho, o número e a área pet de cada uma continuam como estão — muda só o lugar no desenho.")) return;
-    const ordenadas = mapa.slice().sort((a, b) =>
-      String(a.numero).localeCompare(String(b.numero), "pt-BR", { numeric: true }));
-    const pontos = posicoesEmGrade(ordenadas.length);
-    const gravacoes = [];
-    ordenadas.forEach((m, i) => {
-      const p = pontos[i];
-      m.x = p.x; m.y = p.y;                       // pinta na hora
-      gravacoes.push(backend.updateMapa(m.id, { x: p.x, y: p.y }));
-    });
-    renderMapa();
-    const r = await Promise.allSettled(gravacoes);
-    await refresh();
-    desenharEditorMapa();
-    const falhas = r.filter((x) => x.status === "rejected").length;
-    avisoStaff(ordenadas.length + " mesas organizadas" +
-      (falhas ? " • ⚠ " + falhas + " não gravou" : ""), !falhas);
+    await organizarEmGrade(false);
   }
 
   // ---------- criar várias mesas ----------
@@ -4266,6 +4300,7 @@
         `<button class="btn btn-sm btn-verde" data-ffpromover="${r.id}">➡ Colocar na fila de espera</button>
          <button class="btn btn-sm ${avisado ? "" : "btn-accent"}" data-ffavisar="${r.id}">${
            avisado ? "🔁 Avisar de novo" : "🔔 Avisar que abriu vaga"}</button>
+         ${avisado ? `<button class="btn btn-sm" data-ffvoltar="${r.id}">↩️ Voltar para a fila da fila</button>` : ""}
          ${CFG.linkAtivo === false ? "" : `<button class="btn btn-sm btn-qr" data-qrcliente="${r.id}">📱 QR do cliente</button>`}
          <button class="btn btn-sm" data-edit="${r.id}">✏️ Editar</button>
          <button class="btn btn-sm btn-ghost btn-danger" data-drop="${r.id}">🗑 Remover</button>`;
@@ -4412,6 +4447,7 @@
             ? `<a class="btn btn-sm ci-wa" href="${waLinkPrevia(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
           <button class="btn btn-sm ci-ok" data-ffpromover="${r.id}">➡ Colocar na fila</button>
           <button class="btn btn-sm ci-back" data-ffavisar="${r.id}">🔁 Avisar de novo</button>
+          <button class="btn btn-sm ci-back" data-ffvoltar="${r.id}">↩️ Voltar para a fila da fila</button>
           <button class="btn btn-sm ci-edit" data-edit="${r.id}">✏️ Editar</button>
           <button class="btn btn-sm ci-end" data-drop="${r.id}">🗑 Remover</button>
         </div>
@@ -4732,6 +4768,21 @@
       avisarNoCelular(id, "previa");
     } catch (e) {
       console.warn("Aviso da fila da fila não registrado:", e);
+    }
+    await refresh();
+  }
+
+  // Desfaz o aviso: a pessoa volta para a espera da antessala, sem aviso
+  // nenhum registrado. Serve para o engano (avisou o cliente errado) e para
+  // quem foi avisado e não apareceu — em vez de sumir da tela, ela volta para
+  // a lista e pode ser avisada de novo mais tarde.
+  async function desfazerAvisoPrevia(id) {
+    const patch = { previa_avisado_em: null };
+    pintarLocal(id, patch);
+    try {
+      await backend.update(id, patch);
+    } catch (e) {
+      console.warn("Não deu para desfazer o aviso da fila da fila:", e);
     }
     await refresh();
   }
@@ -6241,7 +6292,7 @@
 
     // ações na lista/painel (delegação)
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente],[data-finish],[data-ffpromover],[data-ffavisar],[data-ffrebaixar]");
+      const t = e.target.closest("[data-call],[data-seat],[data-drop],[data-back],[data-discard],[data-toend],[data-edit],[data-pedido],[data-qrcliente],[data-finish],[data-ffpromover],[data-ffavisar],[data-ffvoltar],[data-ffrebaixar]");
       if (!t) return;
       // veio da ficha do cliente? ela sai da frente antes da ação acontecer
       if (t.closest("#clienteModal")) $("#clienteModal").hidden = true;
@@ -6276,6 +6327,12 @@
           avisoStaff("Aviso registrado. O navegador bloqueou o WhatsApp — abra a conversa na mão.");
         }
         avisarDaPrevia(idAviso);
+        return;
+      }
+      if (t.dataset.ffvoltar) {
+        // desfaz o aviso: a pessoa sai do painel do alto e volta para a espera
+        await acaoSegura("voltar para a fila da fila",
+          () => desfazerAvisoPrevia(t.dataset.ffvoltar))();
         return;
       }
       if (t.dataset.pedido) {

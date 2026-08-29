@@ -180,6 +180,9 @@ button{font-family:inherit}
    confundir com a chamada de mesa, que é verde. Não recebe o semáforo de
    tempo — o aviso vale por alguns minutos e sai sozinho. */
 .call-item.pronto{background:linear-gradient(135deg,#e67e22,#d35400)}
+/* Cartão da fila da fila no painel do alto: roxo, a cor da antessala. Não
+   recebe o semáforo de tempo — ali ninguém perde a vez por demorar. */
+.call-item.is-previa{background:linear-gradient(135deg,#6B5BA8,#4B3E7D)}
 .call-item.pronto .ci-label{color:#fff}
 .call-item.is-me{box-shadow:0 0 0 4px #fff, 0 6px 18px rgba(0,0,0,.25)}
 @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
@@ -462,11 +465,10 @@ button{font-family:inherit}
 #app[data-view="garcom"] .welcome,
 #app[data-view="garcom"] .closed-banner{display:none !important}
 
-/* A antessala mostra só a lista dela. A fila de espera e o painel de
-   chamadas são de outra pessoa — aqui só atrapalhariam e dariam a impressão
-   de que ela pode chamar mesa. */
+/* A antessala mostra a lista dela e, no alto, o painel dos já avisados — que
+   ali é a chamada DELA. A fila de espera e as mesas livres são de outra
+   pessoa: aqui só atrapalhariam. */
 #app[data-view="filafila"] .queue-card,
-#app[data-view="filafila"] .call-panel,
 #app[data-view="filafila"] .welcome,
 #app[data-view="filafila"] .mesas-card,
 #app[data-view="filafila"] .closed-banner{display:none !important}
@@ -1433,15 +1435,6 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 /* já avisado que abriu vaga: some do "a fazer" da atendente sem sumir da lista */
 .previa-item.is-avisado{background:#F4FBF7;border-color:#BEDFCD}
 
-/* ---- Fila da fila: faixa dos já avisados ----
-   Quem já recebeu o aviso está a caminho da recepção: é ação pendente, e
-   ação pendente fica no alto da tela, separada de quem ainda espera. */
-.ff-avisados{
-  margin:0 0 14px;padding:10px 10px 6px;border-radius:14px;
-  background:#F4FBF7;border:1.5px solid #BEDFCD;
-}
-.ff-avisados-tit{margin:0 0 8px;font-weight:800;color:#1F6B45;display:flex;align-items:center;gap:8px}
-.ff-avisados .previa-lista{gap:8px}
 .previa-pos{
   min-width:46px;text-align:center;font-weight:800;font-size:1.05rem;
   background:#EDEAF7;color:#4B3E7D;border-radius:10px;padding:8px 6px;flex:0 0 auto;

@@ -2452,14 +2452,27 @@
         try { await backend.removeMesa(z.id); } catch (e) { console.warn("Não deu para tirar da recepção:", e); }
       }
     }
+    // Sem origem guardada não dá para "voltar": junção antiga, feita antes de
+    // o mapa passar a guardar o lugar de cada uma. Nesse caso a mesa vai para
+    // a CASA dela — o lugar que ela ocupa na grade em ordem numérica —, que é
+    // exatamente a formação organizada que o garçom espera ver.
+    const ordem = mapa.slice().sort((a, b) =>
+      String(a.numero).localeCompare(String(b.numero), "pt-BR", { numeric: true }));
+    const casas = posicoesEmGrade(ordem.length);
+    const casaDe = (m) => casas[ordem.findIndex((z) => z.id === m.id)] || null;
+
     const gravacoes = bloco.map((x) => {
       const patch = { grupo: null, status: MAPA.LIVRE, liberada_em: agora };
       // volta para o lugar de origem no mapa
       if (x.x_ant != null) { patch.x = x.x_ant; patch.y = x.y_ant; patch.x_ant = null; patch.y_ant = null; }
+      else {
+        const c = casaDe(x);
+        if (c) { patch.x = c.x; patch.y = c.y; }
+      }
       Object.assign(x, patch);
       return backend.updateMapa(x.id, patch);
     });
-    renderMapa();
+    renderMapa();                                // já separa na tela, sem esperar o banco
     await Promise.allSettled(gravacoes);
     await refresh();
     // O lugar de origem pode ter sido ocupado por outra mesa enquanto elas
@@ -4365,12 +4378,41 @@
     // Entram também os pedidos que acabaram de ficar prontos, no topo: no totem
     // para o cliente que está longe do celular, na tela da equipe para a
     // atendente saber o que ainda está no balcão esperando ser retirado.
+    //
+    // NA ABA DA FILA DA FILA o mesmo painel mostra outra coisa: quem já foi
+    // avisado de que abriu vaga. É a chamada DELA — a pessoa está vindo até a
+    // recepção agora — e fica no mesmo lugar da tela, no alto, para a atendente
+    // não ter que aprender dois lugares diferentes.
     const callList = $("#callList");
     const callEmpty = $("#callEmpty");
+    const naFilaDaFila = appEl.getAttribute("data-view") === "filafila";
+    if (naFilaDaFila) {
+      const avisados = naPrevia()
+        .filter((r) => r.previa_avisado_em)
+        .sort((a, b) => new Date(b.previa_avisado_em) - new Date(a.previa_avisado_em));
+      callEmpty.hidden = avisados.length > 0;
+      callEmpty.textContent = "Ninguém avisado no momento";
+      callList.innerHTML = avisados.map((r, i) => `
+      <div class="call-item is-previa ${i === 0 ? "fresh" : ""}">
+        <span class="ci-label">🎟 Avisado</span>
+        <span class="ci-name">${esc(firstName(r.nome))}</span>
+        <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} •
+          avisado às ${fmtClock(r.previa_avisado_em)} (há <b data-since="${r.previa_avisado_em}">agora</b>)</span>
+        <div class="ci-actions">
+          ${(CFG.whatsAtivo !== false && CFG.previaWhats !== false && r.telefone && waLinkPrevia(r))
+            ? `<a class="btn btn-sm ci-wa" href="${waLinkPrevia(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
+          <button class="btn btn-sm ci-ok" data-ffpromover="${r.id}">➡ Colocar na fila</button>
+          <button class="btn btn-sm ci-back" data-ffavisar="${r.id}">🔁 Avisar de novo</button>
+          <button class="btn btn-sm ci-edit" data-edit="${r.id}">✏️ Editar</button>
+          <button class="btn btn-sm ci-end" data-drop="${r.id}">🗑 Remover</button>
+        </div>
+      </div>`).join("");
+    } else {
     const prontosTodos = pedidosProntos();
     const prontos = buscando ? prontosTodos.filter(combinaBusca) : prontosTodos;
     const painel = prontos.concat(c.filter((r) => !prontos.some((p) => p.id === r.id)));
     callEmpty.hidden = painel.length > 0;
+    callEmpty.textContent = "Nenhuma mesa sendo chamada no momento";
     callList.innerHTML = painel.map((r, i) => {
       const pronto = pedidoNoPainel(r);
       // os botões de chamada só fazem sentido para quem ainda está chamado:
@@ -4395,6 +4437,7 @@
         </div>` : ""}
       </div>`;
     }).join("");
+    }
 
     renderMesas();
     renderResumoFila();
@@ -4768,18 +4811,10 @@
       </button>`;
     };
 
-    const avisados = lista.filter((r) => r.previa_avisado_em);
+    // Quem já foi avisado sai daqui: ele aparece no painel do alto, junto com
+    // as ações dele. Na lista de baixo fica só quem ainda espera a vez — e a
+    // numeração volta a contar só essa gente.
     const esperando = lista.filter((r) => !r.previa_avisado_em);
-    const box = $("#ffAvisados");
-    if (box) {
-      box.hidden = !avisados.length;
-      $("#ffAvisadosCount").textContent = avisados.length;
-      // o aviso mais recente em cima: é o que a atendente acabou de mandar
-      $("#ffAvisadosLista").innerHTML = avisados
-        .slice()
-        .sort((a, b) => new Date(b.previa_avisado_em) - new Date(a.previa_avisado_em))
-        .map((r) => linhaHTML(r, "🔔")).join("");
-    }
     $("#ffLista").innerHTML = esperando.map((r, i) => linhaHTML(r, i + 1 + "º")).join("");
   }
 
@@ -4987,6 +5022,9 @@
     // escala de cor verde → vermelho (0 até o prazo) + destaque de prazo esgotado
     const prazoMs = (CFG.prazoComparecer || 10) * 60000;
     $$(".call-item").forEach((card) => {
+      // O cartão da fila da fila não tem prazo para vencer: ninguém perde a
+      // vez por demorar a chegar da antessala. Ele fica na cor dele.
+      if (card.classList.contains("is-previa")) return;
       const b = card.querySelector("[data-since]");
       if (!b) return;
       const d = new Date(b.getAttribute("data-since")).getTime();

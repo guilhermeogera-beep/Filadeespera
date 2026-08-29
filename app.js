@@ -3032,6 +3032,19 @@
     });
     return soma || 4;
   }
+  // Deixa o passo 2 já preenchido com o tamanho que a mesa TEM hoje — não com
+  // o tamanho mais parecido da lista da casa. Se o garçom só quer trocar o
+  // status, ele confirma sem mexer em nada e o número continua o mesmo; a
+  // contagem só muda se ELE mudar.
+  //
+  // Quando o valor atual não é um dos botões da casa (uma mesa de 5, por
+  // exemplo), o campo já abre no "outro", com o 5 no ± — senão o botão de 4
+  // apareceria marcado e a mesa viraria de 4 sem ninguém pedir.
+  function preencherLugares(m) {
+    const atual = lugaresSugeridos(m);
+    mapaLugaresEscolhidos = atual;
+    mapaLugaresManual = !tamanhosDaCasa().includes(Number(atual));
+  }
 
   // `semLista` esconde o "quais mesas vão junto": quem juntou ARRASTANDO já
   // escolheu as mesas com o dedo, no mapa. Repetir a pergunta ali seria pedir
@@ -3043,8 +3056,7 @@
     const aguardando = acao === "livre";
     const comLista = juntando && !(opcoes && opcoes.semLista);
     mapaJuntarSelecao = new Set();
-    mapaLugaresManual = false;
-    mapaLugaresEscolhidos = valorDaLista(tamanhosDaCasa(), lugaresSugeridos(m));
+    preencherLugares(m);
     $("#mapaJuntarBox").hidden = !comLista;
     $("#mapaAcoes").hidden = true;
     $("#mapaAcaoRodape").hidden = true;
@@ -6218,10 +6230,9 @@
       else mapaJuntarSelecao.add(id);
       const m = mapa.find((x) => x.id === mapaMesaAtiva);
       if (m) {
-        // a sugestão de lugares acompanha o que foi escolhido
-        if (!mapaLugaresManual) {
-          mapaLugaresEscolhidos = valorDaLista(tamanhosDaCasa(), lugaresSugeridos(m));
-        }
+        // escolheu mais uma mesa: a soma acompanha, com o total exato do que
+        // está selecionado (o garçom corrige depois se o salão disser outra coisa)
+        preencherLugares(m);
         desenharJuntarLista(m);
         desenharLugaresDoMapa();
       }

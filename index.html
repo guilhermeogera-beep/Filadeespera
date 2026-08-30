@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=190" />
+<link rel="stylesheet" href="./styles.css?v=191" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -1396,24 +1396,12 @@
           <input id="cfgRest" type="text" maxlength="40" />
         </label>
         <label class="field">
-          <span>PIN da atendente</span>
-          <input id="cfgPinAtend" type="text" inputmode="numeric" maxlength="8" />
-          <small class="hint">Fica guardado só <b>neste aparelho</b> (por segurança, não é enviado para a nuvem).</small>
-        </label>
-        <label class="field">
           <span>Aba do garçom (lançar mesas livres)</span>
           <select id="cfgGarcomOn">
             <option value="sim">Mostrar</option>
             <option value="nao">Ocultar</option>
           </select>
           <small class="hint">O garçom avisa quais mesas vagaram; a atendente vê o resumo e chama o próximo.</small>
-        </label>
-        <label class="field">
-          <span>PIN do garçom</span>
-          <input id="cfgPinGarcom" type="text" inputmode="numeric" maxlength="8" placeholder="deixe vazio para não pedir" />
-          <small class="hint">Guardado só neste aparelho. Vazio = a aba abre sem senha.
-            Se for <b>igual ao da atendente</b>, quem souber um entra nos dois — use números
-            diferentes se quiser separar.</small>
         </label>
         <p class="cfg-versao">Versão do app: <b id="cfgVersao">—</b></p>
         <p class="form-msg" id="cfgMsgStatus"></p>
@@ -1577,4 +1565,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=190"></script>
+<script src="./app.js?v=191"></script>

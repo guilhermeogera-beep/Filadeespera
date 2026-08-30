@@ -7268,7 +7268,7 @@
       "cfgCampoEmail", "cfgCampoAniversario", "cfgPetOn", "cfgSemPetOn",
       "cfgMaxP", "cfgTamanhosGrupo"] },
     { id: "cliente", titulo: "👀 O que o cliente enxerga", campos: [
-      "cfgFilasJuntas", "cfgMostrarHora", "cfgMostrarTempo", "cfgMostrarMedia", "cfgMostrarFila"] },
+      "cfgFilasJuntas", "cfgMostrarHora", "cfgMostrarTempo", "cfgMostrarMedia"] },
     { id: "atendente", titulo: "👩‍💼 Atendente — chamada das mesas", campos: [
       "cfgPrazo", "cfgAutoFim", "cfgAlt", "cfgTamanhos", "cfgRegra", "cfgSom",
       "cfgPerguntarMesa", "cfgBtnChamar", "cfgFilasColunas"] },
@@ -7283,7 +7283,8 @@
       "cfgWhatsMode", "cfgMsg", "cfgMsgLink", "cfgAvisoPedido", "cfgPedidoWhats", "cfgPedidoPainel", "cfgMsgPedido"] },
     { id: "filafila", titulo: "🎟 Fila da fila", campos: [
       "cfgPreviaWhats", "cfgMsgPrevia", "cfgFfTel", "cfgFfEmail", "cfgFfAniv", "cfgFfTipo", "cfgFfPet", "cfgFfExtras"] },
-    { id: "fechar", titulo: "🔒 Fechamento automático da fila", campos: [
+    { id: "fechar", titulo: "🔒 Fechar a fila", campos: [
+      "cfgMostrarFila",
       "cfgAutoFecha", "cfgAutoFechaQtd"] },
     { id: "pager", titulo: "🔔 Pager por rádio", campos: [
       "cfgPagerBtn"] },
@@ -7291,8 +7292,6 @@
       "cfgQrFixo"] },
     { id: "backup", titulo: "💾 Cópia de segurança em arquivo", campos: [
       "cfgBackupField"] },
-    { id: "equipe", titulo: "👥 Equipe e acesso", campos: [
-      "cfgPinAtend", "cfgPinGarcom"] },
   ];
 
   const LS_CFG_ABERTOS = "fila_cfg_abertos";
@@ -7452,7 +7451,6 @@
     $("#cfgFfExtras").value = CFG.ffExtras || "";
 
     $("#cfgRest").value = CFG.restaurante || "";
-    $("#cfgPinAtend").value = CFG.pinAtendente || "";
     $("#cfgPerguntarMesa").value = CFG.perguntarMesa || "opcional";
     $("#cfgMesaNumObr").value = CFG.mesaNumObrigatorio === false ? "nao" : "sim";
     $("#cfgResumoAlerta").value = alertaDoResumo();
@@ -7462,7 +7460,6 @@
     $("#cfgSentadosMax").value = quantosNaMesa();
     $("#cfgPedidoPainel").value = minutosDoPedidoNoPainel();
     $("#cfgGarcomOn").value = CFG.garcomAtivo === false ? "nao" : "sim";
-    $("#cfgPinGarcom").value = CFG.pinGarcom || "";
 
     // aviso caso o banco ainda não tenha as colunas novas
     const msg = $("#cfgMsgStatus");
@@ -7555,9 +7552,10 @@
 
       restaurante: $("#cfgRest").value.trim() || CFG.restaurante,
     };
-    // os PINs não vão para a nuvem: ficam só neste aparelho
-    salvarPinLocal($("#cfgPinAtend").value.trim());
-    salvarPinGarcomLocal($("#cfgPinGarcom").value.trim());
+    // Os PINs saíram da engrenagem: a casa entra por LOGIN de perfil, e dois
+    // caminhos de senha convivendo só confundiam. O mecanismo continua no
+    // código (quem desliga o login volta a ser protegido pelo que já estiver
+    // guardado neste aparelho) — o que sumiu foram os campos.
     const btn = $("#cfgSave");
     btn.disabled = true;
     $("#cfgMsgStatus").textContent = "Salvando…";

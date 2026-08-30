@@ -1516,3 +1516,23 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 #mapaPetField{margin-top:14px}
 .btn-roxo{background:#7C3AED;border:2px solid #7C3AED;color:#fff;font-weight:700}
 .btn-roxo:hover{background:#6D28D9}
+
+/* ==========================================================
+   TELA PEQUENA: A MESMA PLANTA, SÓ QUE MENOR
+   ----------------------------------------------------------
+   O app é desenhado para o tablet do balcão. No celular, em vez de
+   reempilhar tudo numa coluna (o que muda o lugar das coisas e obriga a
+   reaprender a tela), ele é REDUZIDO: mesma disposição, letras e botões
+   proporcionalmente menores.
+
+   O `zoom` faz isso de uma vez, sem tocar em cada medida: o conteúdo passa a
+   enxergar uma tela maior do que a física, então as grades que se dobravam
+   voltam a caber lado a lado. O toque acompanha — o navegador converte as
+   coordenadas junto com o desenho.
+
+   Os tamanhos foram escolhidos para o texto continuar legível: 0,85 no
+   tablet pequeno e 0,72 no celular são o limite antes de o corpo do texto
+   ficar miúdo demais para o corre-corre do serviço.
+   ========================================================== */
+@media (max-width:700px){ #app{zoom:.85} }
+@media (max-width:480px){ #app{zoom:.72} }

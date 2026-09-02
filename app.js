@@ -2954,23 +2954,20 @@
       data-mapamesa="${m.id}" title="Mesa ${esc(m.numero)}">${miolo}</button>`;
   }
 
-  // O mapa pode ser desligado por perfil: tem casa que quer o mapa só na
-  // mão do garçom, e tem quem queira o contrário. Quando o login está
-  // desligado, ninguém tem perfil — vale a regra do garçom.
+  // O mapa pode ser desligado por perfil: tem casa que quer o mapa só na mão
+  // do garçom, e tem quem queira o contrário. Quando o login está desligado,
+  // ninguém tem perfil — vale a regra do garçom.
   //
-  // A atendente COMANDA o mapa como o garçom (2026-08-29): ela está no balcão,
-  // vê a mesa vagar antes dele e precisa marcar ocupada, liberar e juntar sem
-  // esperar. O que continua sendo só do adm é o CADASTRO das mesas (o editor).
-  // O balcão de PEDIDOS vê o salão, mas não mexe nele: ali o mapa serve para
-  // saber onde a mesa fica e como está o movimento, não para mudar estado.
-  // Sem botões, sem arrastar, sem pop-up de ação — só a planta e a legenda.
-  function mapaSoDeOlhar() {
-    return loginLigado() && !!usuario && usuario.papel === PAPEL.PEDIDOS;
-  }
+  // Quem COMANDA o mapa é o garçom (e o adm). A atendente ACOMPANHA: ela
+  // precisa saber onde a mesa fica e como está o salão para chamar direito,
+  // mas mudar o estado da mesa é trabalho de quem está lá dentro. Por isso o
+  // mapa dela vem sem botões, sem arrastar e sem o pop-up de ação — a mesma
+  // planta, travada. `mapaSoDeOlhar` é só o apelido antigo de `soOlharMapa`,
+  // mantido porque o desenho do mapa o chama em vários lugares.
+  function mapaSoDeOlhar() { return soOlharMapa(); }
 
   function mapaVisivelPara() {
     const papel = (loginLigado() && usuario) ? usuario.papel : null;
-    if (papel === PAPEL.PEDIDOS) return true;          // consulta: sempre disponível
     if (papel === PAPEL.ATENDENTE) return CFG.mapaAtendente !== false;
     if (papel === PAPEL.ADM) return CFG.mapaAdm !== false;
     return CFG.mapaGarcom !== false;
@@ -4463,6 +4460,10 @@
 
   // Ficha completa do cliente, com os botões de ação. Abre ao tocar no cartão.
   function abrirCliente(id) {
+    // Tela em modo de acompanhamento: a ficha não abre, porque é dela que
+    // saem todas as ações (chamar, sentar, promover, remover). Quem só
+    // acompanha lê a lista e pronto.
+    if (telaSoDeOlhar()) return;
     const r = rows.find((x) => x.id === id);
     if (!r) return;
     const meso = isMesona(r);
@@ -4548,7 +4549,12 @@
     // Tem casa que não quer o cliente se cadastrando sozinho: o totem vira só
     // painel de acompanhamento e quem lança na fila é a recepção. O botão some
     // apenas no totem — a atendente e o garçom continuam com o deles.
-    const soPainel = !isStaff() && !isGarcom() && !naAbaPrevia() && CFG.totemEntrada === false;
+    //
+    // E some também quando a tela está em modo de acompanhamento: quem só
+    // olha a fila de espera (perfil da antessala) ou só olha a antessala
+    // (perfil da atendente) não cadastra ninguém por ali.
+    const soPainel = telaSoDeOlhar() ||
+      (!isStaff() && !isGarcom() && !naAbaPrevia() && CFG.totemEntrada === false);
     btn.hidden = soPainel;
     // sem botão nenhum, a barra fixa de baixo some junto: senão fica uma
     // tarja cinza ocupando o pé da tela do totem
@@ -4575,7 +4581,11 @@
   function render() {
     const wTodos = waiting();
     const cTodos = called();
+    // `staff` diz que a tela é a da atendente; `podeAgir` diz que quem está
+    // nela pode MEXER. O perfil da fila da fila abre esta aba só para
+    // acompanhar quando vai abrir vaga — vê a fila inteira, sem botão nenhum.
     const staff = isStaff();
+    const podeAgir = staff && !soOlharStaff();
 
     // busca (só na tela da atendente): esconde quem não combina, sem tirar da fila
     const buscando = staff && !!busca.trim();
@@ -4662,7 +4672,7 @@
         <span class="ci-name">${esc(firstName(r.nome))}</span>
         <span class="ci-meta">${r.pessoas} ${r.pessoas === 1 ? "pessoa" : "pessoas"} •
           avisado às ${fmtClock(r.previa_avisado_em)} (há <b data-since="${r.previa_avisado_em}">agora</b>)</span>
-        <div class="ci-actions">
+        ${soOlharFilaFila() ? "" : `<div class="ci-actions">
           ${(CFG.whatsAtivo !== false && CFG.previaWhats !== false && r.telefone && waLinkPrevia(r))
             ? `<a class="btn btn-sm ci-wa" href="${waLinkPrevia(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : ""}
           <button class="btn btn-sm ci-ok" data-ffpromover="${r.id}">➡ Colocar na fila</button>
@@ -4670,7 +4680,7 @@
           <button class="btn btn-sm ci-back" data-ffvoltar="${r.id}">↩️ Voltar para a fila da fila</button>
           <button class="btn btn-sm ci-edit" data-edit="${r.id}">✏️ Editar</button>
           <button class="btn btn-sm ci-end" data-drop="${r.id}">🗑 Remover</button>
-        </div>
+        </div>`}
       </div>`).join("");
     } else {
     const prontosTodos = pedidosProntos();
@@ -4682,7 +4692,7 @@
       const pronto = pedidoNoPainel(r);
       // os botões de chamada só fazem sentido para quem ainda está chamado:
       // quem já sentou e só está esperando o pedido não volta para a fila
-      const acoes = staff && r.status === STATUS.CHAMADO;
+      const acoes = podeAgir && r.status === STATUS.CHAMADO;
       return `
       <div class="call-item ${pronto ? "pronto" : ""} ${r.preferencial && !pronto ? "pref" : ""} ${i === 0 ? "fresh" : ""}">
         ${acoes ? `<button class="ci-x staff-only" data-discard="${r.id}" aria-label="Remover">✕</button>` : ""}
@@ -4721,7 +4731,7 @@
 
     if (juntas) {
       // uma lista só, na ordem de chegada, com o tipo indicado em cada pessoa
-      $("#queueListTodas").innerHTML = w.map((r, i) => queueItemHTML(r, i, staff, true)).join("");
+      $("#queueListTodas").innerHTML = w.map((r, i) => queueItemHTML(r, i, podeAgir, true)).join("");
       $("#emptyTodas").hidden = w.length > 0;
       // esvazia as listas separadas: senão ficam itens escondidos no ar,
       // que o relógio continuaria atualizando à toa
@@ -4730,9 +4740,9 @@
       $("#queueListNorm").innerHTML = "";
     } else {
       $("#queueListTodas").innerHTML = "";
-      $("#queueListMeso").innerHTML = meso.map((r, i) => queueItemHTML(r, i, staff)).join("");
-      $("#queueListPref").innerHTML = pref.map((r, i) => queueItemHTML(r, i, staff)).join("");
-      $("#queueListNorm").innerHTML = norm.map((r, i) => queueItemHTML(r, i, staff)).join("");
+      $("#queueListMeso").innerHTML = meso.map((r, i) => queueItemHTML(r, i, podeAgir)).join("");
+      $("#queueListPref").innerHTML = pref.map((r, i) => queueItemHTML(r, i, podeAgir)).join("");
+      $("#queueListNorm").innerHTML = norm.map((r, i) => queueItemHTML(r, i, podeAgir)).join("");
       $("#emptyMeso").hidden = meso.length > 0;
       $("#emptyPref").hidden = pref.length > 0;
       $("#emptyNorm").hidden = norm.length > 0;
@@ -5394,22 +5404,51 @@
   function loginLigado() {
     return CFG.loginAtivo === true && !!(backend && backend.mode === "online" && backend.client);
   }
-
-  // Quais abas cada perfil enxerga
+  // ==========================================================
+  //  QUEM VÊ O QUÊ (2026-08-29, redesenhado com o dono)
+  // ----------------------------------------------------------
+  //  ADM ........... tudo
+  //  Garçom ........ garçom, mapa, na mesa
+  //  Atendente ..... atendente, mapa (só olhar), na mesa, pedidos,
+  //                  fila da fila (só olhar)
+  //  Pedidos ....... na mesa, pedidos
+  //  Fila da fila .. fila da fila, atendente (só olhar)
+  //
+  //  "Só olhar" não é uma aba diferente: é a MESMA tela, sem os comandos.
+  //  Quem precisa da informação para trabalhar (a atendente saber quantos
+  //  esperam na antessala, a antessala saber como está a fila de espera) vê
+  //  tudo; quem manda naquela tela continua sendo um perfil só.
+  // ==========================================================
   function abasPermitidas() {
     if (!loginLigado()) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos", "filafila"];   // como era antes
-    const p = usuario && usuario.papel;
+    const p = papelAtual();
     if (p === PAPEL.ADM) return ["totem", "staff", "garcom", "mapa", "sentados", "pedidos", "filafila"];
-    // a antessala tem dono próprio: ele não mexe na fila de espera
-    if (p === PAPEL.FILADAFILA) return ["filafila"];
-    if (p === PAPEL.ATENDENTE) return ["staff", "mapa", "sentados"];
-    if (p === PAPEL.GARCOM) return ["garcom", "mapa"];
-    // Pedidos também precisa da aba "Na mesa": muita gente pede depois de
-    // sentar, e sem ela o balcão não tinha como achar a comanda desse cliente.
-    if (p === PAPEL.PEDIDOS) return ["pedidos", "sentados", "mapa"];
+    if (p === PAPEL.FILADAFILA) return ["filafila", "staff"];
+    if (p === PAPEL.ATENDENTE) return ["staff", "mapa", "sentados", "pedidos", "filafila"];
+    if (p === PAPEL.GARCOM) return ["garcom", "mapa", "sentados"];
+    if (p === PAPEL.PEDIDOS) return ["pedidos", "sentados"];
     return ["totem"];   // totem (ou sem perfil definido): só a fila
   }
   function podeVer(v) { return abasPermitidas().indexOf(v) >= 0; }
+
+  // ---------- as telas que um perfil só ACOMPANHA ----------
+  function papelAtual() { return (loginLigado() && usuario) ? usuario.papel : null; }
+  // a atendente vê o salão para saber onde as mesas estão; quem comanda o mapa
+  // é o garçom (e o adm)
+  function soOlharMapa() { return papelAtual() === PAPEL.ATENDENTE; }
+  // a atendente acompanha a antessala para saber quanta gente ainda vai entrar,
+  // mas quem promove, avisa e cadastra ali é o perfil da fila da fila
+  function soOlharFilaFila() { return papelAtual() === PAPEL.ATENDENTE; }
+  // e a antessala acompanha a fila de espera para saber quando vai abrir vaga,
+  // sem poder chamar nem mexer em quem já está nela
+  function soOlharStaff() { return papelAtual() === PAPEL.FILADAFILA; }
+  // a tela ABERTA agora é só de leitura?
+  function telaSoDeOlhar() {
+    const v = appEl.getAttribute("data-view");
+    return (v === "mapa" && soOlharMapa()) ||
+           (v === "filafila" && soOlharFilaFila()) ||
+           (v === "staff" && soOlharStaff());
+  }
   // Em qual aba cada perfil começa: quem trabalha cai direto no seu posto
   function abaInicial() {
     const p = usuario && usuario.papel;
@@ -5687,7 +5726,7 @@
     // o botão de chamar mesa acompanha a aba da atendente, na barra de baixo
     // (dá para escondê-lo na engrenagem: há casa que só chama pela mesa livre)
     const fb2 = $("#freeTableBtn");
-    if (fb2) fb2.hidden = v !== "staff" || CFG.mostrarBtnChamar === false;
+    if (fb2) fb2.hidden = v !== "staff" || CFG.mostrarBtnChamar === false || soOlharStaff();
     ajustarBarraStaff();
     const rotulo = v === "filafila" ? "Adicionar na fila da fila"
       : (v === "staff" ? "Adicionar cliente" : "Entrar na fila");

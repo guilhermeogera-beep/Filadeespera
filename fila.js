@@ -471,6 +471,16 @@
     if (me) {
       const pos = w.findIndex((r) => r.id === me.id) + 1;
       let corpo;
+      // OS SELOS DO CADASTRO. O cliente confere aqui o que a recepção anotou
+      // sobre ele: se entrou como preferencial e se avisou que está com pet.
+      // Vale nas duas filas. Não é enfeite — é a chance de ele perceber o erro
+      // ANTES de ser chamado (uma preferência não anotada só aparece na hora
+      // da mesa, quando já não dá para corrigir a ordem).
+      const selos = [
+        me.preferencial ? `<span class="me-selo pref">★ Preferencial</span>` : "",
+        me.pet ? `<span class="me-selo pet">🐾 Com pet</span>` : "",
+      ].filter(Boolean).join("");
+      const selosHTML = selos ? `<div class="me-selos">${selos}</div>` : "";
       // O pedido pronto é um aviso à parte, no topo do cartão: ele não pode
       // roubar o lugar da posição na fila nem do "é a sua vez" — o cliente
       // precisa continuar vendo onde está e quando a mesa dele sair.
@@ -481,7 +491,7 @@
       if (me.status === STATUS.CHAMADO) {
         corpo = `<div class="me-big">🔔 É a sua vez!</div>
           <div class="me-sub">Dirija-se à recepção agora. Você foi chamado às ${fmtClock(me.chamado_em)}
-          e tem até ${esc(String(CFG.prazoComparecer || 5))} minutos para comparecer.</div>`;
+          e tem até ${esc(String(CFG.prazoComparecer || 5))} minutos para comparecer.</div>${selosHTML}`;
       } else if (me.status === STATUS.PREVIA) {
         // A antessala ainda NÃO é a fila de espera, e a página não pode
         // sugerir que é. Mas a POSIÇÃO ele pode ver: é o lugar dele na ordem
@@ -492,13 +502,13 @@
         corpo = me.previa_avisado_em
           ? `<div class="me-big">🎟️ Abriu vaga na fila!</div>
              <div class="me-sub">Vá até a recepção para entrar na fila de espera.
-               Avisamos às ${fmtClock(me.previa_avisado_em)}.</div>`
+               Avisamos às ${fmtClock(me.previa_avisado_em)}.</div>${selosHTML}`
           : `<div class="me-label">Olá, ${esc(firstName(me.nome))} — sua vez na fila da fila</div>
              <div class="me-big">${posFF > 0 ? posFF + "º" : "—"}</div>
-             <div class="me-sub">${me.preferencial ? "★ Atendimento preferencial • " : ""}${
+             <div class="me-sub">${
                naFrente === 0
                  ? "Você é o <b>próximo</b> a entrar na fila de espera"
-                 : `${naFrente} ${naFrente === 1 ? "grupo" : "grupos"} na sua frente`}</div>
+                 : `${naFrente} ${naFrente === 1 ? "grupo" : "grupos"} na sua frente`}</div>${selosHTML}
              <div class="me-note">A fila de espera está cheia. Avisamos aqui assim que abrir vaga
                para você — ainda sem previsão: depende de quantas mesas vagarem.</div>`;
       } else if (me.status === STATUS.AGUARDANDO) {
@@ -513,7 +523,7 @@
         corpo = `<div class="me-label">Olá, ${esc(firstName(me.nome))} — sua posição</div>
           <div class="me-big">${pos}º</div>
           <div class="me-sub">${frente}${
-            CFG.mostrarTempoEspera !== false ? ` • esperando há <b data-since="${me.criado_em}">agora</b>` : ""}</div>
+            CFG.mostrarTempoEspera !== false ? ` • esperando há <b data-since="${me.criado_em}">agora</b>` : ""}</div>${selosHTML}
           <div class="me-note">A ordem pode mudar conforme o tamanho das mesas que vagam.</div>`;
       } else if (me.status === STATUS.SENTADO) {
         // Sentou (chamado ou direto do balcão): para a fila, acabou. O cartão

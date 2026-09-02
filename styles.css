@@ -1536,3 +1536,24 @@ input, select, textarea, button { max-width:100%; min-width:0 }
    ========================================================== */
 @media (max-width:700px){ #app{zoom:.85} }
 @media (max-width:480px){ #app{zoom:.72} }
+
+/* ---- Mapa em modo CONSULTA (perfil Pedidos) ----
+   Mesma planta, sem comando nenhum: somem os botões de ação e o toque nas
+   mesas não abre nada. A LEGENDA fica — é ela que explica as cores, e sem
+   ela o mapa vira um quebra-cabeça colorido. */
+.mapa-card.so-olhar .mapa-botoes{display:none}
+.mapa-card.so-olhar .mm-mesa{pointer-events:none;cursor:default}
+.mapa-card.so-olhar .mapa-piso{touch-action:pan-y;cursor:default}
+
+/* ---- Mesa CHAMADA: "aguardando sentar" ----
+   Roxo, a mesma cor que o app usa para preferencial e para a antessala: é a
+   cor de "tem dono, mas ainda não chegou". Não pode ser verde (a recepção
+   ofereceria de novo) nem vermelha (ninguém sentou ali ainda). */
+.mm-mesa.is-chamada{background:#EDEAF7;border-color:#6B5BA8;color:#3F3470}
+.ml.chamada{background:#EDEAF7;border-color:#6B5BA8;color:#3F3470}
+
+/* ---- Fila da fila: selo de preferencial e contador de pessoas ---- */
+.previa-item.is-pref{border-color:var(--pref);background:#F6F3FF}
+.previa-item.is-pref .previa-pos{background:var(--pref);color:#fff}
+/* o "• N grupos" acompanha o número de pessoas, um degrau abaixo na leitura */
+.mesas-count .ff-grupos{opacity:.75;font-weight:600;margin-left:6px}

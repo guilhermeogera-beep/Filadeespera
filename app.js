@@ -2025,6 +2025,8 @@
     if (!gravacoes.length) return;
     renderMapa();
     await Promise.allSettled(gravacoes);
+    // o tamanho mudou: se o desenho novo passou por cima de alguém, desempilha
+    try { await arrumarSobreposicoes(); } catch (e) { console.warn("Não deu para arrumar o mapa:", e); }
     // aviso curto: se foi engano de digitação, dá para desfazer no editor
     avisoStaff("🗺 Mapa atualizado — " + mudou.join(" • "), true);
   }
@@ -2153,10 +2155,51 @@
     candidatos.sort((a, b) => new Date(b.sentou_em || b.criado_em) - new Date(a.sentou_em || a.criado_em));
     return candidatos[0] || null;
   }
-
   // Esta mesa já foi avisada à recepção?
   function mesaAvisada(m) {
     return mesasLivres.some((x) => numeroBate(m.numero, x.numeros || x.identificacao));
+  }
+
+  // ==========================================================
+  //  MESA CHAMADA — "aguardando sentar"
+  // ----------------------------------------------------------
+  //  Entre a atendente chamar e o cliente sentar passam minutos: ele está
+  //  vindo do estacionamento, pagando o pager, terminando a cerveja. Nesse
+  //  tempo a mesa não está livre nem ocupada — está PROMETIDA. No mapa ela
+  //  ficava verde, como se ainda desse para oferecer a alguém, e o garçom
+  //  chegava a montá-la para outro grupo.
+  //
+  //  Não precisa de coluna nova: o compromisso já está gravado em dois
+  //  lugares, e olhamos os dois porque cada um cobre um caminho —
+  //   1. o cartão do garçom guarda `reservada_para` quando a chamada saiu de
+  //      uma mesa lançada por ele;
+  //   2. a linha da fila fica em "chamado" com o número da mesa quando a
+  //      atendente digitou o número na mão (ou quando o banco antigo não tem
+  //      a coluna `reservada_para`).
+  //
+  //  Como é estado DERIVADO, ele se apaga sozinho: o cliente senta (vira
+  //  ocupada), perde a vez (a linha sai de "chamado") ou o garçom mexe na
+  //  mesa (o corte por `liberada_em` derruba a chamada velha).
+  // ==========================================================
+  function mesaChamadaPeloCartao(m) {
+    return mesasLivres.some((x) =>
+      x.reservada_para && numeroBate(m.numero, x.numeros || x.identificacao));
+  }
+
+  // Quem foi chamado para esta mesa e ainda não sentou (devolve a pessoa,
+  // para o pop-up poder dizer o nome)
+  function chamadoParaMesa(m) {
+    const bloco = blocoDaMesa(m);
+    const corte = Math.max(...bloco.map((x) => x.liberada_em ? new Date(x.liberada_em).getTime() : 0));
+    const candidatos = rows.filter((r) => r.status === STATUS.CHAMADO &&
+      bloco.some((x) => numeroBate(x.numero, r.mesa_numero)) &&
+      new Date(r.chamado_em || r.criado_em).getTime() > corte);
+    candidatos.sort((a, b) => new Date(b.chamado_em || b.criado_em) - new Date(a.chamado_em || a.criado_em));
+    return candidatos[0] || null;
+  }
+
+  function mesaChamada(m) {
+    return blocoDaMesa(m).some(mesaChamadaPeloCartao) || !!chamadoParaMesa(m);
   }
 
   // Mesas juntadas compartilham o mesmo "grupo". Sozinha, a mesa é o
@@ -2182,6 +2225,11 @@
     const bloco = blocoDaMesa(m);
     if (ocupanteDaMesa(m)) return "ocupada";                          // cliente da fila
     if (bloco.some((x) => x.status === MAPA.OCUPADA)) return "ocupada"; // marcada na mão
+    // Chamada vem logo depois de ocupada: a mesa já tem dono, mesmo que ele
+    // ainda esteja atravessando o salão. Só perde para "ocupada" porque ali
+    // alguém já sentou — e ganha de "limpar", senão a atendente veria como
+    // suja uma mesa que ela mesma acabou de prometer a um cliente.
+    if (mesaChamada(m)) return "chamada";
     if (bloco.some((x) => x.status === MAPA.LIMPAR)) return "limpar";
     // reserva é compromisso com um cliente que ainda vai chegar: vem antes de
     // "liberada" para ninguém oferecer a mesa por engano
@@ -2322,6 +2370,14 @@
       !falhas);
   }
 
+  // Depois de uma ação em LOTE o desenho de todo mundo muda de tamanho ao
+  // mesmo tempo — liberar dá cadeiras a todas, limpar tira de todas. Quem
+  // estava justinho com a vizinha passa a cobri-la. Por isso o mapa se
+  // desempilha no fim de cada uma dessas ações, como faz depois de juntar.
+  async function arrumarDepoisDoLote() {
+    try { await arrumarSobreposicoes(); }
+    catch (e) { console.warn("Não deu para arrumar o mapa:", e); }
+  }
   // O botão "liberar todas" fica disponível para o garçom só nas pontas do
   // dia: antes do horário de "até" e depois do de "volta". No meio do
   // movimento ele some, para ninguém liberar o salão inteiro sem querer.
@@ -2490,7 +2546,7 @@
     // gravar o que for dela.
     renderMapa();
     const juntas = mapa.find((x) => x.id === b.id);
-    if (juntas) {
+    if (juntas && !mapaSoDeOlhar()) {
       abrirAcaoMesa(juntas.id);
       mostrarPasso2("juntar", juntas, { semLista: true });
     }
@@ -2837,13 +2893,16 @@
     // desenhadas — ficam sobrepostas por baixo desta. Contorno em volta não
     // precisa mais existir: o desenho único já diz que viraram uma mesa.
     const bloco = junta ? blocoDaMesa(m) : [m];
-    // O RELÓGIO DA MESA OCUPADA. Quando quem sentou veio da fila, conta desde
-    // que sentou. Quando o salão marcou "ocupada" na mão — cliente que chegou
-    // direto, sem passar pela recepção —, conta desde a marcação. Sem isso o
-    // garçom via a mesa vermelha sem saber se era de agora ou de duas horas.
+    // O RELÓGIO DA MESA. Quem sentou vindo da fila conta desde que sentou;
+    // quem foi CHAMADO conta desde a chamada (é o tempo que a atendente espera
+    // ele aparecer); e a mesa marcada "ocupada" na mão — cliente que chegou
+    // direto, sem passar pela recepção — conta desde a marcação. Sem isso o
+    // garçom via a mesa colorida sem saber se era de agora ou de duas horas.
     const marcadaEm = bloco.reduce((t, x) =>
       Math.max(t, x.liberada_em ? new Date(x.liberada_em).getTime() : 0), 0);
+    const chamado = (!editando && est === "chamada") ? chamadoParaMesa(m) : null;
     const desde = (oc && (oc.sentou_em || oc.chamado_em)) ||
+      (chamado && chamado.chamado_em) ||
       (!editando && est === "ocupada" && marcadaEm ? new Date(marcadaEm).toISOString() : null);
     const lugares = junta ? lugaresDoBloco(m) : m.lugares;
     const rotulo = junta ? "Mesa " + esc(numerosDoBloco(m).join("+")) : "Mesa " + esc(m.numero);
@@ -2902,8 +2961,16 @@
   // A atendente COMANDA o mapa como o garçom (2026-08-29): ela está no balcão,
   // vê a mesa vagar antes dele e precisa marcar ocupada, liberar e juntar sem
   // esperar. O que continua sendo só do adm é o CADASTRO das mesas (o editor).
+  // O balcão de PEDIDOS vê o salão, mas não mexe nele: ali o mapa serve para
+  // saber onde a mesa fica e como está o movimento, não para mudar estado.
+  // Sem botões, sem arrastar, sem pop-up de ação — só a planta e a legenda.
+  function mapaSoDeOlhar() {
+    return loginLigado() && !!usuario && usuario.papel === PAPEL.PEDIDOS;
+  }
+
   function mapaVisivelPara() {
     const papel = (loginLigado() && usuario) ? usuario.papel : null;
+    if (papel === PAPEL.PEDIDOS) return true;          // consulta: sempre disponível
     if (papel === PAPEL.ATENDENTE) return CFG.mapaAtendente !== false;
     if (papel === PAPEL.ADM) return CFG.mapaAdm !== false;
     return CFG.mapaGarcom !== false;
@@ -2921,20 +2988,22 @@
     const card = $("#mapaCard");
     if (!card) return;
     if (_dedoNoMapa) { _mapaPendente = true; return; }
-    // O mapa vive na aba "Mapa" e é ferramenta de trabalho tanto do garçom
-    // quanto da atendente. Só o cadastro das mesas é exclusivo do adm.
+    // O mapa vive na aba "Mapa" e é ferramenta de trabalho do garçom e da
+    // atendente. Para o balcão de PEDIDOS é só consulta: mesma planta, travada.
     const vista = appEl.getAttribute("data-view");
+    const soOlhar = mapaSoDeOlhar();
+    card.classList.toggle("so-olhar", soOlhar);
     card.hidden = CFG.garcomAtivo === false || vista !== "mapa" ||
       semTabelaMapa || !mapaVisivelPara();
     if (card.hidden) { modoEdicaoMapa = false; return; }
 
     // quem pode mexer no cadastro é quem pode mexer na engrenagem
-    const podeEditar = ehAdm();
+    const podeEditar = ehAdm() && !soOlhar;
     if (!podeEditar) modoEdicaoMapa = false;
     const editando = modoEdicaoMapa;
 
-    // na versão da atendente não entra nenhum botão: ela só consulta
-    const podeLote = mapa.length && !editando && (ehAdm() || dentroDaJanelaLiberar());
+    // na versão de consulta não entra nenhum botão de ação
+    const podeLote = mapa.length && !editando && !soOlhar && (ehAdm() || dentroDaJanelaLiberar());
     const mostrar = (id, cond) => { const b = $(id); if (b) b.hidden = !cond; };
     mostrar("#liberarTodasBtn", podeLote);
     mostrar("#aguardarTodasBtn", podeLote);
@@ -3092,6 +3161,11 @@
     $("#mapaAcoes").hidden = true;
     $("#mapaAcaoRodape").hidden = true;
     $("#mapaPasso2").hidden = false;
+    // O passo 2 aparece EXATAMENTE onde o dedo acabou de tocar: os botões
+    // novos nascem debaixo dele. Recarimbar a hora de abertura faz a trava do
+    // clique fantasma valer também para eles — senão um segundo toque
+    // impaciente cairia no "Liberar" e confirmaria sozinho.
+    $("#mapaAcaoModal").dataset.abertoEm = String(Date.now());
     // O rodapé é o mesmo de todos os caminhos, só troca o rótulo: quem escolheu
     // "Juntar" lê "Juntar", quem escolheu "Ocupada" lê "Ocupada", quem escolheu
     // "Aguardando" lê "Aguardando" — nunca um "liberar" que ele não pediu. A
@@ -3125,6 +3199,8 @@
   }
 
   function abrirAcaoMesa(id) {
+    // no modo consulta (perfil Pedidos) a planta não abre ações
+    if (mapaSoDeOlhar()) return;
     const m = mapa.find((x) => x.id === id);
     if (!m) return;
     mapaMesaAtiva = id;
@@ -3138,16 +3214,21 @@
       : "Mesa " + m.numero;
     const situacao = { ocupada: "🔴 ocupada", limpar: "🟡 precisa limpar",
                        avisada: "🟢 liberada", aguardando: "🔵 aguardando",
+                       chamada: "🟣 aguardando sentar",
                        reservada: "⬛ reservada", livre: "🔵 aguardando" }[est];
     // A contagem aparece em qualquer estado (o mapa também mostra), desde que
     // exista tamanho cadastrado — "0 lugares" não diria nada a ninguém.
     const mostraLugares = Number(lugares) > 0;
+    // quem foi chamado para esta mesa e ainda está vindo: o nome ajuda a
+    // atendente a saber de quem ela está falando quando o cliente aparece
+    const vindo = est === "chamada" ? chamadoParaMesa(m) : null;
     $("#mapaAcaoInfo").innerHTML =
       (mostraLugares
         ? `${lugares} ${lugares === 1 ? "lugar" : "lugares"}${juntas ? ` (${bloco.map((x) => x.lugares).join(" + ")})` : ""} — `
         : "") +
       `${situacao}${petDoBloco(m) ? " • 🐾 área pet" : ""}` +
-      (oc ? `<br><b>${esc(firstName(oc.nome))}</b> sentou às ${fmtClock(oc.sentou_em)} (há <b data-since="${oc.sentou_em}">agora</b>)` : "");
+      (oc ? `<br><b>${esc(firstName(oc.nome))}</b> sentou às ${fmtClock(oc.sentou_em)} (há <b data-since="${oc.sentou_em}">agora</b>)` : "") +
+      (vindo ? `<br><b>${esc(firstName(vindo.nome))}</b> foi chamado às ${fmtClock(vindo.chamado_em)} (há <b data-since="${vindo.chamado_em}">agora</b>)` : "");
 
     const btn = (acao, classe, texto) =>
       `<button type="button" class="btn ${classe}${(est === acao || (acao === "liberar" && est === "avisada")) ? " is-atual" : ""}" data-macao="${acao}">${texto}</button>`;
@@ -3270,8 +3351,22 @@
       await refresh();
     } finally {
       btn.disabled = false;
-      mapaMesaAtiva = null;
-      voltarAoPasso1();
+      // A CORRIDA QUE MATAVA O BOTÃO. Este `finally` roda depois de toda a
+      // viagem ao banco (gravar, recarregar, arrumar o mapa) — segundos, no
+      // wi-fi do salão. Nesse meio-tempo o pop-up já sumiu da tela e o garçom
+      // costuma tocar na PRÓXIMA mesa, que abre a ficha dela e escreve o id
+      // nova em `mapaMesaAtiva`. Quando a gravação da mesa anterior enfim
+      // terminava, este trecho zerava esse id "por trás" da ficha aberta: os
+      // botões continuavam bonitos na tela, mas `acaoNaMesa` não achava mais
+      // mesa nenhuma e saía calado. Era o "toco na segunda mesa e o botão não
+      // faz nada; tenho que fechar e abrir de novo".
+      //
+      // A correção é só limpar o que ainda é MEU: se outra ficha já assumiu,
+      // este fim de tarefa não tem mais nada a zerar.
+      if (mapaMesaAtiva === idAtiva) {
+        mapaMesaAtiva = null;
+        voltarAoPasso1();
+      }
     }
   }
 
@@ -4933,7 +5028,13 @@
 
     const todos = naPrevia();
     const lista = todos.filter(combinaPrevia);
-    $("#ffCount").textContent = lista.length;
+    // O número que conta para a recepção é o de PESSOAS: é ele que diz se cabe
+    // o próximo grupo quando abrir vaga. A quantidade de grupos vem junto,
+    // menor, porque é o que ela promove por vez — mesma leitura da tarja do
+    // topo na fila de espera.
+    const pessoasPrevia = todos.reduce((a, r) => a + Number(r.pessoas || 0), 0);
+    $("#ffCount").innerHTML = `${pessoasPrevia} ${pessoasPrevia === 1 ? "pessoa" : "pessoas"}` +
+      `<span class="ff-grupos">• ${todos.length} ${todos.length === 1 ? "grupo" : "grupos"}</span>`;
     $("#ffVazio").hidden = lista.length > 0;
     $("#ffVazio").textContent = todos.length
       ? "Nada encontrado com essa busca."
@@ -4985,10 +5086,12 @@
         avisado ? "✅ avisado às " + fmtClock(r.previa_avisado_em) : "",
       ].filter(Boolean).join(" • ");
       return `
-      <button type="button" class="previa-item ${avisado ? "is-avisado" : ""}" data-cliente="${r.id}">
+      <button type="button" class="previa-item ${avisado ? "is-avisado" : ""}${r.preferencial ? " is-pref" : ""}" data-cliente="${r.id}">
         <span class="previa-pos">${pos}</span>
         <span class="previa-txt">
-          <span class="previa-nome">${esc(r.nome)}</span>
+          <span class="previa-nome">${esc(r.nome)}${
+            r.preferencial ? ` <span class="q-tag pref">★ preferencial</span>` : ""}${
+            r.pet ? ` <span class="q-tag">🐾</span>` : ""}</span>
           <span class="previa-meta">${dados} • entrou ${fmtClock(entradaEm(r))}
             (há <b data-since="${entradaEm(r)}">agora</b>)</span>
         </span>
@@ -5303,7 +5406,7 @@
     if (p === PAPEL.GARCOM) return ["garcom", "mapa"];
     // Pedidos também precisa da aba "Na mesa": muita gente pede depois de
     // sentar, e sem ela o balcão não tinha como achar a comanda desse cliente.
-    if (p === PAPEL.PEDIDOS) return ["pedidos", "sentados"];
+    if (p === PAPEL.PEDIDOS) return ["pedidos", "sentados", "mapa"];
     return ["totem"];   // totem (ou sem perfil definido): só a fila
   }
   function podeVer(v) { return abasPermitidas().indexOf(v) >= 0; }
@@ -6258,34 +6361,47 @@
     //  dele e muda o estado da mesa sem ninguém pedir — era a "piscada" que
     //  trocava a cor sozinha.
     //
-    //  Antes eu ignorava TODO clique nos primeiros 450ms. Só que o garçom que
-    //  toca rápido caía nessa trava: apertava "Aguardando", não acontecia
-    //  nada, e ele tinha que fechar e abrir o pop-up de novo.
+    //  Já tentamos duas travas antes desta:
+    //  1) ignorar TODO clique nos primeiros 450ms — barrava o garçom que toca
+    //     rápido, e o botão "não respondia";
+    //  2) um interruptor ligado por qualquer toque dentro do pop-up — vazava:
+    //     fechar a ficha tocando no × deixava o interruptor ligado, e o
+    //     fantasma da mesa seguinte era aceito como se fosse dedo de gente.
     //
-    //  Agora quem decide é a ORIGEM, não o relógio. Cada `pointerdown` DENTRO
-    //  do pop-up arma UM clique — e o clique aceito desarma. O toque de
-    //  verdade responde na hora; o fantasma, que não tem `pointerdown` próprio
-    //  (é resto do gesto que aconteceu lá no mapa, ou do toque que já foi
-    //  aproveitado), encontra o gatilho desarmado e é descartado.
+    //  Agora o arme guarda O BOTÃO e a HORA: um `pointerdown` em cima de um
+    //  botão do pop-up arma AQUELE botão por um segundo. O clique só passa se
+    //  for no mesmo botão e dentro desse tempo — e o arme é sempre consumido,
+    //  aceito ou não, para nunca sobrar ligado para o gesto seguinte.
+    //  Toque no fundo escuro, no título ou no × não arma nada.
     //
-    //  A janela de 700ms é a rede de segurança para o clique que não vem de
-    //  toque nenhum — teclado, por exemplo: passado esse tempo, tudo passa.
-    let cliqueArmado = false;
-    $("#mapaAcaoModal").addEventListener("pointerdown", () => { cliqueArmado = true; });
-    const cliqueFantasma = () => {
-      if (cliqueArmado) { cliqueArmado = false; return false; }
+    //  A janela de 700ms desde a abertura continua valendo para o clique que
+    //  não veio de toque nenhum (teclado, leitor de tela): passado esse tempo,
+    //  ele passa.
+    let armadoAlvo = null, armadoEm = 0;
+    const botaoDoPopup = (alvo) =>
+      (alvo && alvo.closest) ? alvo.closest("button, a, input, label") : null;
+    $("#mapaAcaoModal").addEventListener("pointerdown", (e) => {
+      armadoAlvo = botaoDoPopup(e.target);   // fundo escuro e texto não armam
+      armadoEm = armadoAlvo ? Date.now() : 0;
+    });
+    const cliqueFantasma = (e) => {
+      const alvo = botaoDoPopup(e && e.target);
+      const combina = !!armadoAlvo && !!alvo && armadoAlvo === alvo &&
+        Date.now() - armadoEm < 1000;
+      armadoAlvo = null; armadoEm = 0;        // o arme vale para UM clique só
+      if (combina) return false;              // dedo de gente: passa
       const abertoEm = Number($("#mapaAcaoModal").dataset.abertoEm) || 0;
-      return Date.now() - abertoEm < 700;
+      return Date.now() - abertoEm < 700;     // recém-aberto e sem arme: fantasma
     };
     $("#mapaAcoes").addEventListener("click", (e) => {
       const b = e.target.closest("[data-macao]");
-      if (!b || cliqueFantasma()) return;
+      if (cliqueFantasma(e) || !b) return;   // avalia sempre: o arme nunca sobra ligado
       acaoNaMesa(b.dataset.macao);
     });
     // ---- passo 2 do pop-up da mesa ----
     $("#mapaLugaresChips").addEventListener("click", (e) => {
       const b = e.target.closest("[data-maplug]");
-      if (!b || cliqueFantasma()) return;
+      if (cliqueFantasma(e) || !b) return;   // avalia sempre: o arme nunca sobra ligado
       if (b.dataset.maplug === "manual") {
         mapaLugaresManual = true;
       } else {
@@ -6312,7 +6428,7 @@
     });
     $("#mapaJuntarLista").addEventListener("click", (e) => {
       const b = e.target.closest("[data-mapjuntar]");
-      if (!b || cliqueFantasma()) return;
+      if (cliqueFantasma(e) || !b) return;   // avalia sempre: o arme nunca sobra ligado
       const id = b.dataset.mapjuntar;
       if (mapaJuntarSelecao.has(id)) mapaJuntarSelecao.delete(id);
       else mapaJuntarSelecao.add(id);
@@ -6325,8 +6441,8 @@
         desenharLugaresDoMapa();
       }
     });
-    $("#mapaPasso2Voltar").addEventListener("click", () => { if (!cliqueFantasma()) voltarAoPasso1(); });
-    $("#mapaPasso2Ok").addEventListener("click", acaoSegura("liberar a mesa", () => { if (!cliqueFantasma()) return confirmarPasso2(); }));
+    $("#mapaPasso2Voltar").addEventListener("click", (e) => { if (!cliqueFantasma(e)) voltarAoPasso1(); });
+    $("#mapaPasso2Ok").addEventListener("click", acaoSegura("liberar a mesa", (e) => { if (!cliqueFantasma(e)) return confirmarPasso2(); }));
 
     // cadastro do mapa (pela engrenagem)
     $("#liberarTodasBtn").addEventListener("click", acaoSegura("liberar todas as mesas", async () => {
@@ -6336,7 +6452,7 @@
       if (!confirm("Liberar TODAS as mesas para a recepção? Inclui as ocupadas e as marcadas para limpar.")) return;
       const b = $("#liberarTodasBtn");
       b.disabled = true;
-      try { await liberarTodasAsMesas(); } finally { b.disabled = false; }
+      try { await liberarTodasAsMesas(); await arrumarDepoisDoLote(); } finally { b.disabled = false; }
     }));
     $("#limparTodasBtn").addEventListener("click", acaoSegura("todas limpar", async () => {
       const quantas = mapa.filter((m) => ["limpar", "reservada"].indexOf(estadoDaMesa(m)) < 0).length;
@@ -6344,7 +6460,7 @@
       if (!confirm("Marcar TODAS as mesas para limpar? Inclui as ocupadas; elas saem da lista da recepção.")) return;
       const b = $("#limparTodasBtn");
       b.disabled = true;
-      try { await marcarTodasParaLimpar(); } finally { b.disabled = false; }
+      try { await marcarTodasParaLimpar(); await arrumarDepoisDoLote(); } finally { b.disabled = false; }
     }));
     $("#aguardarTodasBtn").addEventListener("click", acaoSegura("todas aguardando", async () => {
       const quantas = mapa.filter((m) => ["livre", "reservada"].indexOf(estadoDaMesa(m)) < 0).length;
@@ -6352,7 +6468,7 @@
       if (!confirm("Devolver TODAS as mesas para aguardando? Inclui as ocupadas; elas saem da lista da recepção e as marcações de limpeza são apagadas.")) return;
       const b = $("#aguardarTodasBtn");
       b.disabled = true;
-      try { await voltarTodasParaAguardando(); } finally { b.disabled = false; }
+      try { await voltarTodasParaAguardando(); await arrumarDepoisDoLote(); } finally { b.disabled = false; }
     }));
     $("#cfgMapaBtn").addEventListener("click", acaoSegura("configurar o mapa", abrirEditorMapa));
     $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));
@@ -6926,6 +7042,35 @@
     renderRelatorio();
   }
 
+  // ==========================================================
+  //  AS ETIQUETAS DO RELATÓRIO (e a passagem pela fila da fila)
+  // ----------------------------------------------------------
+  //  A antessala não é uma tabela à parte: é a MESMA linha da fila, com a hora
+  //  de entrada guardada em `previa_em`. Quem foi promovido teve o `criado_em`
+  //  reescrito para a hora da promoção — é assim que ele entra na fila de
+  //  espera como quem chega na hora —, então `criado_em` maior que `previa_em`
+  //  é a marca de quem de fato ENTROU na fila.
+  //
+  //  Com isso o relatório separa três destinos, sem coluna nova e sem SQL:
+  //  quem ainda espera vaga, quem entrou na fila (e segue o fluxo normal) e
+  //  quem foi embora sem nunca entrar — o "desistiu na fila da fila".
+  // ==========================================================
+  const SITUACAO_REL = {
+    aguardando: "⏳ na fila", chamado: "🔔 chamado",
+    sentado: "✅ sentou", finalizado: "🏁 finalizado", desistiu: "✖ saiu",
+    previa: "🎟 fila da fila",
+  };
+  const passouPelaAntessala = (r) => !!r.previa_em;
+  const entrouNaFila = (r) => !!r.chamado_em || !!r.sentou_em ||
+    (!!r.previa_em && new Date(r.criado_em).getTime() > new Date(r.previa_em).getTime() + 1000);
+  function etiquetaRelatorio(r) {
+    if (r.status === STATUS.PREVIA) return "🎟 fila da fila";
+    if (r.status === STATUS.DESISTIU && passouPelaAntessala(r) && !entrouNaFila(r)) {
+      return "✖ desistiu (fila da fila)";
+    }
+    return SITUACAO_REL[r.status] || r.status;
+  }
+
   async function renderRelatorio() {
     const { ini, fim } = janelaRelatorio();
     // o campo de datas só aparece quando é ele que manda
@@ -6955,11 +7100,6 @@
     }
     relCache = lista;
 
-    const situacao = {
-      aguardando: "⏳ na fila", chamado: "🔔 chamado",
-      sentado: "✅ sentou", finalizado: "🏁 finalizado", desistiu: "✖ saiu",
-      previa: "🎟 fila da fila",
-    };
     // conta desde a hora REAL de chegada (quem perdeu a vez teve o criado_em reescrito)
     const esperaAteChamar = (r) => (r.chamado_em ? new Date(r.chamado_em) - new Date(entradaEm(r)) : null);
     const tempoTotal = (r) => (r.sentou_em ? new Date(r.sentou_em) - new Date(entradaEm(r)) : null);
@@ -6985,7 +7125,8 @@
         <td>${dash(esperaAteChamar(r))}</td>
         <td>${dash(tempoTotal(r))}</td>
         <td>${r.chamadas_perdidas || 0}</td>
-        <td>${situacao[r.status] || esc(r.status)}</td>
+        <td>${r.previa_em ? fmtDataHora(r.previa_em) : "—"}</td>
+        <td>${etiquetaRelatorio(r)}</td>
       </tr>`).join("");
     $("#relEmpty").hidden = lista.length > 0;
 
@@ -6993,11 +7134,20 @@
     const chamados = lista.filter((r) => r.chamado_em);
     const sentados = lista.filter((r) => r.sentou_em);
     const media = (arr, fn) => (arr.length ? arr.reduce((a, r) => a + fn(r), 0) / arr.length : null);
+    // A antessala tem contagem própria: quem ainda espera vaga e quem foi
+    // embora sem nunca entrar na fila. Sem isso, "Desistiram" misturaria dois
+    // públicos diferentes — quem perdeu a paciência na fila de espera e quem
+    // nem chegou a entrar nela.
+    const naAntessala = lista.filter((r) => r.status === STATUS.PREVIA);
+    const desistiuNaAntessala = lista.filter((r) =>
+      r.status === STATUS.DESISTIU && passouPelaAntessala(r) && !entrouNaFila(r));
     const cards = [
       ["Grupos", lista.length],
       ["Pessoas", lista.reduce((a, r) => a + Number(r.pessoas || 0), 0)],
       ["Sentaram", lista.filter((r) => r.status === STATUS.SENTADO || r.status === STATUS.FINALIZADO).length],
-      ["Desistiram", lista.filter((r) => r.status === STATUS.DESISTIU).length],
+      ["Desistiram", lista.filter((r) => r.status === STATUS.DESISTIU).length - desistiuNaAntessala.length],
+      ["Na fila da fila", naAntessala.length],
+      ["Desistiram na fila da fila", desistiuNaAntessala.length],
       ["Com pet", lista.filter((r) => r.pet).length],
       ["Preferenciais", lista.filter((r) => r.preferencial).length],
       ["Perderam a vez", lista.filter((r) => r.chamadas_perdidas).length],
@@ -7023,7 +7173,7 @@
     const min = (ms) => (ms == null ? "" : String(Math.round(ms / 60000)).replace(".", ","));
     // o arquivo leva BOM, então os acentos abrem certo no Excel
     const cab = ["Nome", "Telefone", "E-mail", "Aniversário", "Idade", "Pessoas", "Tipo", "Mesa grande", "Pet", "Comanda", "Pager",
-      "Mesa", "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera até chamar (min)", "Tempo total (min)", "Perdeu a vez", "Situação"];
+      "Mesa", "Entrou", "Chamado", "Sentou", "Pedido avisado", "Espera até chamar (min)", "Tempo total (min)", "Perdeu a vez", "Fila da fila", "Situação"];
     const linhas = relCache.map((r) => [
       r.nome, r.telefone || "", r.email || "", r.aniversario || "", (idadeDe(r.aniversario) == null ? "" : idadeDe(r.aniversario)), r.pessoas,
       r.preferencial ? "Preferencial" : "Normal",
@@ -7037,7 +7187,8 @@
       min(r.chamado_em ? new Date(r.chamado_em) - new Date(entradaEm(r)) : null),
       min(r.sentou_em ? new Date(r.sentou_em) - new Date(entradaEm(r)) : null),
       r.chamadas_perdidas || 0,
-      r.status,
+      r.previa_em ? fmtDataHora(r.previa_em) : "",
+      etiquetaRelatorio(r),
     ]);
     const escCSV = csvCampo;
     // ﻿ (BOM) faz o Excel abrir os acentos corretamente

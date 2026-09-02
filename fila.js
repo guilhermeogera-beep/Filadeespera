@@ -87,6 +87,13 @@
   const waiting = () => rows.filter((r) => r.status === STATUS.AGUARDANDO).sort(byCreatedAsc);
   const called = () => rows.filter((r) => r.status === STATUS.CHAMADO)
     .sort((a, b) => new Date(b.chamado_em) - new Date(a.chamado_em));
+  // A antessala, na MESMA regra da tela da recepção: ordem de chegada pura, e
+  // quem já foi avisado sai da conta (ele não espera mais vaga, está a caminho
+  // do balcão). Se o cliente contasse os avisados, o número dele ficaria maior
+  // que o da atendente e os dois discutiriam na recepção.
+  const antessala = () => rows
+    .filter((r) => r.status === STATUS.PREVIA && !r.previa_avisado_em)
+    .sort(byCreatedAsc);
 
   // Mesma conta da tela da atendente: MEDIANA das últimas chamadas, não média.
   // A média era arrastada por um grupo grande que esperou muito e mostrava ao
@@ -476,17 +483,24 @@
           <div class="me-sub">Dirija-se à recepção agora. Você foi chamado às ${fmtClock(me.chamado_em)}
           e tem até ${esc(String(CFG.prazoComparecer || 5))} minutos para comparecer.</div>`;
       } else if (me.status === STATUS.PREVIA) {
-        // A antessala: ainda NÃO é a fila de espera, e a página não pode
-        // sugerir que é. Sem posição e sem previsão — ele está aguardando
-        // uma vaga abrir, e ninguém sabe quando.
+        // A antessala ainda NÃO é a fila de espera, e a página não pode
+        // sugerir que é. Mas a POSIÇÃO ele pode ver: é o lugar dele na ordem
+        // de chegada da antessala, o mesmo número que a recepção enxerga.
+        // Previsão de tempo continua fora — ninguém sabe quando uma mesa vaga.
+        const posFF = antessala().findIndex((r) => r.id === me.id) + 1;
+        const naFrente = posFF > 1 ? posFF - 1 : 0;
         corpo = me.previa_avisado_em
           ? `<div class="me-big">🎟️ Abriu vaga na fila!</div>
              <div class="me-sub">Vá até a recepção para entrar na fila de espera.
                Avisamos às ${fmtClock(me.previa_avisado_em)}.</div>`
-          : `<div class="me-big">🎟️ Você está na fila da fila</div>
-             <div class="me-sub">A fila de espera está cheia no momento. Avisamos aqui
-               assim que abrir vaga para você entrar nela.</div>
-             <div class="me-note">Ainda não há previsão: depende de quantas mesas vagarem.</div>`;
+          : `<div class="me-label">Olá, ${esc(firstName(me.nome))} — sua vez na fila da fila</div>
+             <div class="me-big">${posFF > 0 ? posFF + "º" : "—"}</div>
+             <div class="me-sub">${me.preferencial ? "★ Atendimento preferencial • " : ""}${
+               naFrente === 0
+                 ? "Você é o <b>próximo</b> a entrar na fila de espera"
+                 : `${naFrente} ${naFrente === 1 ? "grupo" : "grupos"} na sua frente`}</div>
+             <div class="me-note">A fila de espera está cheia. Avisamos aqui assim que abrir vaga
+               para você — ainda sem previsão: depende de quantas mesas vagarem.</div>`;
       } else if (me.status === STATUS.AGUARDANDO) {
         // O que realmente conta para ele: quantos grupos DO MESMO TAMANHO estão
         // na frente — porque as mesas são chamadas pelo tamanho do grupo.

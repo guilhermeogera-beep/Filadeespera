@@ -3009,6 +3009,7 @@
     mostrar("#mapaNova", editando);
     mostrar("#mapaVarias", editando);
     mostrar("#mapaArrumar", editando && mapa.length > 1);
+    mostrar("#mapaPlantaBtn", editando && ehAdm());
     mostrar("#mapaConcluir", editando);
 
     card.classList.toggle("is-editando", editando);
@@ -3027,7 +3028,10 @@
       const bloco = blocoDaMesa(m);
       return bloco[0] && bloco[0].id === m.id;
     });
-    $("#mapaPiso").innerHTML = visiveis.map((m) => mesaMapaHTML(m, editando)).join("");
+    // a planta entra ANTES das mesas: ela é fundo, e o innerHTML aqui é quem
+    // manda no piso (por isso a camada é recriada a cada desenho)
+    $("#mapaPiso").innerHTML = plantaHTML() + visiveis.map((m) => mesaMapaHTML(m, editando)).join("");
+
     $("#mapaVazio").hidden = mapa.length > 0;
     _mapaPendente = false;
   }
@@ -3417,9 +3421,14 @@
     const piso = $("#mapaPiso"), rol = $("#mapaRolagem");
     if (!piso || !rol) return;
     const z = Math.round(zoomDoMapa() * 100);
-    piso.style.aspectRatio = "auto";
+    // COM PLANTA, quem manda na forma do piso é o DESENHO: o piso passa a ter
+    // a mesma proporção da imagem, e por isso as mesas (que são guardadas em
+    // porcentagem) caem exatamente sobre o lugar delas na planta. Sem planta,
+    // o piso continua ocupando a área disponível, como sempre fez.
+    const prop = (plantaVisivel() && plantaProp) ? plantaProp : null;
+    piso.style.aspectRatio = prop ? String(prop) : "auto";
     piso.style.width = z + "%";
-    piso.style.height = z + "%";
+    piso.style.height = prop ? "auto" : z + "%";
     // A planta ocupa toda a tela que sobra abaixo dos botões: num tablet em
     // pé o salão inteiro fica à vista, sem rolar. Mede, ajusta e confere se
     // ainda sobrou alguma coisa embaixo (margens, barra do sistema).
@@ -3639,6 +3648,148 @@
     if (!confirm("Reposicionar TODAS as " + mapa.length + " mesas numa grade?\n\n" +
       "O tamanho, o número e a área pet de cada uma continuam como estão — muda só o lugar no desenho.")) return;
     await organizarEmGrade(false);
+  }
+
+  // ==========================================================
+  //  A PLANTA DO SALÃO (mapa 2.0 — em teste, só o adm vê)
+  // ----------------------------------------------------------
+  //  Em vez de um segundo mapa, a planta é uma CAMADA DE FUNDO no mapa de
+  //  sempre: as mesas continuam as mesmas, com as mesmas ações, e atrás delas
+  //  aparece o desenho do salão. Assim nada do que já funciona precisa ser
+  //  reescrito — e, com a planta desligada, a tela é exatamente a de antes.
+  //
+  //  De onde vem o desenho, nesta ordem:
+  //   1. o que o adm subiu NESTE aparelho (guardado aqui mesmo, para ele ver
+  //      como ficou sem publicar nada);
+  //   2. um arquivo `planta.png` publicado junto do app — este vale para
+  //      todos os aparelhos, sem banco e sem upload repetido.
+  //
+  //  O alinhamento não precisa de calibração: o piso passa a ter a MESMA
+  //  proporção da imagem, e as mesas já são posicionadas em porcentagem.
+  // ==========================================================
+  const LS_PLANTA = "fila_planta";
+  const LS_PLANTA_OPAC = "fila_planta_opacidade";
+  const PLANTA_PUBLICADA = "./planta.png";
+  const PLANTA_LARGURA_MAX = 1600;   // px: acima disso é peso sem ganho na tela
+
+  let plantaURL = null;      // imagem em uso (do aparelho ou publicada)
+  let plantaProp = null;     // largura ÷ altura, para o piso casar com o desenho
+  let plantaOpac = 55;       // % — o padrão deixa a planta discreta atrás das mesas
+
+  function plantaVisivel() {
+    // enquanto está em teste, só o administrador enxerga
+    return !!plantaURL && ehAdm();
+  }
+
+  // Descobre as proporções da imagem (e serve de teste de "existe mesmo")
+  function medirPlanta(url) {
+    return new Promise((res) => {
+      const img = new Image();
+      img.onload = () => res(img.naturalWidth && img.naturalHeight
+        ? img.naturalWidth / img.naturalHeight : null);
+      img.onerror = () => res(null);
+      img.src = url;
+    });
+  }
+
+  async function carregarPlanta() {
+    try {
+      const salva = localStorage.getItem(LS_PLANTA);
+      const op = Number(localStorage.getItem(LS_PLANTA_OPAC));
+      if (op >= 10 && op <= 100) plantaOpac = op;
+      if (salva) {
+        plantaURL = salva;
+        plantaProp = await medirPlanta(salva);
+        return;
+      }
+    } catch (e) { /* aparelho sem localStorage: segue sem planta */ }
+    // nada guardado aqui: tenta a planta publicada junto do app
+    const prop = await medirPlanta(PLANTA_PUBLICADA);
+    if (prop) { plantaURL = PLANTA_PUBLICADA; plantaProp = prop; }
+  }
+
+  // O desenho da camada, para o renderMapa colocar ANTES das mesas
+  function plantaHTML() {
+    if (!plantaVisivel()) return "";
+    return `<div class="mapa-planta" style="background-image:url('${plantaURL}');opacity:${plantaOpac / 100}"></div>`;
+  }
+
+
+  // Encolhe a imagem antes de guardar: foto de celular tem 4000px de largura,
+  // e o espaço deste aparelho é pequeno (uns poucos megabytes no total).
+  function encolherImagem(arquivo) {
+    return new Promise((res, rej) => {
+      const leitor = new FileReader();
+      leitor.onerror = () => rej(new Error("não deu para ler o arquivo"));
+      leitor.onload = () => {
+        const img = new Image();
+        img.onerror = () => rej(new Error("arquivo não é uma imagem"));
+        img.onload = () => {
+          const escala = Math.min(1, PLANTA_LARGURA_MAX / (img.naturalWidth || 1));
+          const l = Math.round((img.naturalWidth || 1) * escala);
+          const a = Math.round((img.naturalHeight || 1) * escala);
+          const cv = document.createElement("canvas");
+          cv.width = l; cv.height = a;
+          const ctx = cv.getContext("2d");
+          // fundo branco: PNG com transparência viraria preto no JPEG
+          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, l, a);
+          ctx.drawImage(img, 0, 0, l, a);
+          res({ url: cv.toDataURL("image/jpeg", 0.82), prop: l / a });
+        };
+        img.src = String(leitor.result || "");
+      };
+      leitor.readAsDataURL(arquivo);
+    });
+  }
+
+  function abrirPlanta() {
+    const prev = $("#plantaPrevia");
+    if (prev) {
+      prev.hidden = !plantaURL;
+      prev.innerHTML = plantaURL ? `<img src="${plantaURL}" alt="Planta do salão" />` : "";
+    }
+    $("#plantaOpacBox").hidden = !plantaURL;
+    $("#plantaOpac").value = plantaOpac;
+    $("#plantaRemover").hidden = !plantaURL;
+    $("#plantaMsg").textContent = plantaURL === PLANTA_PUBLICADA
+      ? "Usando a planta publicada junto do app (planta.png)."
+      : "";
+    $("#plantaMsg").className = "form-msg";
+    $("#plantaModal").hidden = false;
+  }
+
+  async function usarPlanta(arquivo) {
+    const msg = $("#plantaMsg");
+    msg.className = "form-msg";
+    msg.textContent = "Preparando a imagem…";
+    try {
+      const { url, prop } = await encolherImagem(arquivo);
+      try { localStorage.setItem(LS_PLANTA, url); }
+      catch (e) {
+        msg.textContent = "A imagem ficou grande demais para este aparelho. " +
+          "Salve o desenho menor (até 1600 px de largura) e tente de novo.";
+        msg.className = "form-msg err";
+        return;
+      }
+      plantaURL = url; plantaProp = prop;
+      msg.textContent = "Pronto — a planta já está no mapa.";
+      msg.className = "form-msg ok";
+      abrirPlanta();
+      renderMapa();
+    } catch (e) {
+      console.warn("Planta:", e);
+      msg.textContent = "Não deu para usar esse arquivo. Tente um PNG ou JPG.";
+      msg.className = "form-msg err";
+    }
+  }
+
+  async function removerPlanta() {
+    try { localStorage.removeItem(LS_PLANTA); } catch (e) { /* ignora */ }
+    plantaURL = null; plantaProp = null;
+    // pode existir a publicada: recarrega para voltar a ela, se houver
+    await carregarPlanta();
+    abrirPlanta();
+    renderMapa();
   }
 
   // ---------- criar várias mesas ----------
@@ -5660,6 +5811,7 @@
         aplicarPermissoes();
         setView(abaParaAbrir());
         await refresh();
+        carregarPlanta().then(renderMapa);
         ligarTelaAcesa();
         ligarRelogios();
       } catch (err) {
@@ -6513,6 +6665,19 @@
     $("#mapaNova").addEventListener("click", () => abrirMesaCadastro(null));
     $("#mapaVarias").addEventListener("click", acaoSegura("várias mesas", abrirLoteMesas));
     $("#mapaArrumar").addEventListener("click", acaoSegura("organizar o mapa", arrumarMapa));
+    // ---- planta do salão (mapa 2.0, em teste) ----
+    $("#mapaPlantaBtn").addEventListener("click", acaoSegura("planta do salão", abrirPlanta));
+    $("#plantaArquivo").addEventListener("change", (e) => {
+      const arq = e.target.files && e.target.files[0];
+      e.target.value = "";                 // permite subir o mesmo arquivo de novo
+      if (arq) usarPlanta(arq);
+    });
+    $("#plantaOpac").addEventListener("input", (e) => {
+      plantaOpac = Math.max(10, Math.min(100, Number(e.target.value) || 55));
+      try { localStorage.setItem(LS_PLANTA_OPAC, String(plantaOpac)); } catch (err) { /* ignora */ }
+      renderMapa();
+    });
+    $("#plantaRemover").addEventListener("click", acaoSegura("tirar a planta", removerPlanta));
     $("#mlCriar").addEventListener("click", acaoSegura("criar as mesas", criarLoteMesas));
     $("#mlQtd").addEventListener("input", atualizarPreviaLote);
     $("#mlInicio").addEventListener("input", atualizarPreviaLote);
@@ -7876,6 +8041,8 @@
     const abaDeAbrir = abaParaAbrir();
     if (loginLigado() || abaDeAbrir !== "totem") setView(abaDeAbrir);
 
+    // a planta do salão (quando existe) entra antes do primeiro desenho do mapa
+    await carregarPlanta();
     await refresh();
 
     ligarRelogios();

@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=195" />
+<link rel="stylesheet" href="./styles.css?v=196" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -152,6 +152,9 @@
         <button type="button" class="btn btn-neutral btn-liberar-todas" id="mapaArrumar" hidden>
           🧮 Organizar no mapa
         </button>
+        <button type="button" class="btn btn-neutral btn-liberar-todas" id="mapaPlantaBtn" hidden>
+          🖼 Planta do salão
+        </button>
         <button type="button" class="btn btn-verde btn-liberar-todas" id="mapaConcluir" hidden>
           ✓ Concluir
         </button>
@@ -162,6 +165,9 @@
       </div>
 
       <div class="mapa-rolagem" id="mapaRolagem">
+        <!-- A planta do salão é desenhada DENTRO do piso, atrás das mesas
+             (o próprio renderMapa a recria a cada desenho, senão o innerHTML
+             das mesas a apagaria). -->
         <div class="mapa-piso" id="mapaPiso"></div>
       </div>
       <p class="form-msg" id="mapaEditMsg" role="status"></p>
@@ -491,6 +497,41 @@
       <div class="modal-actions">
         <button class="btn btn-ghost btn-neutral" id="pinCancel">Cancelar</button>
         <button class="btn btn-primary" id="pinOk">Entrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: PLANTA DO SALÃO (mapa 2.0, só adm) ============ -->
+  <div class="modal" id="plantaModal" data-fixo hidden>
+    <div class="modal-box">
+      <button class="modal-x" data-close aria-label="Fechar">×</button>
+      <h3>🖼 Planta do salão</h3>
+      <p class="hint">Suba o desenho do salão (paredes, balcão, cozinha, áreas) e
+        as mesas ficam por cima dele. Enquanto está em teste, a planta aparece
+        <b>só para o administrador</b>.</p>
+
+      <label class="field">
+        <span>Imagem da planta <small>(PNG ou JPG, deitada)</small></span>
+        <input id="plantaArquivo" type="file" accept="image/png,image/jpeg,image/webp" />
+        <small class="hint">A imagem fica guardada <b>neste aparelho</b>, para você ver
+          como ficou. Quando aprovar o desenho, publique o arquivo como
+          <b>planta.png</b> junto do app: aí ele aparece em todos os aparelhos,
+          sem precisar subir de novo em cada um.</small>
+      </label>
+
+      <div class="planta-previa" id="plantaPrevia" hidden></div>
+
+      <label class="field" id="plantaOpacBox" hidden>
+        <span>Quanto a planta aparece</span>
+        <input id="plantaOpac" type="range" min="10" max="100" step="5" />
+        <small class="hint">Fraca demais some; forte demais compete com a cor das
+          mesas, que é o que o garçom precisa ler de longe.</small>
+      </label>
+
+      <p class="form-msg" id="plantaMsg" role="status"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost btn-danger" id="plantaRemover" hidden>🗑 Tirar a planta</button>
+        <button type="button" class="btn btn-primary" data-close>Pronto</button>
       </div>
     </div>
   </div>
@@ -1566,4 +1607,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=195"></script>
+<script src="./app.js?v=196"></script>

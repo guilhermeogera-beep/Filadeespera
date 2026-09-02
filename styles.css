@@ -1567,3 +1567,20 @@ input, select, textarea, button { max-width:100%; min-width:0 }
   padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.22);
   border:1.5px solid rgba(255,255,255,.45);white-space:nowrap;
 }
+
+/* ---- MAPA 2.0: a planta do salão atrás das mesas ----
+   Camada própria, no fundo do piso: a transparência vale só para o desenho,
+   e as mesas continuam com a cor cheia — é a cor delas que o garçom lê de
+   longe. `contain` mostra a planta inteira; como o piso passa a ter a mesma
+   proporção da imagem, ela preenche o piso sem distorcer nem sobrar. */
+.mapa-planta{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+  background-repeat:no-repeat;background-position:center;background-size:100% 100%;
+}
+.mapa-piso > .mm-mesa{z-index:1}
+/* prévia dentro do pop-up */
+.planta-previa{
+  margin:10px 0;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;
+  background:#FAFAF8;
+}
+.planta-previa img{display:block;width:100%;height:auto}

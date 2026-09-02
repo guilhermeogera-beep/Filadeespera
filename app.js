@@ -3692,7 +3692,68 @@
     });
   }
 
+  // ---------- a planta na nuvem (vale para todos os aparelhos) ----------
+  //
+  //  A tabela `fila_planta` tem UMA linha. Ela é lida quando o mapa abre, e
+  //  não junto das configurações: a configuração é relida a cada 15 segundos,
+  //  e uma imagem ali dentro faria cada aparelho baixar centenas de KB o dia
+  //  inteiro à toa.
+  //
+  //  Se a tabela não existir (o SQL ainda não foi rodado), tudo continua
+  //  funcionando com a cópia do aparelho — só não sincroniza. É por isso que
+  //  a falha aqui é engolida com um aviso no console, e não com um erro na
+  //  cara de quem está trabalhando.
+  let plantaDaNuvem = false;      // a que está na tela veio do banco?
+
+  function bancoDaPlanta() {
+    return (backend && backend.mode === "online" && backend.client) ? backend.client : null;
+  }
+
+  async function lerPlantaDaNuvem() {
+    const cli = bancoDaPlanta();
+    if (!cli) return null;
+    try {
+      const { data, error } = await cli.from("fila_planta")
+        .select("imagem,opacidade").eq("id", 1).maybeSingle();
+      if (error) throw error;
+      return data && data.imagem ? data : null;
+    } catch (e) {
+      console.warn("Planta: a tabela ainda não existe (rode o supabase-planta.sql).", e);
+      return null;
+    }
+  }
+
+  async function gravarPlantaNaNuvem(imagem, opacidade) {
+    const cli = bancoDaPlanta();
+    if (!cli) return { ok: false, motivo: "local" };
+    try {
+      const { data, error } = await cli.from("fila_planta")
+        .update({ imagem, opacidade, atualizado: new Date().toISOString() })
+        .eq("id", 1).select("id");
+      if (error) throw error;
+      // RLS que barra devolve SUCESSO com zero linhas: sem isto, o app diria
+      // "enviado" e o tablet nunca veria a planta
+      if (!data || !data.length) return { ok: false, motivo: "permissao" };
+      return { ok: true };
+    } catch (e) {
+      console.warn("Planta: não deu para gravar na nuvem.", e);
+      return { ok: false, motivo: "tabela" };
+    }
+  }
+
   async function carregarPlanta() {
+    // 1) a nuvem manda: é ela que faz PC e tablet mostrarem a mesma planta
+    const naNuvem = await lerPlantaDaNuvem();
+    if (naNuvem) {
+      plantaURL = naNuvem.imagem;
+      plantaDaNuvem = true;
+      const op = Number(naNuvem.opacidade);
+      if (op >= 10 && op <= 100) plantaOpac = op;
+      plantaProp = await medirPlanta(plantaURL);
+      if (plantaProp) return;
+    }
+    plantaDaNuvem = false;
+    // 2) o que este aparelho guardou (modo local, ou nuvem sem a tabela)
     try {
       const salva = localStorage.getItem(LS_PLANTA);
       const op = Number(localStorage.getItem(LS_PLANTA_OPAC));
@@ -3700,10 +3761,10 @@
       if (salva) {
         plantaURL = salva;
         plantaProp = await medirPlanta(salva);
-        return;
+        if (plantaProp) return;
       }
     } catch (e) { /* aparelho sem localStorage: segue sem planta */ }
-    // nada guardado aqui: tenta a planta publicada junto do app
+    // 3) a planta publicada junto do app, que vale para todos sem banco nenhum
     const prop = await medirPlanta(PLANTA_PUBLICADA);
     if (prop) { plantaURL = PLANTA_PUBLICADA; plantaProp = prop; }
   }
@@ -3751,8 +3812,13 @@
     $("#plantaOpacBox").hidden = !plantaURL;
     $("#plantaOpac").value = plantaOpac;
     $("#plantaRemover").hidden = !plantaURL;
-    $("#plantaMsg").textContent = plantaURL === PLANTA_PUBLICADA
-      ? "Usando a planta publicada junto do app (planta.png)."
+    $("#plantaBaixar").hidden = !plantaURL || plantaURL === PLANTA_PUBLICADA;
+    // De onde veio a que está na tela — é o que responde ao "subi no PC e o
+    // tablet não viu": só a da nuvem (ou a publicada) vale para todo mundo.
+    $("#plantaMsg").textContent =
+      plantaURL === PLANTA_PUBLICADA ? "Usando a planta publicada junto do app (planta.png) — vale para todos os aparelhos."
+      : plantaDaNuvem ? "Esta planta está na nuvem: todos os aparelhos veem a mesma."
+      : plantaURL ? "Esta planta está SÓ NESTE APARELHO. Para os outros verem, envie de novo (com internet) ou publique o desenho como planta.png."
       : "";
     $("#plantaMsg").className = "form-msg";
     $("#plantaModal").hidden = false;
@@ -3764,6 +3830,7 @@
     msg.textContent = "Preparando a imagem…";
     try {
       const { url, prop } = await encolherImagem(arquivo);
+      // guarda no aparelho primeiro: assim ele já mostra, mesmo sem internet
       try { localStorage.setItem(LS_PLANTA, url); }
       catch (e) {
         msg.textContent = "A imagem ficou grande demais para este aparelho. " +
@@ -3772,10 +3839,29 @@
         return;
       }
       plantaURL = url; plantaProp = prop;
-      msg.textContent = "Pronto — a planta já está no mapa.";
-      msg.className = "form-msg ok";
       abrirPlanta();
       renderMapa();
+
+      // e manda para a nuvem, que é o que faz o tablet do salão enxergar
+      msg.textContent = "Enviando para os outros aparelhos…";
+      const r = await gravarPlantaNaNuvem(url, plantaOpac);
+      plantaDaNuvem = r.ok;
+      if (r.ok) {
+        msg.textContent = "Pronto — a planta já vale para todos os aparelhos.";
+        msg.className = "form-msg ok";
+      } else if (r.motivo === "local") {
+        msg.textContent = "Pronto — a planta está neste aparelho (modo local, sem nuvem).";
+        msg.className = "form-msg ok";
+      } else if (r.motivo === "permissao") {
+        msg.textContent = "A planta está neste aparelho, mas o banco recusou gravar: " +
+          "entre como administrador para enviá-la aos outros aparelhos.";
+        msg.className = "form-msg err";
+      } else {
+        msg.textContent = "A planta está neste aparelho. Para ela chegar aos outros, " +
+          "rode uma vez o supabase-planta.sql — ou publique o desenho como planta.png " +
+          "junto do app (botão abaixo).";
+        msg.className = "form-msg err";
+      }
     } catch (e) {
       console.warn("Planta:", e);
       msg.textContent = "Não deu para usar esse arquivo. Tente um PNG ou JPG.";
@@ -3783,9 +3869,24 @@
     }
   }
 
+  // Baixa a imagem JÁ REDUZIDA, pronta para publicar como planta.png junto do
+  // app. É o caminho sem banco nenhum: o arquivo publicado vale para todos os
+  // aparelhos e não depende de ninguém subir nada de novo.
+  function baixarPlanta() {
+    if (!plantaURL) return;
+    const a = document.createElement("a");
+    a.href = plantaURL;
+    a.download = "planta.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   async function removerPlanta() {
+    if (!confirm("Tirar a planta do mapa?\n\nSe ela estiver na nuvem, sai de TODOS os aparelhos.")) return;
     try { localStorage.removeItem(LS_PLANTA); } catch (e) { /* ignora */ }
-    plantaURL = null; plantaProp = null;
+    if (plantaDaNuvem) await gravarPlantaNaNuvem(null, plantaOpac);
+    plantaURL = null; plantaProp = null; plantaDaNuvem = false;
     // pode existir a publicada: recarrega para voltar a ela, se houver
     await carregarPlanta();
     abrirPlanta();
@@ -6677,6 +6778,12 @@
       try { localStorage.setItem(LS_PLANTA_OPAC, String(plantaOpac)); } catch (err) { /* ignora */ }
       renderMapa();
     });
+    // a opacidade acompanha a planta na nuvem, mas só quando o dedo solta o
+    // controle: gravar a cada pixel arrastado seria uma gravação por quadro
+    $("#plantaOpac").addEventListener("change", () => {
+      if (plantaDaNuvem && plantaURL) gravarPlantaNaNuvem(plantaURL, plantaOpac);
+    });
+    $("#plantaBaixar").addEventListener("click", acaoSegura("baixar a planta", baixarPlanta));
     $("#plantaRemover").addEventListener("click", acaoSegura("tirar a planta", removerPlanta));
     $("#mlCriar").addEventListener("click", acaoSegura("criar as mesas", criarLoteMesas));
     $("#mlQtd").addEventListener("input", atualizarPreviaLote);

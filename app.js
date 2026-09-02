@@ -3421,14 +3421,15 @@
     const piso = $("#mapaPiso"), rol = $("#mapaRolagem");
     if (!piso || !rol) return;
     const z = Math.round(zoomDoMapa() * 100);
-    // COM PLANTA, quem manda na forma do piso é o DESENHO: o piso passa a ter
-    // a mesma proporção da imagem, e por isso as mesas (que são guardadas em
-    // porcentagem) caem exatamente sobre o lugar delas na planta. Sem planta,
-    // o piso continua ocupando a área disponível, como sempre fez.
-    const prop = (plantaVisivel() && plantaProp) ? plantaProp : null;
-    piso.style.aspectRatio = prop ? String(prop) : "auto";
+    // O PISO MANDA NO TAMANHO, A PLANTA SE AJUSTA A ELE. Já tentei o
+    // contrário — o piso tomando a proporção da imagem — e o resultado foi o
+    // que o dono viu: uma planta deitada achatava o piso e espremia todas as
+    // mesas numa faixa fina. Agora o piso continua ocupando a tela inteira, e
+    // quem se encaixa é o desenho, com os controles de escala e deslocamento
+    // do pop-up da planta.
+    piso.style.aspectRatio = "auto";
     piso.style.width = z + "%";
-    piso.style.height = prop ? "auto" : z + "%";
+    piso.style.height = z + "%";
     // A planta ocupa toda a tela que sobra abaixo dos botões: num tablet em
     // pé o salão inteiro fica à vista, sem rolar. Mede, ajusta e confere se
     // ainda sobrou alguma coisa embaixo (margens, barra do sistema).
@@ -3669,12 +3670,24 @@
   // ==========================================================
   const LS_PLANTA = "fila_planta";
   const LS_PLANTA_OPAC = "fila_planta_opacidade";
+  const LS_PLANTA_AJUSTE = "fila_planta_ajuste";
   const PLANTA_PUBLICADA = "./planta.png";
   const PLANTA_LARGURA_MAX = 1600;   // px: acima disso é peso sem ganho na tela
 
   let plantaURL = null;      // imagem em uso (do aparelho ou publicada)
   let plantaProp = null;     // largura ÷ altura, para o piso casar com o desenho
   let plantaOpac = 55;       // % — o padrão deixa a planta discreta atrás das mesas
+  // COMO A PLANTA SE ENCAIXA NO PISO. A imagem entra inteira (sem distorcer)
+  // e daí o dono ajusta na mão: aumenta até o desenho preencher a tela e
+  // arrasta para o canto certo. É o equivalente a mover o mapa de papel
+  // debaixo das mesas até as duas coisas baterem.
+  const AJUSTE_PADRAO = { escala: 100, x: 0, y: 0 };
+  let plantaAjuste = Object.assign({}, AJUSTE_PADRAO);
+
+  function estiloDaPlanta() {
+    const a = plantaAjuste;
+    return `transform:translate(${a.x}%, ${a.y}%) scale(${(a.escala || 100) / 100})`;
+  }
 
   function plantaVisivel() {
     // enquanto está em teste, só o administrador enxerga
@@ -3714,7 +3727,7 @@
     if (!cli) return null;
     try {
       const { data, error } = await cli.from("fila_planta")
-        .select("imagem,opacidade").eq("id", 1).maybeSingle();
+        .select("imagem,opacidade,ajuste").eq("id", 1).maybeSingle();
       if (error) throw error;
       return data && data.imagem ? data : null;
     } catch (e) {
@@ -3728,7 +3741,7 @@
     if (!cli) return { ok: false, motivo: "local" };
     try {
       const { data, error } = await cli.from("fila_planta")
-        .update({ imagem, opacidade, atualizado: new Date().toISOString() })
+        .update({ imagem, opacidade, ajuste: plantaAjuste, atualizado: new Date().toISOString() })
         .eq("id", 1).select("id");
       if (error) throw error;
       // RLS que barra devolve SUCESSO com zero linhas: sem isto, o app diria
@@ -3741,6 +3754,20 @@
     }
   }
 
+  // Lê o encaixe guardado, seja de onde vier, sempre com valores sãos
+  function aplicarAjusteSalvo(bruto) {
+    const a = (bruto && typeof bruto === "object") ? bruto : {};
+    const num = (v, pad, min, max) => {
+      const n = Number(v);
+      return (isFinite(n) && n >= min && n <= max) ? n : pad;
+    };
+    plantaAjuste = {
+      escala: num(a.escala, 100, 50, 300),
+      x: num(a.x, 0, -60, 60),
+      y: num(a.y, 0, -60, 60),
+    };
+  }
+
   async function carregarPlanta() {
     // 1) a nuvem manda: é ela que faz PC e tablet mostrarem a mesma planta
     const naNuvem = await lerPlantaDaNuvem();
@@ -3749,6 +3776,7 @@
       plantaDaNuvem = true;
       const op = Number(naNuvem.opacidade);
       if (op >= 10 && op <= 100) plantaOpac = op;
+      aplicarAjusteSalvo(naNuvem.ajuste);
       plantaProp = await medirPlanta(plantaURL);
       if (plantaProp) return;
     }
@@ -3758,6 +3786,8 @@
       const salva = localStorage.getItem(LS_PLANTA);
       const op = Number(localStorage.getItem(LS_PLANTA_OPAC));
       if (op >= 10 && op <= 100) plantaOpac = op;
+      try { aplicarAjusteSalvo(JSON.parse(localStorage.getItem(LS_PLANTA_AJUSTE))); }
+      catch (e) { /* sem ajuste guardado: entra no encaixe original */ }
       if (salva) {
         plantaURL = salva;
         plantaProp = await medirPlanta(salva);
@@ -3769,10 +3799,14 @@
     if (prop) { plantaURL = PLANTA_PUBLICADA; plantaProp = prop; }
   }
 
-  // O desenho da camada, para o renderMapa colocar ANTES das mesas
+  // O desenho da camada, para o renderMapa colocar ANTES das mesas.
+  // É uma <img> de verdade (e não um fundo de CSS) porque assim ela entra
+  // inteira, sem distorcer, e aceita o ajuste de escala e posição.
   function plantaHTML() {
     if (!plantaVisivel()) return "";
-    return `<div class="mapa-planta" style="background-image:url('${plantaURL}');opacity:${plantaOpac / 100}"></div>`;
+    return `<div class="mapa-planta" style="opacity:${plantaOpac / 100}">
+      <img src="${plantaURL}" alt="" style="${estiloDaPlanta()}" />
+    </div>`;
   }
 
 
@@ -3811,6 +3845,10 @@
     }
     $("#plantaOpacBox").hidden = !plantaURL;
     $("#plantaOpac").value = plantaOpac;
+    $("#plantaAjusteBox").hidden = !plantaURL;
+    $("#plantaEscala").value = plantaAjuste.escala;
+    $("#plantaX").value = plantaAjuste.x;
+    $("#plantaY").value = plantaAjuste.y;
     $("#plantaRemover").hidden = !plantaURL;
     $("#plantaBaixar").hidden = !plantaURL || plantaURL === PLANTA_PUBLICADA;
     // De onde veio a que está na tela — é o que responde ao "subi no PC e o
@@ -6782,6 +6820,29 @@
     // controle: gravar a cada pixel arrastado seria uma gravação por quadro
     $("#plantaOpac").addEventListener("change", () => {
       if (plantaDaNuvem && plantaURL) gravarPlantaNaNuvem(plantaURL, plantaOpac);
+    });
+    // ---- encaixe da planta: tamanho e posição ----
+    // Enquanto o dedo arrasta, só redesenha (é instantâneo e não custa nada);
+    // ao soltar, guarda no aparelho e manda para a nuvem.
+    const mexerAjuste = (campo, valor) => {
+      plantaAjuste[campo] = Number(valor) || 0;
+      renderMapa();
+    };
+    const guardarAjuste = () => {
+      try { localStorage.setItem(LS_PLANTA_AJUSTE, JSON.stringify(plantaAjuste)); }
+      catch (e) { /* ignora */ }
+      if (plantaDaNuvem && plantaURL) gravarPlantaNaNuvem(plantaURL, plantaOpac);
+    };
+    $("#plantaEscala").addEventListener("input", (e) => mexerAjuste("escala", e.target.value));
+    $("#plantaX").addEventListener("input", (e) => mexerAjuste("x", e.target.value));
+    $("#plantaY").addEventListener("input", (e) => mexerAjuste("y", e.target.value));
+    ["plantaEscala", "plantaX", "plantaY"].forEach((id) =>
+      $("#" + id).addEventListener("change", guardarAjuste));
+    $("#plantaEncaixar").addEventListener("click", () => {
+      plantaAjuste = Object.assign({}, AJUSTE_PADRAO);
+      abrirPlanta();
+      renderMapa();
+      guardarAjuste();
     });
     $("#plantaBaixar").addEventListener("click", acaoSegura("baixar a planta", baixarPlanta));
     $("#plantaRemover").addEventListener("click", acaoSegura("tirar a planta", removerPlanta));

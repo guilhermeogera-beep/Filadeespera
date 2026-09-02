@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=197" />
+<link rel="stylesheet" href="./styles.css?v=198" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -528,6 +528,24 @@
           mesas, que é o que o garçom precisa ler de longe.</small>
       </label>
 
+      <!-- Encaixe manual: a planta entra inteira e o dono a estica e arrasta
+           até bater com as mesas. Mexer no desenho é bem mais rápido do que
+           reposicionar cinquenta mesas. -->
+      <div class="field" id="plantaAjusteBox" hidden>
+        <span>Encaixar a planta no salão</span>
+        <label class="planta-ctrl"><small>Tamanho</small>
+          <input id="plantaEscala" type="range" min="50" max="300" step="5" />
+        </label>
+        <label class="planta-ctrl"><small>Esquerda ↔ direita</small>
+          <input id="plantaX" type="range" min="-60" max="60" step="1" />
+        </label>
+        <label class="planta-ctrl"><small>Cima ↕ baixo</small>
+          <input id="plantaY" type="range" min="-60" max="60" step="1" />
+        </label>
+        <button type="button" class="btn btn-sm btn-neutral" id="plantaEncaixar">↺ Voltar ao encaixe original</button>
+        <small class="hint">Aumente até o desenho preencher a tela e arraste para
+          o lugar certo. As mesas não saem do lugar — quem se move é a planta.</small>
+      </div>
       <p class="form-msg" id="plantaMsg" role="status"></p>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost btn-danger" id="plantaRemover" hidden>🗑 Tirar a planta</button>
@@ -1608,4 +1626,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=197"></script>
+<script src="./app.js?v=198"></script>

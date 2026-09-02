@@ -3476,6 +3476,16 @@
     aplicarZoom();
   }
 
+  // Zoom contínuo, para o gesto de pinça: aqui o valor não anda de dois em
+  // dois décimos, ele acompanha a distância entre os dedos.
+  function definirZoom(valor) {
+    const nova = Math.max(0.6, Math.min(3, Math.round(valor * 100) / 100));
+    if (nova === zoomDoMapa()) return nova;
+    try { localStorage.setItem(LS_ZOOM, String(nova)); } catch (e) { /* ignora */ }
+    aplicarZoom();
+    return nova;
+  }
+
   // Modo de edição do mapa: acontece na PRÓPRIA tela do garçom, para o que
   // se monta ser exatamente o que se vê depois.
   let modoEdicaoMapa = false;
@@ -3681,12 +3691,15 @@
   // e daí o dono ajusta na mão: aumenta até o desenho preencher a tela e
   // arrasta para o canto certo. É o equivalente a mover o mapa de papel
   // debaixo das mesas até as duas coisas baterem.
-  const AJUSTE_PADRAO = { escala: 100, x: 0, y: 0 };
+  const AJUSTE_PADRAO = { escala: 100, x: 0, y: 0, giro: 0 };
   let plantaAjuste = Object.assign({}, AJUSTE_PADRAO);
 
+  // A ordem importa: primeiro leva a planta para o lugar, depois gira, depois
+  // amplia. Assim o giro acontece em torno do centro do desenho e os controles
+  // continuam previsíveis — mexer no tamanho não faz o desenho "fugir".
   function estiloDaPlanta() {
     const a = plantaAjuste;
-    return `transform:translate(${a.x}%, ${a.y}%) scale(${(a.escala || 100) / 100})`;
+    return `transform:translate(${a.x}%, ${a.y}%) rotate(${a.giro || 0}deg) scale(${(a.escala || 100) / 100})`;
   }
 
   function plantaVisivel() {
@@ -3765,6 +3778,7 @@
       escala: num(a.escala, 100, 50, 300),
       x: num(a.x, 0, -60, 60),
       y: num(a.y, 0, -60, 60),
+      giro: num(a.giro, 0, -180, 180),
     };
   }
 
@@ -3849,6 +3863,7 @@
     $("#plantaEscala").value = plantaAjuste.escala;
     $("#plantaX").value = plantaAjuste.x;
     $("#plantaY").value = plantaAjuste.y;
+    $("#plantaGiro").value = plantaAjuste.giro;
     $("#plantaRemover").hidden = !plantaURL;
     $("#plantaBaixar").hidden = !plantaURL || plantaURL === PLANTA_PUBLICADA;
     // De onde veio a que está na tela — é o que responde ao "subi no PC e o
@@ -4168,6 +4183,104 @@
       return melhor;
     };
 
+    // ---------------------------------------------------------------
+    //  PINÇA: DOIS DEDOS PARA APROXIMAR E AFASTAR
+    // ---------------------------------------------------------------
+    //  É o gesto que todo mundo já usa em foto e em mapa de rua. Aqui ele
+    //  mexe no mesmo zoom dos botões − e +, mas de forma contínua, e mantendo
+    //  debaixo dos dedos o ponto do salão que estava ali quando o gesto
+    //  começou — sem isso a planta escapa da mão a cada beliscão.
+    const dedos = new Map();
+    let pinca = null;
+    let fimDaPinca = 0;         // instante em que a última pinça terminou
+
+    const distanciaEntreDedos = () => {
+      const [a, b] = [...dedos.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    const centroDosDedos = () => {
+      const [a, b] = [...dedos.values()];
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    };
+
+    piso.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;      // pinça é coisa de dedo
+      dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (dedos.size !== 2) return;
+      const rol = $("#mapaRolagem");
+      if (!rol) return;
+      pan = null;                                 // dois dedos: não é arrasto
+      const c = centroDosDedos();
+      const r = piso.getBoundingClientRect();
+      pinca = {
+        d0: distanciaEntreDedos(),
+        z0: zoomDoMapa(),
+        // onde o centro do gesto cai DENTRO da planta, em fração do tamanho
+        fx: (c.x - r.left) / (r.width || 1),
+        fy: (c.y - r.top) / (r.height || 1),
+        telaX: c.x - rol.getBoundingClientRect().left,
+        telaY: c.y - rol.getBoundingClientRect().top,
+      };
+    }, true);
+
+    window.addEventListener("pointermove", (e) => {
+      if (!dedos.has(e.pointerId)) return;
+      dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!pinca || dedos.size !== 2) return;
+      const d = distanciaEntreDedos();
+      if (!pinca.d0) return;
+      const z = definirZoom(pinca.z0 * (d / pinca.d0));
+      // reposiciona a rolagem para o mesmo ponto do salão continuar sob os
+      // dedos: é o que faz o gesto parecer natural em vez de escorregadio
+      const rol = $("#mapaRolagem");
+      const r = piso.getBoundingClientRect();
+      if (rol && r.width && r.height) {
+        rol.scrollLeft += (r.left + pinca.fx * r.width) - (rol.getBoundingClientRect().left + pinca.telaX);
+        rol.scrollTop += (r.top + pinca.fy * r.height) - (rol.getBoundingClientRect().top + pinca.telaY);
+      }
+      void z;
+    });
+
+    const tirarDedo = (e) => {
+      if (!dedos.has(e.pointerId)) return;
+      dedos.delete(e.pointerId);
+      if (pinca && dedos.size < 2) { pinca = null; fimDaPinca = Date.now(); }
+    };
+    window.addEventListener("pointerup", tirarDedo);
+    window.addEventListener("pointercancel", tirarDedo);
+
+    // ---------------------------------------------------------------
+    //  ARRASTAR O MAPA PARA VER O RESTO (quando está ampliado)
+    // ---------------------------------------------------------------
+    //  Com o zoom acima de 100% o salão não cabe na tela, e antes só dava
+    //  para chegar nas mesas de fora pelas barras de rolagem — que em tablet
+    //  praticamente não existem. Agora o dedo no VÃO entre as mesas arrasta a
+    //  planta inteira, para qualquer lado, como num mapa de rua.
+    //
+    //  Só o vão: começar em cima de uma mesa continua sendo pegar a mesa.
+    let pan = null;
+    piso.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("[data-mapamesa],[data-mmedit],[data-mmdel]")) return;
+      const rol = $("#mapaRolagem");
+      if (!rol) return;
+      pan = { x: e.clientX, y: e.clientY, esq: rol.scrollLeft, topo: rol.scrollTop };
+      piso.classList.add("is-pegando");
+    });
+    window.addEventListener("pointermove", (e) => {
+      if (!pan) return;
+      const rol = $("#mapaRolagem");
+      if (!rol) return;
+      rol.scrollLeft = pan.esq - (e.clientX - pan.x);
+      rol.scrollTop = pan.topo - (e.clientY - pan.y);
+    });
+    const soltarPan = () => {
+      if (!pan) return;
+      pan = null;
+      piso.classList.remove("is-pegando");
+    };
+    window.addEventListener("pointerup", soltarPan);
+    window.addEventListener("pointercancel", soltarPan);
+
     piso.addEventListener("pointerdown", (e) => {
       // os botõezinhos de editar/excluir não arrastam nem abrem a mesa
       if (e.target.closest("[data-mmedit],[data-mmdel]")) return;
@@ -4255,7 +4368,12 @@
       const id = el.dataset.mapamesa;
       soltar();
 
-      if (eraToque) { abrirPorToque(id); return; }
+      // logo depois de uma pinça o dedo que sobra "solta" em cima de uma mesa
+      // e o app achava que era um toque: abria a ficha no fim de todo zoom
+      if (eraToque) {
+        if (Date.now() - fimDaPinca > 400) abrirPorToque(id);
+        return;
+      }
       if (!arrastou) return;                     // segurou e soltou sem mover
       ultimoToque = Date.now();
 
@@ -6836,7 +6954,21 @@
     $("#plantaEscala").addEventListener("input", (e) => mexerAjuste("escala", e.target.value));
     $("#plantaX").addEventListener("input", (e) => mexerAjuste("x", e.target.value));
     $("#plantaY").addEventListener("input", (e) => mexerAjuste("y", e.target.value));
-    ["plantaEscala", "plantaX", "plantaY"].forEach((id) =>
+    $("#plantaGiro").addEventListener("input", (e) => mexerAjuste("giro", e.target.value));
+    // os botões de 90° resolvem o caso comum (a foto veio deitada) num toque;
+    // o controle deslizante fica para o acerto fino de um ou dois graus
+    const girar = (quanto) => {
+      let g = (Number(plantaAjuste.giro) || 0) + quanto;
+      if (g > 180) g -= 360;
+      if (g < -180) g += 360;
+      plantaAjuste.giro = g;
+      $("#plantaGiro").value = g;
+      renderMapa();
+      guardarAjuste();
+    };
+    $("#plantaGirarE").addEventListener("click", () => girar(-90));
+    $("#plantaGirarD").addEventListener("click", () => girar(90));
+    ["plantaEscala", "plantaX", "plantaY", "plantaGiro"].forEach((id) =>
       $("#" + id).addEventListener("change", guardarAjuste));
     $("#plantaEncaixar").addEventListener("click", () => {
       plantaAjuste = Object.assign({}, AJUSTE_PADRAO);

@@ -717,7 +717,7 @@ button{font-family:inherit}
   overflow:hidden;
   /* o dedo precisa poder rolar a página passando por cima do mapa; só quando
      o garçom SEGURA uma mesa é que o mapa toma conta do gesto */
-  touch-action:pan-y;
+  touch-action:pan-x pan-y;   /* o dedo arrasta o mapa nos dois sentidos */
 }
 .mapa-piso.is-edit{cursor:grab}
 .mapa-vazio{
@@ -1103,13 +1103,26 @@ button{font-family:inherit}
   border-radius:10px;font-size:1rem;line-height:1;cursor:pointer;color:var(--muted);
 }
 .mapa-dobrar:hover{background:var(--brand-soft)}
-/* dobrado: saem o título e os botões. A legenda FICA — ela cabe na mesma
-   linha da seta, então não custa altura nenhuma e continua explicando as
-   cores do salão. (Na faixa da atendente o mapa some inteiro, aí ela sai.) */
+/* Dobrado, o cabeçalho não pode custar ALTURA: ele sai do fluxo e flutua por
+   cima do canto do mapa. Título e botões somem; a seta e a legenda ficam
+   pousadas sobre a planta, para o garçom continuar sabendo o que cada cor
+   significa sem perder um dedo de tela. */
 .mapa-card.mapa-dobrado .mapa-titulo,
 .mapa-card.mapa-dobrado .mapa-botoes{display:none}
-.mapa-card.mapa-dobrado .mesas-head{margin-bottom:6px}
-
+.mapa-card.mapa-dobrado .mesas-head{
+  position:absolute;top:6px;left:8px;right:8px;z-index:4;
+  margin:0;pointer-events:none;
+}
+.mapa-card.mapa-dobrado .mesas-head > *{pointer-events:auto}
+.mapa-card.mapa-dobrado .mapa-dobrar{
+  background:rgba(255,255,255,.92);box-shadow:0 2px 6px rgba(0,0,0,.12);
+}
+.mapa-card.mapa-dobrado .mapa-legenda{
+  background:rgba(255,255,255,.88);border-radius:999px;padding:3px 8px;
+  box-shadow:0 2px 6px rgba(0,0,0,.10);
+}
+.mapa-card.mapa-dobrado .ml{font-size:.62rem;padding:1px 7px}
+.mapa-card{position:relative}
 /* ---- Desenho da mesa no mapa ----
    O retângulo é o tampo; os risquinhos em volta são as cadeiras. A largura
    cresce com o número de lugares (--lados = cadeiras do lado comprido), então
@@ -1543,7 +1556,7 @@ input, select, textarea, button { max-width:100%; min-width:0 }
    ela o mapa vira um quebra-cabeça colorido. */
 .mapa-card.so-olhar .mapa-botoes{display:none}
 .mapa-card.so-olhar .mm-mesa{pointer-events:none;cursor:default}
-.mapa-card.so-olhar .mapa-piso{touch-action:pan-y;cursor:default}
+.mapa-card.so-olhar .mapa-piso{touch-action:pan-x pan-y;cursor:default}
 
 /* ---- Mesa CHAMADA: "aguardando sentar" ----
    Roxo, a mesma cor que o app usa para preferencial e para a antessala: é a
@@ -1588,3 +1601,20 @@ input, select, textarea, button { max-width:100%; min-width:0 }
 .planta-previa img{display:block;width:100%;height:auto}
 .planta-ctrl{display:flex;flex-direction:column;gap:2px;margin:8px 0}
 .planta-ctrl small{font-weight:700;font-size:.8rem;color:var(--muted)}
+.planta-girar{display:flex;align-items:center;gap:8px}
+.planta-girar input[type=range]{flex:1 1 auto;min-width:0}
+
+/* ---- Aba do Mapa: o salão ocupa quase tudo ----
+   Na tela do mapa sobram só o cabeçalho do app e a fila de espera em faixa.
+   O resto é planta: cartão sem sombra nem respiro, e a rolagem grudada na
+   faixa da fila. */
+#app[data-view="mapa"] .mapa-card{padding:6px;box-shadow:none;border-radius:12px}
+#app[data-view="mapa"] .content{padding-top:8px;gap:8px}
+#app[data-view="mapa"] .fila-resumo{margin-bottom:0}
+#app[data-view="mapa"] .mapa-card.mapa-dobrado{padding:2px}
+/* arrastar o mapa: o dedo no vão entre as mesas leva a planta junto */
+.mapa-rolagem{overscroll-behavior:contain;cursor:grab}
+.mapa-piso.is-pegando{cursor:grabbing}
+/* o piso deixa o dedo arrastar para os DOIS lados: com o zoom alto é assim
+   que se chega nas mesas que ficaram fora da tela */
+.mapa-piso{touch-action:pan-x pan-y}

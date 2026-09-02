@@ -8,7 +8,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon-192.png" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-<link rel="stylesheet" href="./styles.css?v=198" />
+<link rel="stylesheet" href="./styles.css?v=200" />
 
 <!-- ============ TELA DE LOGIN (só aparece com o login ligado no config.js) ============ -->
 <div class="login-screen" id="loginScreen" hidden>
@@ -541,6 +541,13 @@
         </label>
         <label class="planta-ctrl"><small>Cima ↕ baixo</small>
           <input id="plantaY" type="range" min="-60" max="60" step="1" />
+        </label>
+        <label class="planta-ctrl"><small>Girar</small>
+          <div class="planta-girar">
+            <button type="button" class="btn btn-sm btn-neutral" id="plantaGirarE" title="Girar para a esquerda">↺ 90°</button>
+            <input id="plantaGiro" type="range" min="-180" max="180" step="1" />
+            <button type="button" class="btn btn-sm btn-neutral" id="plantaGirarD" title="Girar para a direita">↻ 90°</button>
+          </div>
         </label>
         <button type="button" class="btn btn-sm btn-neutral" id="plantaEncaixar">↺ Voltar ao encaixe original</button>
         <small class="hint">Aumente até o desenho preencher a tela e arraste para
@@ -1626,4 +1633,4 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="./config.js"></script>
 <script src="./qr.js"></script>
-<script src="./app.js?v=198"></script>
+<script src="./app.js?v=200"></script>
